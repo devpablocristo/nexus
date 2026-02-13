@@ -49,6 +49,11 @@ SELECT id AS org_id FROM orgs WHERE name='demo'
 LIMIT 1
 \gset
 
+-- Keep demo org deterministic: remove non-core tools (cascades policies/audit for those tools).
+DELETE FROM tools
+WHERE org_id=:'org_id'::uuid
+  AND name NOT IN ('echo', 'transfer');
+
 DELETE FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='demo-key';
 INSERT INTO org_api_keys(org_id, api_key_hash, name)
 VALUES (:'org_id'::uuid, '${API_KEY_HASH}', 'demo-key');
@@ -128,6 +133,11 @@ LIMIT 1
 
 SELECT id AS transfer_tool_id FROM tools WHERE org_id=:'org_id'::uuid AND name='transfer' LIMIT 1
 \gset
+
+-- Keep only transfer policies in demo baseline.
+DELETE FROM policies
+WHERE org_id=:'org_id'::uuid
+  AND tool_id <> :'transfer_tool_id'::uuid;
 
 DELETE FROM policies WHERE org_id=:'org_id'::uuid AND tool_id=:'transfer_tool_id'::uuid;
 

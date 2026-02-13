@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: dev down logs migrate-up migrate-down seed test e2e fmt wire
+.PHONY: dev down logs migrate-up migrate-down seed test e2e qa fmt wire
 
 dev:
 	docker compose up --build
@@ -25,6 +25,14 @@ test:
 
 e2e:
 	bash scripts/e2e.sh
+
+qa:
+	$(MAKE) down
+	docker compose up --build -d
+	$(MAKE) migrate-up
+	$(MAKE) seed
+	$(MAKE) test
+	$(MAKE) e2e
 
 fmt:
 	gofmt -w .
