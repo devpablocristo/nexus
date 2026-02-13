@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: Nexus API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Liveness
+      responses:
+        "200":
+          description: OK
+  /readyz:
+    get:
+      summary: Readiness (DB connectivity)
+      responses:
+        "200":
+          description: OK
+        "503":
+          description: Not ready
+  /openapi.yaml:
+    get:
+      summary: OpenAPI spec
+      responses:
+        "200":
+          description: YAML
+  /v1/tools:
+    get:
+      summary: List tools
+      security:
+        - NexusApiKey: []
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create tool
+      security:
+        - NexusApiKey: []
+      responses:
+        "201":
+          description: Created
+  /v1/tools/{name}:
+    get:
+      summary: Get tool by name
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Not found }
+    put:
+      summary: Update tool (partial)
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /v1/tools/{name}/policies:
+    get:
+      summary: List policies for tool
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create policy for tool
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201": { description: Created }
+  /v1/policies/{id}:
+    put:
+      summary: Update policy (partial)
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: OK }
+  /v1/run:
+    post:
+      summary: Run a tool through Nexus
+      security:
+        - NexusApiKey: []
+      responses:
+        "200": { description: Success }
+        "403": { description: Blocked }
+        "400": { description: Validation error }
+        "502": { description: Upstream error }
+  /v1/audit:
+    get:
+      summary: Query audit events
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: tool_name
+          in: query
+          schema: { type: string }
+        - name: decision
+          in: query
+          schema: { type: string, enum: [allow, deny] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [success, error, blocked] }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200": { description: OK }
+components:
+  securitySchemes:
+    NexusApiKey:
+      type: apiKey
+      in: header
+      name: X-NEXUS-GATEWAY-KEY
+
