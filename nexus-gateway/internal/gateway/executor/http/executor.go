@@ -25,11 +25,22 @@ type Options struct {
 	Timeout          time.Duration
 	MaxResponseBytes int64
 	Retries          int
+	// Transport overrides the default http.Transport. When nil, uses net/http default.
+	Transport nethttp.RoundTripper
+	// CheckRedirect overrides the default redirect policy. When nil, follows redirects.
+	CheckRedirect func(req *nethttp.Request, via []*nethttp.Request) error
 }
 
 func NewExecutor(opts Options) *Executor {
+	c := &nethttp.Client{Timeout: opts.Timeout}
+	if opts.Transport != nil {
+		c.Transport = opts.Transport
+	}
+	if opts.CheckRedirect != nil {
+		c.CheckRedirect = opts.CheckRedirect
+	}
 	return &Executor{
-		client:       &nethttp.Client{Timeout: opts.Timeout},
+		client:       c,
 		maxRespBytes: opts.MaxResponseBytes,
 		retries:      opts.Retries,
 	}

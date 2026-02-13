@@ -120,6 +120,10 @@ post_json_with_role() {
   curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "X-NEXUS-ROLE: ${role}" -H "Content-Type: application/json" -d "$payload" -w "\n%{http_code}" "$url"
 }
 
+echo "[e2e] setup egress rules (default-deny requires explicit allowlist)"
+post_json "${HTTP_BASE}/v1/tools/echo/egress-rules" '{"host":"mock-tools","enabled":true}' >/dev/null
+post_json "${HTTP_BASE}/v1/tools/transfer/egress-rules" '{"host":"mock-tools","enabled":true}' >/dev/null
+
 echo "[e2e] list tools payload coherence"
 TOOLS="$(auth_curl "${HTTP_BASE}/v1/tools")"
 assert_jq "$TOOLS" '.items | type=="array"'
@@ -158,6 +162,7 @@ CREATE_TOOL_CODE="$(echo "$CREATE_TOOL_WITH_CODE" | tail -n1)"
 assert_jq "$CREATE_TOOL_BODY" '.name=="echo2" and .enabled==true and .kind=="http"'
 TOOL2_ID="$(echo "$CREATE_TOOL_BODY" | jq -r '.id')"
 [[ "$TOOL2_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "expected uuid id got $TOOL2_ID"
+post_json "${HTTP_BASE}/v1/tools/echo2/egress-rules" '{"host":"mock-tools","enabled":true}' >/dev/null
 
 echo "[e2e] update tool echo2 (partial)"
 UPD_TOOL_WITH_CODE="$(put_json "${HTTP_BASE}/v1/tools/echo2" '{"enabled":false}')"

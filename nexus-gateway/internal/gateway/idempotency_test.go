@@ -65,8 +65,8 @@ type fakeIdempotency struct {
 func (f fakeIdempotency) Get(context.Context, uuid.UUID, string, string) (*gwdomain.IdempotencyRecord, error) {
 	return f.record, nil
 }
-func (f fakeIdempotency) CreateInProgress(context.Context, gwdomain.IdempotencyRecord) error {
-	return nil
+func (f fakeIdempotency) CreateInProgress(context.Context, gwdomain.IdempotencyRecord) (bool, error) {
+	return true, nil
 }
 func (f fakeIdempotency) MarkCompleted(context.Context, uuid.UUID, string, string, map[string]any) error {
 	return nil

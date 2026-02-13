@@ -176,10 +176,18 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
 - **Audit retention (pilot recommendation)**: keep at least 30 days online in Postgres; export daily to SIEM (`/v1/audit/export?format=jsonl`).
 - **If Redis rate-limit backend degrades**: switch to in-memory backend (`NEXUS_RATE_LIMIT_BACKEND=memory`) as temporary single-instance fallback and monitor `RATE_LIMITED` behavior.
 - **SIEM export**:
-  - JSONL: `curl -H \"X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY\" \"http://localhost:8080/v1/audit/export?format=jsonl&from=2026-01-01T00:00:00Z\"`
-  - CSV: `curl -H \"X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY\" \"http://localhost:8080/v1/audit/export?format=csv&limit=2000\"`
+  - JSONL: `curl -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" "http://localhost:8080/v1/audit/export?format=jsonl&from=2026-01-01T00:00:00Z"`
+  - CSV: `curl -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" "http://localhost:8080/v1/audit/export?format=csv&limit=2000"`
+- **Egress default-deny**: Tools with no egress rules cannot make outbound calls. Every tool must have at least one allowed host via `POST /v1/tools/{name}/egress-rules`. This is by design to prevent uncontrolled data exfiltration.
+- **SSRF protection**: Outbound HTTP calls are protected at the transport layer:
+  - Safe `DialContext` validates resolved IPs at connection time (blocks DNS rebinding).
+  - Redirects are disabled (blocks redirect-based SSRF).
+  - Blocked: loopback, private ranges, link-local, IPv6 ULA (`fc00::/7`), cloud metadata (`169.254.169.254`).
+  - `DisableSSRFProtection` config flag exists for test environments only; a WARN log is emitted at startup if set.
 
-## Sellable demo route
+## 5-Minute Demo (Copy/Paste)
+
+Also available as `scripts/demo.sh`.
 
 1) Start stack + seed:
 
@@ -196,16 +204,35 @@ make seed
 export NEXUS_API_KEY="<seed-output-value>"
 ```
 
-3) Show DLP + external classification deny:
+3) Allow egress to mock-tools host (default-deny blocks everything):
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}" \
+  -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"mock-tools","enabled":true}' \
+  http://localhost:8080/v1/tools/echo/egress-rules
+# => 204
+
+curl -sS -o /dev/null -w "%{http_code}" \
+  -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"mock-tools","enabled":true}' \
+  http://localhost:8080/v1/tools/transfer/egress-rules
+# => 204
+```
+
+4) Show DLP + external classification deny (credit card detected):
 
 ```bash
 curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"tool_name":"transfer","input":{"amount":500,"card_number":"4111111111111111"},"context":{"user_id":"u_1"}}' \
   http://localhost:8080/v1/run | jq
+# => 403, decision=deny, POLICY_DENIED
 ```
 
-4) Run WRITE with idempotency + timeout:
+5) Run WRITE with idempotency + timeout:
 
 ```bash
 curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
@@ -214,9 +241,10 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1"}}' \
   http://localhost:8080/v1/run | jq
+# => 200, idempotency.outcome=NEW
 ```
 
-5) Replay with same idempotency key:
+6) Replay with same idempotency key (no upstream re-execution):
 
 ```bash
 curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
@@ -224,13 +252,32 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1"}}' \
   http://localhost:8080/v1/run | jq
+# => 200, idempotency.outcome=REPLAY
 ```
 
-6) Export SIEM JSONL with hash-chain:
+7) Export audit trail with hash-chain:
 
 ```bash
 curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   "http://localhost:8080/v1/audit/export?format=jsonl&tool_name=transfer&limit=20"
+# Each line has event_hash, prev_event_hash, hash_algo=sha256
+```
+
+8) (Optional) Verify SSRF protection blocks internal targets:
+
+```bash
+# Create a tool pointing to the cloud metadata endpoint
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ssrf-test","kind":"http","method":"GET","url":"http://169.254.169.254/latest/meta-data/","input_schema":{"type":"object"},"action_type":"read","risk_level":5,"enabled":true}' \
+  http://localhost:8080/v1/tools | jq
+
+# Try to call it — blocked by SSRF protection before egress check
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"ssrf-test","input":{}}' \
+  http://localhost:8080/v1/run | jq
+# => 403, reason="ssrf blocked: link-local address 169.254.169.254 not allowed"
 ```
 
 ## Threat model (brief)

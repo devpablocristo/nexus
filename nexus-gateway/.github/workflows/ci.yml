@@ -7,6 +7,7 @@ on:
 jobs:
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,6 +19,7 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -43,6 +45,7 @@ jobs:
 
   qa:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -55,9 +58,13 @@ jobs:
         run: cp .env.example .env
       - name: QA
         run: make qa
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
 
   jwt-e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -70,3 +77,6 @@ jobs:
         run: cp .env.example .env
       - name: JWT E2E
         run: make jwt-e2e
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

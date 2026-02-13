@@ -69,6 +69,12 @@ TOKEN_RESP="$(curl -fsS "${MOCK_BASE}/_jwt/issue?org_id=${ORG_ID}&sub=e2e-jwt&ro
 TOKEN="$(echo "$TOKEN_RESP" | jq -r '.token')"
 [[ -n "$TOKEN" && "$TOKEN" != "null" ]] || fail "token not returned"
 
+echo "[e2e-jwt] setup egress rules (default-deny)"
+curl -sS -o /dev/null -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"mock-tools","enabled":true}' \
+  "${HTTP_BASE}/v1/tools/echo/egress-rules"
+
 echo "[e2e-jwt] api-key disabled check"
 NO_KEY="$(curl -sS "${HTTP_BASE}/v1/tools" || true)"
 assert_jq "$NO_KEY" '.error.code=="UNAUTHORIZED"'

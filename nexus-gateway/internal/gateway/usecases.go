@@ -55,7 +55,7 @@ type HTTPExecutorPort interface {
 
 type IdempotencyPort interface {
 	Get(ctx context.Context, orgID uuid.UUID, toolName, key string) (*gwdomain.IdempotencyRecord, error)
-	CreateInProgress(ctx context.Context, rec gwdomain.IdempotencyRecord) error
+	CreateInProgress(ctx context.Context, rec gwdomain.IdempotencyRecord) (bool, error)
 	MarkCompleted(ctx context.Context, orgID uuid.UUID, toolName, key string, responseRedacted map[string]any) error
 	MarkFailed(ctx context.Context, orgID uuid.UUID, toolName, key string, code *string, responseRedacted map[string]any) error
 	DeleteExpired(ctx context.Context, before time.Time) (int64, error)
@@ -101,6 +101,9 @@ type service struct {
 }
 
 func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo AuditRepoPort, secretRepo SecretRepoPort, egress EgressPort, limiter RateLimiterPort, executor HTTPExecutorPort, idempotency IdempotencyPort, metrics RunMetricsPort, cache *jsonschema.CompilerCache, evaluator *policy.Evaluator, detector *dlp.Detector, cfg Config, log zerolog.Logger) Service {
+	if cfg.DisableSSRFProtection {
+		log.Warn().Msg("SSRF protection is DISABLED — this must only be used in test/dev environments")
+	}
 	return &service{
 		toolRepo:    toolRepo,
 		policyRepo:  policyRepo,
@@ -272,13 +275,18 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 					Idempotency: idemMeta,
 				}, nil
 			case gwdomain.IdempotencyStatusInProgress:
+				// IMPORTANT: Stale detection enables re-execution when a previous request
+				// crashed mid-flight. For write tools, this may duplicate side-effects if
+				// the upstream actually completed but the gateway died before recording it.
+				// Mitigation: upstream services for write tools SHOULD accept their own
+				// idempotency keys to guarantee end-to-end exactly-once semantics.
 				staleness := time.Duration(max(1, s.cfg.IdempotencyStalenessSeconds)) * time.Second
 				if !existing.CreatedAt.IsZero() && time.Since(existing.CreatedAt) > staleness {
 					_ = s.idempotency.MarkFailed(ctx, orgID, tool.Name, idempotencyKey, ptr(types.ErrCodeTimeout), map[string]any{
 						"status": "error", "decision": "allow", "reason": "stale in-progress record expired",
 					})
 					idemMeta.Outcome = gwdomain.IdempotencyNew
-					err = s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
+					inserted, createErr := s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
 						OrgID:              orgID,
 						ToolName:           tool.Name,
 						IdempotencyKey:     idempotencyKey,
@@ -286,8 +294,11 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 						Status:             gwdomain.IdempotencyStatusInProgress,
 						ExpiresAt:          time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
 					})
-					if err != nil {
+					if createErr != nil {
 						return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
+					}
+					if !inserted {
+						return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed after stale cleanup")
 					}
 					createdIdempotencyRow = true
 				} else {
@@ -368,7 +379,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 				}, nil
 			}
 		} else {
-			err = s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
+			inserted, err := s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
 				OrgID:              orgID,
 				ToolName:           tool.Name,
 				IdempotencyKey:     idempotencyKey,
@@ -377,13 +388,14 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 				ExpiresAt:          time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
 			})
 			if err != nil {
-				if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "UNIQUE constraint") {
-					idemMeta.Outcome = gwdomain.IdempotencyInProgress
-					reason := "idempotency request in progress"
-					code := types.ErrCodeIdempotencyProgress
-					return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
-				}
 				return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
+			}
+			if !inserted {
+				// ON CONFLICT DO NOTHING: another request won the race
+				idemMeta.Outcome = gwdomain.IdempotencyInProgress
+				reason := "idempotency request in progress"
+				code := types.ErrCodeIdempotencyProgress
+				return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
 			}
 			createdIdempotencyRow = true
 		}

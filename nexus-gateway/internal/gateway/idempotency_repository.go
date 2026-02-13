@@ -51,17 +51,21 @@ func (r *IdempotencyRepository) Get(ctx context.Context, orgID uuid.UUID, toolNa
 	return toIdempotencyDomain(row), nil
 }
 
-func (r *IdempotencyRepository) CreateInProgress(ctx context.Context, rec gwdomain.IdempotencyRecord) error {
-	row := idempotencyRow{
-		ID:                 uuid.New(),
-		OrgID:              rec.OrgID,
-		ToolName:           rec.ToolName,
-		IdempotencyKey:     rec.IdempotencyKey,
-		RequestFingerprint: rec.RequestFingerprint,
-		Status:             string(gwdomain.IdempotencyStatusInProgress),
-		ExpiresAt:          rec.ExpiresAt,
+// CreateInProgress attempts an atomic insert with ON CONFLICT DO NOTHING.
+// Returns (true, nil) if inserted, (false, nil) if a duplicate already exists.
+func (r *IdempotencyRepository) CreateInProgress(ctx context.Context, rec gwdomain.IdempotencyRecord) (bool, error) {
+	id := uuid.New()
+	tx := r.db.WithContext(ctx).Exec(
+		`INSERT INTO idempotency_keys (id, org_id, tool_name, idempotency_key, request_fingerprint, status, expires_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (org_id, tool_name, idempotency_key) DO NOTHING`,
+		id, rec.OrgID, rec.ToolName, rec.IdempotencyKey, rec.RequestFingerprint,
+		string(gwdomain.IdempotencyStatusInProgress), rec.ExpiresAt,
+	)
+	if tx.Error != nil {
+		return false, tx.Error
 	}
-	return r.db.WithContext(ctx).Create(&row).Error
+	return tx.RowsAffected > 0, nil
 }
 
 func (r *IdempotencyRepository) MarkCompleted(ctx context.Context, orgID uuid.UUID, toolName, key string, responseRedacted map[string]any) error {

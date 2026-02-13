@@ -14,6 +14,7 @@ func TestValidateEgressURL_BlocksPrivateIPs(t *testing.T) {
 		"http://169.254.169.254/latest/meta-data/",
 		"http://[::1]/admin",
 		"http://0.0.0.0/",
+		"http://[fd12:3456:789a::1]/admin", // IPv6 ULA (fc00::/7)
 	}
 	for _, u := range blocked {
 		if err := ValidateEgressURL(u); err == nil {

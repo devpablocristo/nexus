@@ -598,10 +598,19 @@ paths:
                     items:
                       $ref: "#/components/schemas/EgressRule"
                 required: [items]
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       tags: [Egress]
       operationId: upsertToolEgressRule
       summary: Upsert host allowlist rule
+      description: |
+        Default egress policy is deny-all. Tools MUST have at least one egress rule
+        to make outbound calls. Only explicitly allowed hosts are reachable.
       security:
         - NexusApiKey: []
         - BearerAuth: []
@@ -616,6 +625,18 @@ paths:
       responses:
         "204":
           description: Upserted.
+        "400":
+          description: Validation error (empty host).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags: [Egress]
       operationId: deleteToolEgressRule
@@ -633,6 +654,12 @@ paths:
       responses:
         "204":
           description: Deleted.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /mcp:
     post:

@@ -1,14 +1,17 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
-// ValidateEgressURL checks that a URL is safe for outbound HTTP calls.
-// Rejects: private/loopback/link-local IPs, non-http(s) schemes, unresolvable hosts.
+// ValidateEgressURL performs a pre-flight check that a URL is safe for outbound HTTP calls.
+// This is a best-effort pre-check; the real defense is SafeTransport's DialContext.
 func ValidateEgressURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -25,10 +28,7 @@ func ValidateEgressURL(rawURL string) error {
 
 	// If host is already an IP literal, validate directly.
 	if ip := net.ParseIP(host); ip != nil {
-		if err := validateIP(ip); err != nil {
-			return err
-		}
-		return nil
+		return validateIP(ip)
 	}
 
 	// Resolve DNS and validate all resolved IPs.
@@ -47,6 +47,58 @@ func ValidateEgressURL(rawURL string) error {
 	return nil
 }
 
+// SafeTransport returns an http.Transport with a DialContext that validates resolved
+// IPs at connection time, blocking SSRF via DNS rebinding. It also disables proxy
+// support to prevent proxy-based SSRF.
+func SafeTransport() *http.Transport {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	return &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, fmt.Errorf("ssrf: invalid addr %s: %w", addr, err)
+			}
+
+			// Resolve and validate every IP before dialing.
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, fmt.Errorf("ssrf: dns resolution failed for %s: %w", host, err)
+			}
+			if len(ips) == 0 {
+				return nil, fmt.Errorf("ssrf: no IPs for %s", host)
+			}
+			for _, ipAddr := range ips {
+				if err := validateIP(ipAddr.IP); err != nil {
+					return nil, fmt.Errorf("ssrf: blocked %s (%s): %w", host, ipAddr.IP, err)
+				}
+			}
+
+			// Dial to the first valid IP (already validated).
+			target := net.JoinHostPort(ips[0].IP.String(), port)
+			return dialer.DialContext(ctx, network, target)
+		},
+		Proxy:                 nil, // disable proxy to prevent proxy-based SSRF
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:  10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+// NoFollowRedirectPolicy is a CheckRedirect func that blocks all redirects.
+// This prevents redirect-based SSRF where the initial URL is safe but the Location
+// header points to an internal address.
+func NoFollowRedirectPolicy(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
+// IPv6 ULA prefix fc00::/7
+var ipv6ULANet = func() *net.IPNet {
+	_, n, _ := net.ParseCIDR("fc00::/7")
+	return n
+}()
+
 func validateIP(ip net.IP) error {
 	if ip.IsLoopback() {
 		return fmt.Errorf("loopback address %s not allowed", ip)
@@ -60,7 +112,11 @@ func validateIP(ip net.IP) error {
 	if ip.IsPrivate() {
 		return fmt.Errorf("private address %s not allowed", ip)
 	}
-	// Block metadata endpoint 169.254.169.254 (covered by link-local, but explicit).
+	// IPv6 Unique Local Address (fc00::/7)
+	if ipv6ULANet.Contains(ip) {
+		return fmt.Errorf("IPv6 ULA address %s not allowed", ip)
+	}
+	// Block cloud metadata endpoint (covered by link-local, but explicit).
 	if ip.Equal(net.ParseIP("169.254.169.254")) {
 		return fmt.Errorf("metadata endpoint %s not allowed", ip)
 	}
