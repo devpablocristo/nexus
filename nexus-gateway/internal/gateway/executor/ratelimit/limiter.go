@@ -13,6 +13,7 @@ type InMemoryLimiter struct {
 	mu      sync.Mutex
 	windows map[string]*window
 	now     func() time.Time
+	done    chan struct{}
 }
 
 type window struct {
@@ -21,10 +22,37 @@ type window struct {
 }
 
 func NewInMemoryLimiter() *InMemoryLimiter {
-	return &InMemoryLimiter{
+	l := &InMemoryLimiter{
 		windows: make(map[string]*window),
 		now:     time.Now,
+		done:    make(chan struct{}),
 	}
+	go l.cleanup()
+	return l
+}
+
+func (l *InMemoryLimiter) cleanup() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			now := l.now().UTC()
+			l.mu.Lock()
+			for k, w := range l.windows {
+				if now.Sub(w.start) >= 2*time.Minute {
+					delete(l.windows, k)
+				}
+			}
+			l.mu.Unlock()
+		case <-l.done:
+			return
+		}
+	}
+}
+
+func (l *InMemoryLimiter) Close() {
+	close(l.done)
 }
 
 func (l *InMemoryLimiter) Allow(key string, perMinute int) bool {

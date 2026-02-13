@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,7 +65,10 @@ func (r *IdempotencyRepository) CreateInProgress(ctx context.Context, rec gwdoma
 }
 
 func (r *IdempotencyRepository) MarkCompleted(ctx context.Context, orgID uuid.UUID, toolName, key string, responseRedacted map[string]any) error {
-	body, _ := json.Marshal(responseRedacted)
+	body, err := json.Marshal(responseRedacted)
+	if err != nil {
+		return fmt.Errorf("marshal response: %w", err)
+	}
 	return r.db.WithContext(ctx).
 		Model(&idempotencyRow{}).
 		Where("org_id = ? and tool_name = ? and idempotency_key = ?", orgID, toolName, key).
@@ -76,7 +80,10 @@ func (r *IdempotencyRepository) MarkCompleted(ctx context.Context, orgID uuid.UU
 }
 
 func (r *IdempotencyRepository) MarkFailed(ctx context.Context, orgID uuid.UUID, toolName, key string, code *string, responseRedacted map[string]any) error {
-	body, _ := json.Marshal(responseRedacted)
+	body, err := json.Marshal(responseRedacted)
+	if err != nil {
+		return fmt.Errorf("marshal response: %w", err)
+	}
 	return r.db.WithContext(ctx).
 		Model(&idempotencyRow{}).
 		Where("org_id = ? and tool_name = ? and idempotency_key = ?", orgID, toolName, key).
@@ -101,6 +108,7 @@ func toIdempotencyDomain(row idempotencyRow) *gwdomain.IdempotencyRecord {
 		Status:             gwdomain.IdempotencyRecordStatus(row.Status),
 		ErrorCode:          row.ErrorCode,
 		ExpiresAt:          row.ExpiresAt,
+		CreatedAt:          row.CreatedAt,
 	}
 	if len(row.ResponseRedacted) > 0 {
 		var m map[string]any

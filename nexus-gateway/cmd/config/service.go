@@ -26,4 +26,5 @@ type ServiceConfig struct {
 	TimeoutBudgetDefaultMS int
 	TimeoutBudgetMinMS     int
 	TimeoutBudgetMaxMS     int
+	DisableSSRFProtection  bool
 }

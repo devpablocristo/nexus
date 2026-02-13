@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 type ToolAttributes struct {
@@ -18,7 +19,9 @@ type ToolAttributes struct {
 	RiskLevel      int
 }
 
-type Evaluator struct{}
+type Evaluator struct {
+	regexCache sync.Map // map[string]*regexp.Regexp
+}
 
 func NewEvaluator() *Evaluator { return &Evaluator{} }
 
@@ -30,10 +33,10 @@ func (e *Evaluator) Matches(conditionsJSON []byte, input, context map[string]any
 	if err := json.Unmarshal(conditionsJSON, &cond); err != nil {
 		return false, fmt.Errorf("conditions json invalid: %w", err)
 	}
-	return evalCond(cond, input, context, tool)
+	return e.evalCond(cond, input, context, tool)
 }
 
-func evalCond(cond any, input, context map[string]any, tool ToolAttributes) (bool, error) {
+func (e *Evaluator) evalCond(cond any, input, context map[string]any, tool ToolAttributes) (bool, error) {
 	m, ok := cond.(map[string]any)
 	if !ok {
 		return false, nil
@@ -45,7 +48,7 @@ func evalCond(cond any, input, context map[string]any, tool ToolAttributes) (boo
 			return false, nil
 		}
 		for _, c := range arr {
-			b, err := evalCond(c, input, context, tool)
+			b, err := e.evalCond(c, input, context, tool)
 			if err != nil {
 				return false, err
 			}
@@ -61,7 +64,7 @@ func evalCond(cond any, input, context map[string]any, tool ToolAttributes) (boo
 			return false, nil
 		}
 		for _, c := range arr {
-			b, err := evalCond(c, input, context, tool)
+			b, err := e.evalCond(c, input, context, tool)
 			if err != nil {
 				return false, err
 			}
@@ -72,7 +75,7 @@ func evalCond(cond any, input, context map[string]any, tool ToolAttributes) (boo
 		return false, nil
 	}
 	if notV, ok := m["not"]; ok {
-		b, err := evalCond(notV, input, context, tool)
+		b, err := e.evalCond(notV, input, context, tool)
 		if err != nil {
 			return false, err
 		}
@@ -144,11 +147,14 @@ func evalCond(cond any, input, context map[string]any, tool ToolAttributes) (boo
 		if !ok {
 			return false, nil
 		}
+		if len(pat) > 1024 {
+			return false, fmt.Errorf("regex pattern too long (%d chars, max 1024)", len(pat))
+		}
 		s, ok := target.(string)
 		if !ok {
 			return false, nil
 		}
-		re, err := regexp.Compile(pat)
+		re, err := e.compileRegex(pat)
 		if err != nil {
 			return false, err
 		}
@@ -156,6 +162,18 @@ func evalCond(cond any, input, context map[string]any, tool ToolAttributes) (boo
 	default:
 		return false, nil
 	}
+}
+
+func (e *Evaluator) compileRegex(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := e.regexCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	e.regexCache.Store(pattern, re)
+	return re, nil
 }
 
 func getPathValue(path string, input, context map[string]any, tool ToolAttributes) (any, bool) {

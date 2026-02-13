@@ -74,7 +74,7 @@ func (s *service) IsHostAllowed(ctx context.Context, orgID, toolID uuid.UUID, ho
 		return false, err
 	}
 	if !hasAny {
-		return true, nil
+		return false, nil // default-deny: no rules means no egress allowed
 	}
 	return s.repo.ExistsHost(ctx, orgID, toolID, host)
 }

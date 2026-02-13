@@ -53,7 +53,7 @@ func (fakeLimiter) Allow(string, int) bool { return true }
 
 type fakeExecutor struct{ calls int }
 
-func (f *fakeExecutor) Execute(context.Context, string, string, map[string]any, map[string]string) (any, int, *types.HTTPError) {
+func (f *fakeExecutor) Execute(context.Context, string, string, map[string]any, map[string]string, int) (any, int, *types.HTTPError) {
 	f.calls++
 	return map[string]any{"ok": true}, 200, nil
 }
@@ -306,4 +306,3 @@ func TestRun_IdempotencyFailedReplayReturnsCachedError(t *testing.T) {
 	}
 }
 
-func ptr(v string) *string { return &v }

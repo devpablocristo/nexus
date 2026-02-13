@@ -16,11 +16,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/cleanup-idempotency .
 FROM alpine:3.20
 WORKDIR /app
 RUN apk add --no-cache ca-certificates wget
+RUN addgroup -g 1000 app && adduser -D -u 1000 -G app app
 COPY --from=builder /out/nexus-gateway /app/nexus-gateway
 COPY --from=builder /out/mock-tools /app/mock-tools
 COPY --from=builder /out/migrate /app/migrate
 COPY --from=builder /out/cleanup-idempotency /app/cleanup-idempotency
 COPY migrations /app/migrations
 COPY docs /app/docs
+RUN chown -R app:app /app
 
+USER app
 EXPOSE 8080 8081

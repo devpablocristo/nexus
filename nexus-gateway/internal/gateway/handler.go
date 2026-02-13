@@ -55,6 +55,7 @@ func (h *Handler) run(c *gin.Context) {
 		IdempotencyKey: idempotencyKey,
 		TimeoutMS:      timeoutMS,
 		RequestSource:  "rest",
+		AuthMethod:     authMethodFromCtx(c),
 	})
 	if err != nil {
 		httperr.WriteFrom(c, err)
@@ -124,13 +125,14 @@ func (h *Handler) simulate(c *gin.Context) {
 		rid = uuid.NewString()
 	}
 	resp, err := h.svc.Simulate(c.Request.Context(), orgID, gwdomain.RunRequest{
-		RequestID: rid,
-		ToolName:  req.ToolName,
-		Input:     req.Input,
-		Context:   req.Context,
-		Actor:     actor,
-		Role:      role,
-		Scopes:    scopes,
+		RequestID:  rid,
+		ToolName:   req.ToolName,
+		Input:      req.Input,
+		Context:    req.Context,
+		Actor:      actor,
+		Role:       role,
+		Scopes:     scopes,
+		AuthMethod: authMethodFromCtx(c),
 	})
 	if err != nil {
 		httperr.WriteFrom(c, err)
@@ -213,6 +215,15 @@ func parseIdempotencyKey(raw string) *string {
 		return nil
 	}
 	return &v
+}
+
+func authMethodFromCtx(c *gin.Context) string {
+	if v, ok := c.Get(string(types.CtxKeyAuthMethod)); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 func writeIdempotencyHeader(c *gin.Context, outcome gwdomain.IdempotencyOutcome) {

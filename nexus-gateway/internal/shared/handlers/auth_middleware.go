@@ -43,6 +43,7 @@ func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth org.AuthUse
 					scopes = intersectScopes(principal.Scopes, splitCSV(hs))
 				}
 				c.Set(string(types.CtxKeyScopes), scopes)
+				c.Set(string(types.CtxKeyAuthMethod), "jwt")
 				c.Next()
 				return
 			}
@@ -82,6 +83,7 @@ func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth org.AuthUse
 			effectiveScopes = intersectScopes(principal.Scopes, requested)
 		}
 		c.Set(string(types.CtxKeyScopes), effectiveScopes)
+		c.Set(string(types.CtxKeyAuthMethod), "api_key")
 		_ = l
 		c.Next()
 	}

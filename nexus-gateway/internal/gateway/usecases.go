@@ -50,7 +50,7 @@ type RateLimiterPort interface {
 }
 
 type HTTPExecutorPort interface {
-	Execute(ctx context.Context, method, url string, input map[string]any, headers map[string]string) (any, int, *types.HTTPError)
+	Execute(ctx context.Context, method, url string, input map[string]any, headers map[string]string, maxRetries int) (any, int, *types.HTTPError)
 }
 
 type IdempotencyPort interface {
@@ -71,13 +71,16 @@ type Service interface {
 }
 
 type Config struct {
-	DefaultRateLimitPerMinute int
-	MaxBytesInputDefault      int
-	MaxBytesContextDefault    int
-	IdempotencyTTLHours       int
-	TimeoutBudgetDefaultMS    int
-	TimeoutBudgetMinMS        int
-	TimeoutBudgetMaxMS        int
+	DefaultRateLimitPerMinute   int
+	MaxBytesInputDefault        int
+	MaxBytesContextDefault      int
+	IdempotencyTTLHours         int
+	IdempotencyStalenessSeconds int
+	TimeoutBudgetDefaultMS      int
+	TimeoutBudgetMinMS          int
+	TimeoutBudgetMaxMS          int
+	HTTPRetries                 int
+	DisableSSRFProtection       bool
 }
 
 type service struct {
@@ -269,10 +272,30 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 					Idempotency: idemMeta,
 				}, nil
 			case gwdomain.IdempotencyStatusInProgress:
-				idemMeta.Outcome = gwdomain.IdempotencyInProgress
-				reason := "idempotency request in progress"
-				code := types.ErrCodeIdempotencyProgress
-				return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
+				staleness := time.Duration(max(1, s.cfg.IdempotencyStalenessSeconds)) * time.Second
+				if !existing.CreatedAt.IsZero() && time.Since(existing.CreatedAt) > staleness {
+					_ = s.idempotency.MarkFailed(ctx, orgID, tool.Name, idempotencyKey, ptr(types.ErrCodeTimeout), map[string]any{
+						"status": "error", "decision": "allow", "reason": "stale in-progress record expired",
+					})
+					idemMeta.Outcome = gwdomain.IdempotencyNew
+					err = s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
+						OrgID:              orgID,
+						ToolName:           tool.Name,
+						IdempotencyKey:     idempotencyKey,
+						RequestFingerprint: requestFingerprint,
+						Status:             gwdomain.IdempotencyStatusInProgress,
+						ExpiresAt:          time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
+					})
+					if err != nil {
+						return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
+					}
+					createdIdempotencyRow = true
+				} else {
+					idemMeta.Outcome = gwdomain.IdempotencyInProgress
+					reason := "idempotency request in progress"
+					code := types.ErrCodeIdempotencyProgress
+					return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
+				}
 			case gwdomain.IdempotencyStatusFailed:
 				idemMeta.Outcome = gwdomain.IdempotencyReplay
 				latency := time.Since(start).Milliseconds()
@@ -354,6 +377,12 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 				ExpiresAt:          time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
 			})
 			if err != nil {
+				if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "UNIQUE constraint") {
+					idemMeta.Outcome = gwdomain.IdempotencyInProgress
+					reason := "idempotency request in progress"
+					code := types.ErrCodeIdempotencyProgress
+					return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
+				}
 				return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
 			}
 			createdIdempotencyRow = true
@@ -382,6 +411,9 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 			arr = append(arr, scope)
 		}
 		contextMap["scopes"] = arr
+	}
+	if req.AuthMethod != "" {
+		contextMap["auth_method"] = req.AuthMethod
 	}
 	dlpSummary := s.dlp.Summarize(input, contextMap)
 	contextMap["dlp"] = dlpSummary
@@ -485,6 +517,13 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
+	if !s.cfg.DisableSSRFProtection {
+		if err := utils.ValidateEgressURL(tool.URL); err != nil {
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "ssrf blocked: "+err.Error(), types.ErrCodeEgressDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
+			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
+			return resp, nil
+		}
+	}
 	allowed, err := s.egress.IsHostAllowed(ctx, orgID, tool.ID, strings.ToLower(u.Hostname()))
 	if err != nil {
 		return gwdomain.RunResponse{}, err
@@ -521,12 +560,13 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		return resp, nil
 	}
 	execTimeoutMS := remainingBeforeExec
-	if execTimeoutMS < 500 {
-		execTimeoutMS = 500
-	}
 	execCtx, cancelExec := context.WithTimeout(ctx, time.Duration(execTimeoutMS)*time.Millisecond)
 	execStart := time.Now()
-	result, _, he := s.executor.Execute(execCtx, tool.Method, tool.URL, input, headers)
+	maxRetries := s.cfg.HTTPRetries
+	if isWrite {
+		maxRetries = 0
+	}
+	result, _, he := s.executor.Execute(execCtx, tool.Method, tool.URL, input, headers, maxRetries)
 	cancelExec()
 	budget.Consume("execute_http", time.Since(execStart))
 	latency := time.Since(start).Milliseconds()
@@ -1057,6 +1097,10 @@ func strPtr(s string) *string {
 	if s == "" {
 		return nil
 	}
+	return &s
+}
+
+func ptr(s string) *string {
 	return &s
 }
 

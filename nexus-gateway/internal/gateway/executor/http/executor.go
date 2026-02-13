@@ -35,10 +35,10 @@ func NewExecutor(opts Options) *Executor {
 	}
 }
 
-func (e *Executor) Execute(ctx context.Context, method, rawURL string, input map[string]any, headers map[string]string) (any, int, *types.HTTPError) {
+func (e *Executor) Execute(ctx context.Context, method, rawURL string, input map[string]any, headers map[string]string, maxRetries int) (any, int, *types.HTTPError) {
 	var lastErr *types.HTTPError
 	backoff := 200 * time.Millisecond
-	attempts := 1 + e.retries
+	attempts := 1 + maxRetries
 	for i := 0; i < attempts; i++ {
 		res, status, he := e.executeOnce(ctx, method, rawURL, input, headers)
 		if he == nil {

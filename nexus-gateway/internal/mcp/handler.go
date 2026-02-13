@@ -78,6 +78,7 @@ func (h *Handler) rpc(c *gin.Context) {
 			IdempotencyKey: strPtrIfNonEmpty(idempotencyKey),
 			TimeoutMS:      timeoutMS,
 			RequestSource:  "mcp",
+			AuthMethod:     authMethodFromCtx(c),
 		})
 		if err != nil {
 			h.rpcErr(c, req.ID, err)
@@ -176,6 +177,15 @@ func strPtrIfNonEmpty(v string) *string {
 		return nil
 	}
 	return &v
+}
+
+func authMethodFromCtx(c *gin.Context) string {
+	if v, ok := c.Get(string(types.CtxKeyAuthMethod)); ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 func parseTimeoutHeader(raw string) int {

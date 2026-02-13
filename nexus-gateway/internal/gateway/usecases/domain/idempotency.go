@@ -23,4 +23,5 @@ type IdempotencyRecord struct {
 	ResponseRedacted   map[string]any
 	ErrorCode          *string
 	ExpiresAt          time.Time
+	CreatedAt          time.Time
 }

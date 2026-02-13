@@ -14,7 +14,7 @@ import (
 
 func TestExecutor_GETRejectsNestedInput(t *testing.T) {
 	ex := NewExecutor(Options{Timeout: 2 * time.Second, MaxResponseBytes: 1024, Retries: 0})
-	_, _, he := ex.Execute(context.Background(), "GET", "http://example.invalid", map[string]any{"a": map[string]any{"b": 1}}, nil)
+	_, _, he := ex.Execute(context.Background(), "GET", "http://example.invalid", map[string]any{"a": map[string]any{"b": 1}}, nil, 0)
 	if he == nil || he.Code != types.ErrCodeInvalidGETInput {
 		t.Fatalf("expected %s, got %#v", types.ErrCodeInvalidGETInput, he)
 	}
@@ -28,7 +28,7 @@ func TestExecutor_ResponseTooLarge(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	ex := NewExecutor(Options{Timeout: 2 * time.Second, MaxResponseBytes: 10, Retries: 0})
-	_, _, he := ex.Execute(context.Background(), "POST", srv.URL, map[string]any{"a": 1}, nil)
+	_, _, he := ex.Execute(context.Background(), "POST", srv.URL, map[string]any{"a": 1}, nil, 0)
 	if he == nil || he.Code != types.ErrCodeResponseTooLarge {
 		t.Fatalf("expected %s, got %#v", types.ErrCodeResponseTooLarge, he)
 	}
@@ -42,7 +42,7 @@ func TestExecutor_NonJSONReturnsRaw(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	ex := NewExecutor(Options{Timeout: 2 * time.Second, MaxResponseBytes: 1024, Retries: 0})
-	res, status, he := ex.Execute(context.Background(), "POST", srv.URL, map[string]any{"a": 1}, nil)
+	res, status, he := ex.Execute(context.Background(), "POST", srv.URL, map[string]any{"a": 1}, nil, 0)
 	if he != nil {
 		t.Fatalf("unexpected error: %#v", he)
 	}
@@ -67,7 +67,7 @@ func TestExecutor_InjectHeaders(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	ex := NewExecutor(Options{Timeout: 2 * time.Second, MaxResponseBytes: 1024, Retries: 0})
-	res, status, he := ex.Execute(context.Background(), "POST", srv.URL, map[string]any{}, map[string]string{"Authorization": "Bearer tok"})
+	res, status, he := ex.Execute(context.Background(), "POST", srv.URL, map[string]any{}, map[string]string{"Authorization": "Bearer tok"}, 0)
 	if he != nil || status != 200 {
 		t.Fatalf("unexpected err=%v status=%d", he, status)
 	}

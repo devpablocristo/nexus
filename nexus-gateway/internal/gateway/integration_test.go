@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -165,12 +166,25 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 			HTTPMaxResponseBytes:   1048576,
 			RateLimitDefaultPerMin: 60,
 			MasterKey:              "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+			DisableSSRFProtection:  true,
 		},
 	})
 	if err != nil {
 		t.Fatalf("init api: %v", err)
 	}
 	t.Cleanup(cleanup)
+
+	// Add egress rule for mock server host (required by default-deny policy).
+	mockURL, _ := url.Parse(mock.URL)
+	egressBody, _ := json.Marshal(map[string]any{"host": mockURL.Hostname()})
+	egressReq := httptest.NewRequest(http.MethodPost, "/v1/tools/transfer/egress-rules", bytes.NewReader(egressBody))
+	egressReq.Header.Set("Content-Type", "application/json")
+	egressReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	egressRR := httptest.NewRecorder()
+	app.Router.ServeHTTP(egressRR, egressReq)
+	if egressRR.Code != http.StatusNoContent {
+		t.Fatalf("egress rule: expected 204 got %d body=%s", egressRR.Code, egressRR.Body.String())
+	}
 
 	doRun := func(body any) *httptest.ResponseRecorder {
 		t.Helper()

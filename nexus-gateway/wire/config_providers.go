@@ -18,6 +18,9 @@ func ProvideGatewayConfig(cfg config.ServiceConfig) gateway.Config {
 		IdempotencyTTLHours:       cfg.IdempotencyTTLHours,
 		TimeoutBudgetDefaultMS:    cfg.TimeoutBudgetDefaultMS,
 		TimeoutBudgetMinMS:        cfg.TimeoutBudgetMinMS,
-		TimeoutBudgetMaxMS:        cfg.TimeoutBudgetMaxMS,
+		TimeoutBudgetMaxMS:          cfg.TimeoutBudgetMaxMS,
+		HTTPRetries:                 1,
+		IdempotencyStalenessSeconds: 120,
+		DisableSSRFProtection:       cfg.DisableSSRFProtection,
 	}
 }

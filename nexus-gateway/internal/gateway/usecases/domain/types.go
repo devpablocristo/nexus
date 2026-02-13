@@ -11,6 +11,7 @@ type RunRequest struct {
 	IdempotencyKey   *string
 	TimeoutMS        int
 	RequestSource    string
+	AuthMethod       string
 	StageDurations   map[string]int64
 	TimeoutAtExecute int
 	Idempotency      IdempotencyMeta
