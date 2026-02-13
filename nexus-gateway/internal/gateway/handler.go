@@ -1,4 +1,4 @@
-package handler
+package gateway
 
 import (
 	"net/http"
@@ -7,17 +7,16 @@ import (
 	"github.com/google/uuid"
 
 	gwdto "nexus-gateway/internal/gateway/handler/dto"
-	gwuc "nexus-gateway/internal/gateway/usecases"
 	gwdomain "nexus-gateway/internal/gateway/usecases/domain"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	"nexus-gateway/pkg/types"
 )
 
 type Handler struct {
-	svc gwuc.Service
+	svc Service
 }
 
-func NewHandler(svc gwuc.Service) *Handler {
+func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 

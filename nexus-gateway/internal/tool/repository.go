@@ -1,4 +1,4 @@
-package repository
+package tool
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"nexus-gateway/internal/tool/repository/models"
-	"nexus-gateway/internal/tool/usecases"
 	tooldomain "nexus-gateway/internal/tool/usecases/domain"
 	"nexus-gateway/pkg/types"
 )
@@ -71,7 +70,7 @@ func (r *Repository) GetByName(ctx context.Context, orgID uuid.UUID, name string
 	return toDomain(row), nil
 }
 
-func (r *Repository) UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch usecases.ToolPatch) (tooldomain.Tool, error) {
+func (r *Repository) UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch ToolPatch) (tooldomain.Tool, error) {
 	var row models.Tool
 	err := r.db.WithContext(ctx).Where("org_id = ? AND name = ?", orgID, name).Take(&row).Error
 	if err != nil {

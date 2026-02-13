@@ -1,4 +1,4 @@
-package handler_test
+package gateway_test
 
 import (
 	"bytes"
@@ -21,11 +21,9 @@ import (
 
 	"nexus-gateway/cmd/config"
 	auditdto "nexus-gateway/internal/audit/handler/dto"
-	orgrepo "nexus-gateway/internal/org/repository"
-	policyrepo "nexus-gateway/internal/policy/repository"
-	policyuc "nexus-gateway/internal/policy/usecases"
-	toolrepo "nexus-gateway/internal/tool/repository"
-	tooluc "nexus-gateway/internal/tool/usecases"
+	"nexus-gateway/internal/org"
+	"nexus-gateway/internal/policy"
+	"nexus-gateway/internal/tool"
 	"nexus-gateway/pkg/utils"
 	"nexus-gateway/pkg/validations/jsonschema"
 	"nexus-gateway/wire"
@@ -101,13 +99,13 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 		t.Fatalf("gorm open: %v", err)
 	}
 
-	orgR := orgrepo.NewRepository(gdb)
-	toolR := toolrepo.NewRepository(gdb)
-	policyR := policyrepo.NewRepository(gdb)
+	orgR := org.NewRepository(gdb)
+	toolR := tool.NewRepository(gdb)
+	policyR := policy.NewRepository(gdb)
 
 	schemaCache := jsonschema.NewCompilerCache()
-	toolSvc := tooluc.NewService(toolR, schemaCache)
-	policySvc := policyuc.NewService(policyR, toolSvc)
+	toolSvc := tool.NewService(toolR, schemaCache)
+	policySvc := policy.NewService(policyR, toolSvc)
 
 	orgID, err := orgR.UpsertOrgByName(ctx, "demo")
 	if err != nil {
@@ -119,7 +117,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 		t.Fatalf("apikey upsert: %v", err)
 	}
 
-	_, err = toolSvc.Create(ctx, orgID, tooluc.CreateRequest{
+	_, err = toolSvc.Create(ctx, orgID, tool.CreateRequest{
 		Name:        "transfer",
 		Kind:        "http",
 		Method:      "POST",
@@ -133,7 +131,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 		t.Fatalf("tool create: %v", err)
 	}
 
-	_, _ = policySvc.CreateForTool(ctx, orgID, "transfer", policyuc.CreateRequest{
+	_, _ = policySvc.CreateForTool(ctx, orgID, "transfer", policy.CreateRequest{
 		Effect:         "deny",
 		Priority:       10,
 		Conditions:     map[string]any{"path": "input.amount", "op": "gt", "value": 1000},
@@ -141,7 +139,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 		ReasonTemplate: "Denied because amount too high",
 		Enabled:        true,
 	})
-	_, _ = policySvc.CreateForTool(ctx, orgID, "transfer", policyuc.CreateRequest{
+	_, _ = policySvc.CreateForTool(ctx, orgID, "transfer", policy.CreateRequest{
 		Effect:   "allow",
 		Priority: 20,
 		Conditions: map[string]any{

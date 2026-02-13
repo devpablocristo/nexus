@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+if [[ ! -f ".env" ]]; then
+  echo "missing .env (create it from .env.example)" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
+HTTP_BASE="http://localhost:${NEXUS_HTTP_PORT}"
+MOCK_BASE="http://localhost:${NEXUS_MOCK_TOOLS_PORT}"
+
+require() {
+  command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }
+}
+
+require curl
+require jq
+require rg
+
+fail() { echo "E2E FAIL: $*" >&2; exit 1; }
+
+assert_jq() {
+  local json="$1"
+  local filter="$2"
+  echo "$json" | jq -e "$filter" >/dev/null || fail "jq assertion failed: $filter | json=$json"
+}
+
+http_code() {
+  curl -sS -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || true
+}
+
+cleanup() {
+  docker compose down -v >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+echo "[e2e] bringing stack up"
+docker compose up --build -d >/dev/null
+
+echo "[e2e] wait readyz"
+for _ in {1..60}; do
+  if [[ "$(http_code "${HTTP_BASE}/readyz")" == "200" ]]; then
+    break
+  fi
+  sleep 1
+done
+[[ "$(http_code "${HTTP_BASE}/readyz")" == "200" ]] || fail "readyz never became 200"
+
+echo "[e2e] wait mock-tools"
+for _ in {1..60}; do
+  if [[ "$(http_code "${MOCK_BASE}/healthz")" == "200" ]]; then
+    break
+  fi
+  sleep 1
+done
+[[ "$(http_code "${MOCK_BASE}/healthz")" == "200" ]] || fail "mock-tools healthz not 200"
+
+echo "[e2e] migrate up"
+make migrate-up >/dev/null
+
+echo "[e2e] seed demo"
+SEED_OUT="$(bash scripts/seed_demo.sh)"
+echo "$SEED_OUT" | rg -n "^NEXUS_DEMO_API_KEY=" >/dev/null || fail "seed did not print api key"
+API_KEY="$(echo "$SEED_OUT" | rg -n "^NEXUS_DEMO_API_KEY=" | tail -n1 | cut -d= -f2)"
+[[ -n "$API_KEY" ]] || fail "empty api key"
+
+echo "[e2e] /healthz payload"
+H="$(curl -fsS "${HTTP_BASE}/healthz")"
+assert_jq "$H" '.ok == true'
+
+echo "[e2e] /openapi.yaml contains gateway header"
+SPEC="$(curl -fsS "${HTTP_BASE}/openapi.yaml")"
+echo "$SPEC" | rg -n "openapi:" >/dev/null || fail "openapi.yaml missing openapi:"
+echo "$SPEC" | rg -n "X-NEXUS-GATEWAY-KEY" >/dev/null || fail "openapi.yaml missing X-NEXUS-GATEWAY-KEY"
+
+echo "[e2e] /docs returns html"
+DOCS="$(curl -fsS "${HTTP_BASE}/docs")"
+echo "$DOCS" | rg -n "<html" >/dev/null || fail "/docs not html"
+
+echo "[e2e] unauthorized error format"
+U_BODY="$(curl -sS "${HTTP_BASE}/v1/tools" || true)"
+U_CODE="$(http_code "${HTTP_BASE}/v1/tools")"
+[[ "$U_CODE" == "401" ]] || fail "expected 401 without key got $U_CODE"
+assert_jq "$U_BODY" '.request_id | type=="string" and length>0'
+assert_jq "$U_BODY" '.error.code == "UNAUTHORIZED"'
+assert_jq "$U_BODY" '.error.message | type=="string" and length>0'
+
+auth_curl() {
+  curl -fsS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" "$@"
+}
+
+auth_curl_no_fail() {
+  curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" "$@"
+}
+
+post_json() {
+  local url="$1"
+  local payload="$2"
+  auth_curl_no_fail -H "Content-Type: application/json" -d "$payload" -w "\n%{http_code}" "$url"
+}
+
+put_json() {
+  local url="$1"
+  local payload="$2"
+  auth_curl_no_fail -X PUT -H "Content-Type: application/json" -d "$payload" -w "\n%{http_code}" "$url"
+}
+
+echo "[e2e] list tools payload coherence"
+TOOLS="$(auth_curl "${HTTP_BASE}/v1/tools")"
+assert_jq "$TOOLS" '.items | type=="array"'
+assert_jq "$TOOLS" '(.items | map(.name) | sort) == ["echo","transfer"]'
+assert_jq "$TOOLS" '.items[] | has("id") and has("name") and has("kind") and has("method") and has("url") and has("input_schema") and has("action_type") and has("risk_level") and has("enabled") and has("created_at") and has("updated_at")'
+
+echo "[e2e] get tool echo"
+ECHO="$(auth_curl "${HTTP_BASE}/v1/tools/echo")"
+assert_jq "$ECHO" '.name == "echo"'
+assert_jq "$ECHO" '.kind == "http"'
+
+echo "[e2e] get tool 404 error format"
+GET404_WITH_CODE="$(auth_curl_no_fail -w "\n%{http_code}" "${HTTP_BASE}/v1/tools/does-not-exist")"
+GET404_BODY="$(echo "$GET404_WITH_CODE" | head -n1)"
+GET404_CODE="$(echo "$GET404_WITH_CODE" | tail -n1)"
+[[ "$GET404_CODE" == "404" ]] || fail "expected 404 got ${GET404_CODE} body=$GET404_BODY"
+assert_jq "$GET404_BODY" '.request_id | type=="string" and length>0'
+assert_jq "$GET404_BODY" '.error.code == "NOT_FOUND"'
+
+echo "[e2e] create tool echo2"
+CREATE_TOOL_WITH_CODE="$(post_json "${HTTP_BASE}/v1/tools" '{
+  "name":"echo2",
+  "kind":"http",
+  "description":"second echo tool",
+  "method":"POST",
+  "url":"http://mock-tools:8081/echo",
+  "input_schema":{"type":"object"},
+  "output_schema":{"type":"object"},
+  "action_type":"read",
+  "risk_level":1,
+  "enabled":true
+}')"
+CREATE_TOOL_BODY="$(echo "$CREATE_TOOL_WITH_CODE" | head -n1)"
+CREATE_TOOL_CODE="$(echo "$CREATE_TOOL_WITH_CODE" | tail -n1)"
+[[ "$CREATE_TOOL_CODE" == "201" ]] || fail "expected 201 got ${CREATE_TOOL_CODE} body=$CREATE_TOOL_BODY"
+assert_jq "$CREATE_TOOL_BODY" '.name=="echo2" and .enabled==true and .kind=="http"'
+TOOL2_ID="$(echo "$CREATE_TOOL_BODY" | jq -r '.id')"
+[[ "$TOOL2_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "expected uuid id got $TOOL2_ID"
+
+echo "[e2e] update tool echo2 (partial)"
+UPD_TOOL_WITH_CODE="$(put_json "${HTTP_BASE}/v1/tools/echo2" '{"enabled":false}')"
+UPD_TOOL_BODY="$(echo "$UPD_TOOL_WITH_CODE" | head -n1)"
+UPD_TOOL_CODE="$(echo "$UPD_TOOL_WITH_CODE" | tail -n1)"
+[[ "$UPD_TOOL_CODE" == "200" ]] || fail "expected 200 got ${UPD_TOOL_CODE} body=$UPD_TOOL_BODY"
+assert_jq "$UPD_TOOL_BODY" '.name=="echo2" and .enabled==false'
+
+echo "[e2e] re-enable tool echo2"
+UPD_TOOL2_WITH_CODE="$(put_json "${HTTP_BASE}/v1/tools/echo2" '{"enabled":true}')"
+UPD_TOOL2_BODY="$(echo "$UPD_TOOL2_WITH_CODE" | head -n1)"
+UPD_TOOL2_CODE="$(echo "$UPD_TOOL2_WITH_CODE" | tail -n1)"
+[[ "$UPD_TOOL2_CODE" == "200" ]] || fail "expected 200 got ${UPD_TOOL2_CODE} body=$UPD_TOOL2_BODY"
+assert_jq "$UPD_TOOL2_BODY" '.name=="echo2" and .enabled==true'
+
+echo "[e2e] create deny policy for echo2 (deny all)"
+CREATE_POL_WITH_CODE="$(post_json "${HTTP_BASE}/v1/tools/echo2/policies" '{
+  "effect":"deny",
+  "priority":1,
+  "conditions":{},
+  "limits":{},
+  "reason_template":"echo2 denied",
+  "enabled":true
+}')"
+CREATE_POL_BODY="$(echo "$CREATE_POL_WITH_CODE" | head -n1)"
+CREATE_POL_CODE="$(echo "$CREATE_POL_WITH_CODE" | tail -n1)"
+[[ "$CREATE_POL_CODE" == "201" ]] || fail "expected 201 got ${CREATE_POL_CODE} body=$CREATE_POL_BODY"
+POLICY_ID="$(echo "$CREATE_POL_BODY" | jq -r '.id')"
+[[ "$POLICY_ID" =~ ^[0-9a-fA-F-]{36}$ ]] || fail "expected uuid policy id got $POLICY_ID"
+assert_jq "$CREATE_POL_BODY" '.effect=="deny" and .priority==1 and .enabled==true'
+
+echo "[e2e] run echo2 should be blocked by policy"
+RUN_ECHO2_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run" '{"tool_name":"echo2","input":{"a":1},"context":{}}')"
+RUN_ECHO2_BODY="$(echo "$RUN_ECHO2_WITH_CODE" | head -n1)"
+RUN_ECHO2_CODE="$(echo "$RUN_ECHO2_WITH_CODE" | tail -n1)"
+[[ "$RUN_ECHO2_CODE" == "403" ]] || fail "expected 403 got ${RUN_ECHO2_CODE} body=$RUN_ECHO2_BODY"
+assert_jq "$RUN_ECHO2_BODY" '.status=="blocked" and .decision=="deny" and .error.code=="POLICY_DENIED"'
+
+echo "[e2e] update policy to disabled (should revert to default allow for read tool)"
+UPD_POL_WITH_CODE="$(put_json "${HTTP_BASE}/v1/policies/${POLICY_ID}" '{"enabled":false}')"
+UPD_POL_BODY="$(echo "$UPD_POL_WITH_CODE" | head -n1)"
+UPD_POL_CODE="$(echo "$UPD_POL_WITH_CODE" | tail -n1)"
+[[ "$UPD_POL_CODE" == "200" ]] || fail "expected 200 got ${UPD_POL_CODE} body=$UPD_POL_BODY"
+assert_jq "$UPD_POL_BODY" '.enabled==false'
+
+echo "[e2e] run echo2 should succeed after policy disabled"
+RUN_ECHO2_OK="$(auth_curl -H "Content-Type: application/json" -d '{"tool_name":"echo2","input":{"hello":"again"},"context":{}}' "${HTTP_BASE}/v1/run")"
+assert_jq "$RUN_ECHO2_OK" '.status=="success" and .decision=="allow" and .tool_name=="echo2"'
+
+echo "[e2e] run echo"
+RUN_ECHO="$(auth_curl -H "Content-Type: application/json" -d '{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"u_1"}}' "${HTTP_BASE}/v1/run")"
+assert_jq "$RUN_ECHO" '.request_id | type=="string" and length>0'
+assert_jq "$RUN_ECHO" '.decision == "allow"'
+assert_jq "$RUN_ECHO" '.tool_name == "echo"'
+assert_jq "$RUN_ECHO" '.status == "success"'
+assert_jq "$RUN_ECHO" '.result.received.hello == "world"'
+assert_jq "$RUN_ECHO" '.result.server_time | type=="string" and length>0'
+assert_jq "$RUN_ECHO" '.latency_ms | type=="number" and . >= 0'
+
+echo "[e2e] run transfer denied > 1000"
+RUN_DENY1_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run" '{"tool_name":"transfer","input":{"amount":5000,"token":"secret"},"context":{"user_id":"u_1"}}')"
+RUN_DENY1="$(echo "$RUN_DENY1_WITH_CODE" | head -n1)"
+RUN_DENY1_CODE="$(echo "$RUN_DENY1_WITH_CODE" | tail -n1)"
+[[ "$RUN_DENY1_CODE" == "403" ]] || fail "expected 403 got ${RUN_DENY1_CODE} body=$RUN_DENY1"
+assert_jq "$RUN_DENY1" '.request_id | type=="string" and length>0'
+assert_jq "$RUN_DENY1" '.decision == "deny"'
+assert_jq "$RUN_DENY1" '.status == "blocked"'
+assert_jq "$RUN_DENY1" '.error.code == "POLICY_DENIED"'
+assert_jq "$RUN_DENY1" '.reason | type=="string" and length>0'
+
+echo "[e2e] run transfer denied missing context.user_id"
+RUN_DENY2_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run" '{"tool_name":"transfer","input":{"amount":500,"token":"secret"},"context":{}}')"
+RUN_DENY2="$(echo "$RUN_DENY2_WITH_CODE" | head -n1)"
+RUN_DENY2_CODE="$(echo "$RUN_DENY2_WITH_CODE" | tail -n1)"
+[[ "$RUN_DENY2_CODE" == "403" ]] || fail "expected 403 got ${RUN_DENY2_CODE} body=$RUN_DENY2"
+assert_jq "$RUN_DENY2" '.decision == "deny"'
+assert_jq "$RUN_DENY2" '.status == "blocked"'
+
+echo "[e2e] run transfer allowed"
+RUN_OK="$(auth_curl -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500,"card_number":"4111111111111111"},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
+assert_jq "$RUN_OK" '.decision == "allow"'
+assert_jq "$RUN_OK" '.tool_name == "transfer"'
+assert_jq "$RUN_OK" '.status == "success"'
+assert_jq "$RUN_OK" '.result.ok == true'
+assert_jq "$RUN_OK" '.result.amount == 500'
+assert_jq "$RUN_OK" '.result.tx_id | type=="string" and length>0'
+
+echo "[e2e] audit coherence + redaction"
+AUDIT="$(auth_curl "${HTTP_BASE}/v1/audit?tool_name=transfer&limit=10")"
+assert_jq "$AUDIT" '.items | type=="array" and length>0'
+assert_jq "$AUDIT" '.items[0].tool_name == "transfer"'
+assert_jq "$AUDIT" '.items | any(.status=="success")'
+assert_jq "$AUDIT" '.items | any(.status=="blocked")'
+assert_jq "$AUDIT" '.items | any(.input.card_number? == "***")'
+assert_jq "$AUDIT" '.items | any(.context.token? == "***")'
+
+echo "[e2e] OK"

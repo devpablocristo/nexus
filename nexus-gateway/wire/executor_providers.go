@@ -6,8 +6,8 @@ import (
 	"github.com/google/wire"
 
 	"nexus-gateway/cmd/config"
-	exechttp "nexus-gateway/internal/executor/http"
-	"nexus-gateway/internal/executor/ratelimit"
+	exechttp "nexus-gateway/internal/gateway/executor/http"
+	"nexus-gateway/internal/gateway/executor/ratelimit"
 )
 
 var ExecutorSet = wire.NewSet(

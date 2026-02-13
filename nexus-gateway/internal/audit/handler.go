@@ -1,4 +1,4 @@
-package handler
+package audit
 
 import (
 	"errors"
@@ -10,17 +10,16 @@ import (
 	"github.com/google/uuid"
 
 	auditdto "nexus-gateway/internal/audit/handler/dto"
-	audituc "nexus-gateway/internal/audit/usecases"
 	auditdomain "nexus-gateway/internal/audit/usecases/domain"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	"nexus-gateway/pkg/types"
 )
 
 type Handler struct {
-	svc audituc.Service
+	svc Service
 }
 
-func NewHandler(svc audituc.Service) *Handler {
+func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 

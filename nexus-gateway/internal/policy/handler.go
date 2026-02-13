@@ -1,4 +1,4 @@
-package handler
+package policy
 
 import (
 	"encoding/json"
@@ -9,17 +9,16 @@ import (
 	"github.com/google/uuid"
 
 	"nexus-gateway/internal/policy/handler/dto"
-	policyuc "nexus-gateway/internal/policy/usecases"
 	policydomain "nexus-gateway/internal/policy/usecases/domain"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	"nexus-gateway/pkg/types"
 )
 
 type Handler struct {
-	svc policyuc.Service
+	svc Service
 }
 
-func NewHandler(svc policyuc.Service) *Handler {
+func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
@@ -32,7 +31,7 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 func (h *Handler) createForTool(c *gin.Context) {
 	orgID := mustOrgID(c)
 	toolName := c.Param("name")
-	var req policyuc.CreateRequest
+	var req CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, types.ErrCodeValidation, "invalid json")
 		return
@@ -80,7 +79,7 @@ func (h *Handler) updateByID(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, types.ErrCodeValidation, "invalid json")
 		return
 	}
-	updated, err := h.svc.UpdateByID(c.Request.Context(), orgID, pid, policyuc.PolicyPatch{
+	updated, err := h.svc.UpdateByID(c.Request.Context(), orgID, pid, PolicyPatch{
 		Effect:         req.Effect,
 		Priority:       req.Priority,
 		Conditions:     req.Conditions,

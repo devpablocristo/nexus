@@ -5,11 +5,11 @@ import (
 	"github.com/google/wire"
 	"github.com/rs/zerolog"
 
-	orguc "nexus-gateway/internal/org/usecases"
+	"nexus-gateway/internal/org"
 	"nexus-gateway/internal/shared/handlers"
 )
 
-func NewAuthMiddleware(l zerolog.Logger, auth orguc.AuthUsecase) gin.HandlerFunc {
+func NewAuthMiddleware(l zerolog.Logger, auth org.AuthUsecase) gin.HandlerFunc {
 	return handlers.AuthMiddleware(l, auth)
 }
 

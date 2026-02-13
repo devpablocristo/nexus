@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 
-	orguc "nexus-gateway/internal/org/usecases"
+	"nexus-gateway/internal/org"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	"nexus-gateway/pkg/types"
 	"nexus-gateway/pkg/utils"
@@ -18,7 +18,7 @@ const (
 	HeaderActor  = "X-NEXUS-ACTOR"
 )
 
-func AuthMiddleware(l zerolog.Logger, auth orguc.AuthUsecase) gin.HandlerFunc {
+func AuthMiddleware(l zerolog.Logger, auth org.AuthUsecase) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey := c.GetHeader(HeaderAPIKey)
 		if apiKey == "" {

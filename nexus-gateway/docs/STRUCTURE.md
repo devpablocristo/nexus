@@ -1,12 +1,14 @@
-# Nexus Backend Architecture
+# Nexus Gateway Design Notes
 
-## Module boundaries
+## Directory structure (implementation organization)
 
 - `internal/<module>/handler`: Gin handlers + DTOs (transport).
 - `internal/<module>/usecases`: application logic and ports (interfaces).
 - `internal/<module>/repository`: GORM adapters implementing ports.
-- `internal/executor/*`: non-DB adapters (HTTP executor, rate limiting).
+- `internal/gateway/executor/*`: gateway adapters (HTTP executor, rate limiting).
 - `pkg/*`: domain-agnostic reusable packages (no Org/Tool/Policy/Audit terms).
+
+Esta sección describe **estructura de carpetas**, no la arquitectura lógica por sí sola.
 
 ## Request flow (/v1/run)
 
@@ -33,4 +35,3 @@ Every repository method accepts `orgID` and applies `WHERE org_id = ?` filters (
 
 - Exactly one injector in `wire/wire.go`: `InitializeAPI(cfg) (*App, func(), error)`
 - Provider sets are grouped by infra (`ConfigSet`, `BootstrapSet`, `MiddlewareSet`, `ExecutorSet`) and by module (`OrgSet`, `ToolSet`, `PolicySet`, `AuditSet`, `GatewaySet`).
-

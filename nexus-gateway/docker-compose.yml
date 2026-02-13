@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_DB: nexus
     ports:
-      - "${NEXUS_POSTGRES_PORT:-5432}:5432"
+      - "${NEXUS_POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,21 +20,23 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: nexus-gateway
+    env_file:
+      - .env
     environment:
-      NEXUS_HTTP_PORT: "${NEXUS_HTTP_PORT:-8080}"
-      NEXUS_DATABASE_URL: postgres://postgres:postgres@postgres:5432/nexus?sslmode=disable
-      NEXUS_HTTP_TIMEOUT_MS: "5000"
-      NEXUS_HTTP_MAX_RESPONSE_BYTES: "1048576"
-      NEXUS_MAX_BODY_BYTES: "262144"
-      NEXUS_LOG_LEVEL: info
-      NEXUS_RATE_LIMIT_DEFAULT_PER_MINUTE: "60"
-      NEXUS_SWAGGER_CDN: "${NEXUS_SWAGGER_CDN:-true}"
-      NEXUS_MIGRATIONS_DIR: /app/migrations
+      NEXUS_HTTP_PORT: "${NEXUS_HTTP_PORT}"
+      NEXUS_DATABASE_URL: "${NEXUS_DATABASE_URL}"
+      NEXUS_HTTP_TIMEOUT_MS: "${NEXUS_HTTP_TIMEOUT_MS}"
+      NEXUS_HTTP_MAX_RESPONSE_BYTES: "${NEXUS_HTTP_MAX_RESPONSE_BYTES}"
+      NEXUS_MAX_BODY_BYTES: "${NEXUS_MAX_BODY_BYTES}"
+      NEXUS_LOG_LEVEL: "${NEXUS_LOG_LEVEL}"
+      NEXUS_RATE_LIMIT_DEFAULT_PER_MINUTE: "${NEXUS_RATE_LIMIT_DEFAULT_PER_MINUTE}"
+      NEXUS_SWAGGER_CDN: "${NEXUS_SWAGGER_CDN}"
+      NEXUS_MIGRATIONS_DIR: "${NEXUS_MIGRATIONS_DIR}"
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${NEXUS_HTTP_PORT:-8080}:8080"
+      - "${NEXUS_HTTP_PORT}:8080"
     command: ["/app/nexus-gateway"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz >/dev/null 2>&1 || exit 1"]
@@ -48,7 +50,7 @@ services:
       dockerfile: Dockerfile
     container_name: mock-tools
     ports:
-      - "${NEXUS_MOCK_TOOLS_PORT:-8081}:8081"
+      - "${NEXUS_MOCK_TOOLS_PORT}:8081"
     command: ["/app/mock-tools"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz >/dev/null 2>&1 || exit 1"]

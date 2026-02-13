@@ -1,4 +1,4 @@
-package usecases
+package audit
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 )
 
 type RepositoryPort interface {
+	Create(ctx context.Context, ev auditdomain.AuditEvent) error
 	Query(ctx context.Context, orgID uuid.UUID, q auditdomain.Query) ([]auditdomain.AuditEvent, error)
 }
 

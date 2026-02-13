@@ -3,20 +3,21 @@ package wire
 import (
 	"github.com/google/wire"
 
-	auditrepo "nexus-gateway/internal/audit/repository"
-	exechttp "nexus-gateway/internal/executor/http"
-	"nexus-gateway/internal/executor/ratelimit"
-	gwhandler "nexus-gateway/internal/gateway/handler"
-	gwuc "nexus-gateway/internal/gateway/usecases"
-	policyrepo "nexus-gateway/internal/policy/repository"
-	toolrepo "nexus-gateway/internal/tool/repository"
+	"nexus-gateway/internal/audit"
+	"nexus-gateway/internal/gateway"
+	exechttp "nexus-gateway/internal/gateway/executor/http"
+	"nexus-gateway/internal/gateway/executor/ratelimit"
+	"nexus-gateway/internal/policy"
+	"nexus-gateway/internal/tool"
 )
 
-func ProvideGatewayToolRepo(r *toolrepo.Repository) gwuc.ToolRepoPort       { return r }
-func ProvideGatewayPolicyRepo(r *policyrepo.Repository) gwuc.PolicyRepoPort { return r }
-func ProvideGatewayAuditRepo(r *auditrepo.Repository) gwuc.AuditRepoPort    { return r }
-func ProvideGatewayRateLimiter(l *ratelimit.Limiter) gwuc.RateLimiterPort   { return l }
-func ProvideGatewayHTTPExecutor(e *exechttp.Executor) gwuc.HTTPExecutorPort { return e }
+func ProvideGatewayToolRepo(r *tool.Repository) gateway.ToolRepoPort       { return r }
+func ProvideGatewayPolicyRepo(r *policy.Repository) gateway.PolicyRepoPort { return r }
+func ProvideGatewayAuditRepo(r *audit.Repository) gateway.AuditRepoPort    { return r }
+func ProvideGatewayRateLimiter(l *ratelimit.Limiter) gateway.RateLimiterPort {
+	return l
+}
+func ProvideGatewayHTTPExecutor(e *exechttp.Executor) gateway.HTTPExecutorPort { return e }
 
 var GatewaySet = wire.NewSet(
 	ProvideGatewayToolRepo,
@@ -24,6 +25,6 @@ var GatewaySet = wire.NewSet(
 	ProvideGatewayAuditRepo,
 	ProvideGatewayRateLimiter,
 	ProvideGatewayHTTPExecutor,
-	gwuc.NewService,
-	gwhandler.NewHandler,
+	gateway.NewService,
+	gateway.NewHandler,
 )

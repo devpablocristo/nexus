@@ -3,12 +3,11 @@ package wire
 import (
 	"github.com/google/wire"
 
-	orgrepo "nexus-gateway/internal/org/repository"
-	orguc "nexus-gateway/internal/org/usecases"
+	"nexus-gateway/internal/org"
 )
 
 var OrgSet = wire.NewSet(
-	orgrepo.NewRepository,
-	wire.Bind(new(orguc.APIKeyRepositoryPort), new(*orgrepo.Repository)),
-	orguc.NewAuthUsecase,
+	org.NewRepository,
+	wire.Bind(new(org.APIKeyRepositoryPort), new(*org.Repository)),
+	org.NewAuthUsecase,
 )

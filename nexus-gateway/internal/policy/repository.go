@@ -1,4 +1,4 @@
-package repository
+package policy
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"nexus-gateway/internal/policy/repository/models"
-	policyuc "nexus-gateway/internal/policy/usecases"
 	policydomain "nexus-gateway/internal/policy/usecases/domain"
 	"nexus-gateway/pkg/types"
 )
@@ -68,7 +67,7 @@ func (r *Repository) GetByID(ctx context.Context, orgID, policyID uuid.UUID) (po
 	return toDomain(row), nil
 }
 
-func (r *Repository) Update(ctx context.Context, orgID uuid.UUID, policyID uuid.UUID, patch policyuc.PolicyPatch) (policydomain.Policy, error) {
+func (r *Repository) Update(ctx context.Context, orgID uuid.UUID, policyID uuid.UUID, patch PolicyPatch) (policydomain.Policy, error) {
 	var row models.Policy
 	err := r.db.WithContext(ctx).Where("org_id = ? AND id = ?", orgID, policyID).Take(&row).Error
 	if err != nil {

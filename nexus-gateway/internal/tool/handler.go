@@ -1,4 +1,4 @@
-package handler
+package tool
 
 import (
 	"encoding/json"
@@ -9,17 +9,16 @@ import (
 	"github.com/google/uuid"
 
 	"nexus-gateway/internal/tool/handler/dto"
-	tooluc "nexus-gateway/internal/tool/usecases"
 	tooldomain "nexus-gateway/internal/tool/usecases/domain"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	"nexus-gateway/pkg/types"
 )
 
 type Handler struct {
-	svc tooluc.Service
+	svc Service
 }
 
-func NewHandler(svc tooluc.Service) *Handler {
+func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
@@ -50,7 +49,7 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 	orgID := mustOrgID(c)
-	created, err := h.svc.Create(c.Request.Context(), orgID, tooluc.CreateRequest{
+	created, err := h.svc.Create(c.Request.Context(), orgID, CreateRequest{
 		Name:         req.Name,
 		Kind:         req.Kind,
 		Description:  req.Description,
@@ -117,7 +116,7 @@ func (h *Handler) update(c *gin.Context) {
 	if req.Description != nil {
 		desc = &req.Description
 	}
-	updated, err := h.svc.UpdateByName(c.Request.Context(), orgID, name, tooluc.ToolPatch{
+	updated, err := h.svc.UpdateByName(c.Request.Context(), orgID, name, ToolPatch{
 		Description:  desc,
 		Method:       req.Method,
 		URL:          req.URL,

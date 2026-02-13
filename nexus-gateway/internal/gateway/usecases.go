@@ -1,4 +1,4 @@
-package usecases
+package gateway
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	auditdomain "nexus-gateway/internal/audit/usecases/domain"
 	gwdomain "nexus-gateway/internal/gateway/usecases/domain"
-	policyuc "nexus-gateway/internal/policy/usecases"
+	"nexus-gateway/internal/policy"
 	policydomain "nexus-gateway/internal/policy/usecases/domain"
 	tooldomain "nexus-gateway/internal/tool/usecases/domain"
 	"nexus-gateway/pkg/types"
@@ -57,12 +57,12 @@ type service struct {
 	limiter    RateLimiterPort
 	executor   HTTPExecutorPort
 	cache      *jsonschema.CompilerCache
-	evaluator  *policyuc.Evaluator
+	evaluator  *policy.Evaluator
 	cfg        Config
 	log        zerolog.Logger
 }
 
-func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo AuditRepoPort, limiter RateLimiterPort, executor HTTPExecutorPort, cache *jsonschema.CompilerCache, evaluator *policyuc.Evaluator, cfg Config, log zerolog.Logger) Service {
+func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo AuditRepoPort, limiter RateLimiterPort, executor HTTPExecutorPort, cache *jsonschema.CompilerCache, evaluator *policy.Evaluator, cfg Config, log zerolog.Logger) Service {
 	return &service{
 		toolRepo:   toolRepo,
 		policyRepo: policyRepo,
@@ -370,7 +370,7 @@ func (l parsedLimits) maxBytesContext(def int) int {
 }
 
 func (s *service) firstMatch(policies []policydomain.Policy, input, contextMap map[string]any, tool tooldomain.Tool) (*policydomain.Policy, string, parsedLimits, error) {
-	attrs := policyuc.ToolAttributes{
+	attrs := policy.ToolAttributes{
 		Name:       tool.Name,
 		Kind:       string(tool.Kind),
 		Method:     tool.Method,

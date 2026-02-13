@@ -8,19 +8,11 @@ package wire
 
 import (
 	"nexus-gateway/cmd/config"
-	handler3 "nexus-gateway/internal/audit/handler"
-	repository4 "nexus-gateway/internal/audit/repository"
-	usecases4 "nexus-gateway/internal/audit/usecases"
-	handler4 "nexus-gateway/internal/gateway/handler"
-	usecases5 "nexus-gateway/internal/gateway/usecases"
-	"nexus-gateway/internal/org/repository"
-	"nexus-gateway/internal/org/usecases"
-	handler2 "nexus-gateway/internal/policy/handler"
-	repository3 "nexus-gateway/internal/policy/repository"
-	usecases3 "nexus-gateway/internal/policy/usecases"
-	"nexus-gateway/internal/tool/handler"
-	repository2 "nexus-gateway/internal/tool/repository"
-	usecases2 "nexus-gateway/internal/tool/usecases"
+	"nexus-gateway/internal/audit"
+	"nexus-gateway/internal/gateway"
+	"nexus-gateway/internal/org"
+	"nexus-gateway/internal/policy"
+	"nexus-gateway/internal/tool"
 )
 
 // Injectors from wire.go:
@@ -35,31 +27,32 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 		return nil, nil, err
 	}
 	httpServerConfig := ProvideHTTPServerConfig(cfg)
-	repositoryRepository := repository.NewRepository(db)
-	authUsecase := usecases.NewAuthUsecase(repositoryRepository)
+	repository := org.NewRepository(db)
+	authUsecase := org.NewAuthUsecase(repository)
 	handlerFunc := NewAuthMiddleware(logger, authUsecase)
-	repository5 := repository2.NewRepository(db)
+	toolRepository := tool.NewRepository(db)
 	compilerCache := NewSchemaCache()
-	serviceImpl := usecases2.NewService(repository5, compilerCache)
-	handlerHandler := handler.NewHandler(serviceImpl)
-	repository6 := repository3.NewRepository(db)
-	service := usecases3.NewService(repository6, serviceImpl)
-	handler5 := handler2.NewHandler(service)
-	repository7 := repository4.NewRepository(db)
-	usecasesService := usecases4.NewService(repository7)
-	handler6 := handler3.NewHandler(usecasesService)
-	toolRepoPort := ProvideGatewayToolRepo(repository5)
-	policyRepoPort := ProvideGatewayPolicyRepo(repository6)
-	auditRepoPort := ProvideGatewayAuditRepo(repository7)
+	serviceImpl := tool.NewService(toolRepository, compilerCache)
+	handler := tool.NewHandler(serviceImpl)
+	policyRepository := policy.NewRepository(db)
+	toolLookupPort := ProvidePolicyToolLookup(serviceImpl)
+	service := policy.NewService(policyRepository, toolLookupPort)
+	policyHandler := policy.NewHandler(service)
+	auditRepository := audit.NewRepository(db)
+	auditService := audit.NewService(auditRepository)
+	auditHandler := audit.NewHandler(auditService)
+	toolRepoPort := ProvideGatewayToolRepo(toolRepository)
+	policyRepoPort := ProvideGatewayPolicyRepo(policyRepository)
+	auditRepoPort := ProvideGatewayAuditRepo(auditRepository)
 	limiter := NewRateLimiter()
 	rateLimiterPort := ProvideGatewayRateLimiter(limiter)
 	executor := NewHTTPExecutor(serviceConfig)
 	httpExecutorPort := ProvideGatewayHTTPExecutor(executor)
-	evaluator := usecases3.NewEvaluator()
-	usecasesConfig := ProvideGatewayConfig(serviceConfig)
-	service2 := usecases5.NewService(toolRepoPort, policyRepoPort, auditRepoPort, rateLimiterPort, httpExecutorPort, compilerCache, evaluator, usecasesConfig, logger)
-	handler7 := handler4.NewHandler(service2)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handlerHandler, handler5, handler6, handler7)
+	evaluator := policy.NewEvaluator()
+	gatewayConfig := ProvideGatewayConfig(serviceConfig)
+	gatewayService := gateway.NewService(toolRepoPort, policyRepoPort, auditRepoPort, rateLimiterPort, httpExecutorPort, compilerCache, evaluator, gatewayConfig, logger)
+	gatewayHandler := gateway.NewHandler(gatewayService)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, gatewayHandler)
 	apiConfig := ProvideAPIConfig(cfg)
 	server := NewHTTPServer(apiConfig, engine)
 	app := NewApp(engine, server)

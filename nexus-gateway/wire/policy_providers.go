@@ -3,15 +3,19 @@ package wire
 import (
 	"github.com/google/wire"
 
-	policyhandler "nexus-gateway/internal/policy/handler"
-	policyrepo "nexus-gateway/internal/policy/repository"
-	policyuc "nexus-gateway/internal/policy/usecases"
+	"nexus-gateway/internal/policy"
+	"nexus-gateway/internal/tool"
 )
 
+func ProvidePolicyToolLookup(s tool.Service) policy.ToolLookupPort {
+	return s
+}
+
 var PolicySet = wire.NewSet(
-	policyrepo.NewRepository,
-	wire.Bind(new(policyuc.PolicyRepositoryPort), new(*policyrepo.Repository)),
-	policyuc.NewEvaluator,
-	policyuc.NewService,
-	policyhandler.NewHandler,
+	policy.NewRepository,
+	wire.Bind(new(policy.PolicyRepositoryPort), new(*policy.Repository)),
+	ProvidePolicyToolLookup,
+	policy.NewEvaluator,
+	policy.NewService,
+	policy.NewHandler,
 )

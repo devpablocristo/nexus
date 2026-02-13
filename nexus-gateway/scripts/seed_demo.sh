@@ -2,13 +2,14 @@
 set -euo pipefail
 
 DB_URL="${NEXUS_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/nexus?sslmode=disable}"
+HTTP_PORT="${NEXUS_HTTP_PORT:-8080}"
 
 echo "Waiting for postgres..."
 bash scripts/db/wait-for-db.sh "$DB_URL"
 
 echo "Waiting for nexus-gateway /readyz..."
 for i in {1..60}; do
-  if curl -fsS "http://localhost:8080/readyz" >/dev/null 2>&1; then
+  if curl -fsS "http://localhost:${HTTP_PORT}/readyz" >/dev/null 2>&1; then
     break
   fi
   sleep 1

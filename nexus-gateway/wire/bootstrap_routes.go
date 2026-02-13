@@ -8,10 +8,10 @@ import (
 	"gorm.io/gorm"
 
 	"nexus-gateway/cmd/config"
-	audithandler "nexus-gateway/internal/audit/handler"
-	gwhandler "nexus-gateway/internal/gateway/handler"
-	policyhandler "nexus-gateway/internal/policy/handler"
-	toolhandler "nexus-gateway/internal/tool/handler"
+	"nexus-gateway/internal/audit"
+	"nexus-gateway/internal/gateway"
+	"nexus-gateway/internal/policy"
+	"nexus-gateway/internal/tool"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	ginserver "nexus-gateway/pkg/http/servers/gin"
 )
@@ -22,10 +22,10 @@ func NewRouter(
 	cfg config.ServiceConfig,
 	httpCfg config.HTTPServerConfig,
 	authMw gin.HandlerFunc,
-	toolH *toolhandler.Handler,
-	policyH *policyhandler.Handler,
-	auditH *audithandler.Handler,
-	gwH *gwhandler.Handler,
+	toolH *tool.Handler,
+	policyH *policy.Handler,
+	auditH *audit.Handler,
+	gwH *gateway.Handler,
 ) *gin.Engine {
 	r := ginserver.NewEngine(ginserver.EngineOptions{}, ginmw.RequestID(), ginmw.Recovery(l), ginmw.BodyLimit(httpCfg.MaxBodyBytes), ginmw.LoggerMiddleware(l))
 

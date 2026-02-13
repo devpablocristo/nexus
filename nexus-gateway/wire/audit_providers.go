@@ -3,14 +3,12 @@ package wire
 import (
 	"github.com/google/wire"
 
-	audithandler "nexus-gateway/internal/audit/handler"
-	auditrepo "nexus-gateway/internal/audit/repository"
-	audituc "nexus-gateway/internal/audit/usecases"
+	"nexus-gateway/internal/audit"
 )
 
 var AuditSet = wire.NewSet(
-	auditrepo.NewRepository,
-	wire.Bind(new(audituc.RepositoryPort), new(*auditrepo.Repository)),
-	audituc.NewService,
-	audithandler.NewHandler,
+	audit.NewRepository,
+	wire.Bind(new(audit.RepositoryPort), new(*audit.Repository)),
+	audit.NewService,
+	audit.NewHandler,
 )

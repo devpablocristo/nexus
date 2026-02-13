@@ -1,4 +1,4 @@
-package usecases
+package policy
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	policydomain "nexus-gateway/internal/policy/usecases/domain"
-	tooluc "nexus-gateway/internal/tool/usecases"
+	tooldomain "nexus-gateway/internal/tool/usecases/domain"
 	"nexus-gateway/pkg/types"
 )
 
@@ -18,6 +18,10 @@ type PolicyRepositoryPort interface {
 	ListByToolID(ctx context.Context, orgID, toolID uuid.UUID) ([]policydomain.Policy, error)
 	GetByID(ctx context.Context, orgID, policyID uuid.UUID) (policydomain.Policy, error)
 	Update(ctx context.Context, orgID uuid.UUID, policyID uuid.UUID, patch PolicyPatch) (policydomain.Policy, error)
+}
+
+type ToolLookupPort interface {
+	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
 }
 
 type Service interface {
@@ -46,10 +50,10 @@ type PolicyPatch struct {
 
 type service struct {
 	repo     PolicyRepositoryPort
-	toolLook tooluc.Service
+	toolLook ToolLookupPort
 }
 
-func NewService(repo PolicyRepositoryPort, toolLook tooluc.Service) Service {
+func NewService(repo PolicyRepositoryPort, toolLook ToolLookupPort) Service {
 	return &service{repo: repo, toolLook: toolLook}
 }
 
