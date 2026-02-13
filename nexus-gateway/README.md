@@ -33,6 +33,14 @@ make seed
 Docs:
 - Swagger UI: `http://localhost:8080/docs`
 - OpenAPI: `http://localhost:8080/openapi.yaml`
+- Architecture notes: `docs/ARCHITECTURE.md`
+
+## Product packaging status
+
+- OpenAPI contract completed in `docs/openapi.yaml` (headers, request/response schemas, error model, MCP envelope, audit export formats).
+- CI now runs `unit` + `smoke` + `qa` + `jwt-e2e` on every push/PR.
+- Contract tests for audit export are in `internal/audit/export_contract_test.go` with golden snapshots under `internal/audit/testdata/`.
+- Idempotency `FAILED` semantics are terminal and replay cached error for same key+fingerprint.
 
 ## Authentication & delegation
 
@@ -160,6 +168,7 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
 - `make jwt-e2e`: JWT/JWKS e2e (`Authorization: Bearer`, API key fallback off)
 - `make qa`: full pipeline (`down` → `up` → `migrate` → `seed` → `test` → `e2e`)
 - `make cleanup-idempotency`: delete expired idempotency records
+- `go test ./internal/audit -run TestAuditExport`: contract/snapshot export tests
 
 ## Operations Runbook (Pilot)
 

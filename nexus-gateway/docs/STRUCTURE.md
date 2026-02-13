@@ -47,3 +47,16 @@ Every repository method accepts `orgID` and applies `WHERE org_id = ?` filters (
 - Exactly one injector in `wire/wire.go`: `InitializeAPI(cfg) (*App, func(), error)`
 - Provider sets are grouped by infra (`BootstrapSet`, `MiddlewareSet`, `ExecutorSet`) and by module (`OrgSet`, `ToolSet`, `PolicySet`, `AuditSet`, `SecretsSet`, `EgressSet`, `GatewaySet`, `MCPSet`).
 - Telemetry is initialized in `cmd/api/main.go` and request tracing is attached via Gin middleware.
+
+## Quality gates and contracts
+
+- OpenAPI is maintained in `docs/openapi.yaml` as the API contract baseline.
+- CI workflow (`.github/workflows/ci.yml`) runs:
+  - `unit`: `go test ./...`
+  - `smoke`: compose up + migrate + seed + health checks
+  - `qa`: `make qa`
+  - `jwt-e2e`: `make jwt-e2e`
+- Audit export contract coverage lives in:
+  - `internal/audit/export_contract_test.go`
+  - `internal/audit/testdata/export.jsonl.golden`
+  - `internal/audit/testdata/export.csv.golden`
