@@ -1,0 +1,58 @@
+# Version control
+.git
+.gitignore
+
+# Docker files
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+
+# Environment and secrets
+; .env*
+secrets.dev.yaml
+values.dev.yaml
+
+# IDE and editor files
+.vscode
+.vs
+.idea
+.classpath
+.project
+.settings
+.toolstarget
+*.*proj.user
+
+# Build outputs and binaries
+bin/
+obj/
+dist/
+build/
+out/
+; pkg/
+*/bin/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Logs and caches
+*.log
+__pycache__
+.DS_Store
+Thumbs.db
+
+# Archives
+*.tar.gz
+*.tgz
+*.iso
+*.raw
+
+# Documentation
+*.md
+LICENSE
+
+# Kubernetes/Helm
+charts/
+
+# Environment work directories
+env/*/work-*
