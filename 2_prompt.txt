@@ -1,0 +1,112 @@
+Actuá como Staff+ engineer (Platform/Security) y Product Architect. Tenés que diseñar e implementar la “Fase 2” de nexus-gateway (Agent Tool Gateway) orientada a ser vendible a equipos Platform/SecOps.
+
+Contexto actual (ya implementado):
+- Go 1.24, Gin, GORM(Postgres), Wire, zerolog, jsonschema(santhosh-tekuri), UUID.
+- Hexagonal estricta por módulos: org/tool/policy/audit/gateway.
+- Multi-tenant por header X-NEXUS-GATEWAY-KEY (hash SHA-256 en DB).
+- /v1/tools CRUD, /v1/policies CRUD, /v1/run core, /v1/audit con filtros.
+- Policy DSL: all/any/not + ops eq/neq/lt/lte/gt/gte/in/contains/regex/exists/not_exists. First-match-wins por priority.
+- Rate limit per_minute + max_bytes_input/context. Default read allow, write deny.
+- HTTP executor con timeout/retries, límite bytes response, GET query params sólo flat.
+- Auditoría append-only redacted (password/token/api_key/authorization/secret/ssn/credit_card etc), logs estructurados.
+- Docker compose con postgres, nexus-gateway y mock-tools, migraciones up/down manuales, seed_demo.sh idempotente, tests unit/e2e verdes.
+
+Objetivo de la fase 2 (4–6 semanas):
+Convertirlo en infraestructura “must-have” para agentes en empresas:
+1) MCP nativo (server) para que agentes puedan descubrir y ejecutar tools vía MCP.
+2) Secrets Vault + Delegación “on behalf of” (actor/role/scopes) para no hardcodear credenciales ni dar permisos excesivos.
+3) Egress control + DLP básico (PII detectors) integrados al motor de políticas.
+4) (Opcional si entra) Policy simulator / explain: “por qué allow/deny” para acelerar adopción y debugging.
+
+Restricciones:
+- Mantener arquitectura hexagonal estricta (usecases sin Gin/GORM).
+- No agregar una UI grande.
+- No meter un LLM dentro del gateway.
+- Mantener auditoría append-only con redacción.
+- Migraciones SQL manuales (up/down) con runner cmd/migrate.
+- Cambios deben incluir tests unit + integración/e2e.
+- Backwards compatible con API actual (/v1/run sigue funcionando).
+- Preferir implementaciones mínimas pero sólidas y vendibles.
+
+Entregables obligatorios:
+A) Diseño técnico + decisiones:
+- Proponer estructura de carpetas/módulos nuevos (ej: mcp, secrets, identity, dlp, egress).
+- Especificar interfaces (ports) y adapters.
+- Describir flujos end-to-end (auth → resolve tool → schema → policy → limits → dlp/egress → execute → audit).
+- Enumerar códigos de error nuevos y cómo se normalizan.
+- Plan de migraciones con tablas nuevas y constraints.
+
+B) Implementación en código:
+1) MCP Server:
+- Implementar un servidor MCP (preferible HTTP primero; si stdio es factible, incluirlo).
+- Debe exponer como mínimo:
+  - tools/list  -> lista tools del tenant (org) con metadatos y schemas
+  - tools/get   -> detalle de una tool
+  - tools/call  -> ejecuta tool (mapea a /v1/run internamente)
+- Debe autenticar igual que REST (X-NEXUS-GATEWAY-KEY) o un esquema equivalente seguro.
+- Debe mapear errores a formato MCP de manera consistente.
+- Incluir docs y ejemplos de requests MCP.
+
+2) Secrets Vault (por org y por tool):
+- Agregar persistencia de secretos por org/tool: headers sensibles, api keys, oauth tokens.
+- Los secretos deben guardarse cifrados en DB (AES-GCM). La key maestra viene por env var (NEXUS_MASTER_KEY) con rotación futura.
+- Implementar redacción: JAMÁS loguear ni auditar secretos en claro.
+- Permitir “inject” en ejecución: cuando se ejecuta una tool, se agregan headers/credentials desde el vault según tool config.
+- Agregar endpoints mínimos para gestionar secretos (puede ser /v1/tools/:name/secrets) con seguridad fuerte (requiere admin key o role).
+- Incluir migración SQL + repo + usecases + handlers.
+- Tests: cifrado/descifrado, redacción, e2e de ejecución con secret injection.
+
+3) Delegación / Identity:
+- Expandir el concepto de actor: X-NEXUS-ACTOR puede ser string pero agregar opcional:
+  - X-NEXUS-ROLE (ej: “bot”, “human”, “secops”)
+  - o un JWT firmado por el cliente (opcional futuro), pero por ahora soportar “role mapping” simple.
+- Las policies deben poder matchear:
+  - context.actor
+  - context.role
+  - context.scopes (lista)
+- Implementar “scopes” por API key o por actor (tabla org_api_keys_scopes o similar).
+- Ajustar middleware para inyectar actor/role/scopes en contexto.
+- Tests: policy matching con role/scopes.
+
+4) Egress Control:
+- Por tool: allowlist de hosts/domains y/o CIDRs (mínimo: hosts/domains).
+- Antes de ejecutar HTTP, validar que el host del tool endpoint esté permitido por org/tool policy.
+- Si no está permitido: error code EGRESS_DENIED.
+- Persistir allowlist en DB (tabla tool_egress_rules) o en tools.config (JSON) validado.
+- Tests: deniega host no permitido, permite host permitido.
+
+5) DLP básico:
+- Implementar detectores de PII en input/context (best-effort):
+  - email, phone (internacional), credit card (Luhn), national IDs (genérico), tokens tipo JWT, api keys comunes.
+- DLP produce un “dlp_summary” (counts por tipo) que se puede usar en policies via context.dlp.*
+- Integrar con policy engine: permitir reglas tipo:
+  - deny if context.dlp.credit_card.count > 0 AND tool.classification == "external"
+- Guardar en auditoría sólo el resumen (no el contenido).
+- Tests: detector y policy.
+
+C) Docs:
+- Actualizar README con:
+  - cómo correr docker compose
+  - cómo seedear demo
+  - cómo usar MCP (curl examples)
+  - cómo crear tool + secret + policy + ejecutar
+  - ejemplos de policies de seguridad reales (deny exfiltration).
+- Incluir threat model breve: qué protege y qué no.
+
+D) QA:
+- Agregar Makefile targets si hacen falta: mcp-e2e, secrets-e2e.
+- Agregar E2E: ejecutar tool que requiere secret, con policy y audit verificando redacción.
+
+Reglas de implementación:
+- Seguir naming consistente en errores: SCREAMING_SNAKE.
+- Mantener request_id everywhere.
+- Latency_ms y status/decision en auditoría.
+- No romper tests existentes; si cambias contrato, ajusta tests y docs.
+- Todo cambio debe venir con migración up/down y seed actualizado.
+
+Primero entregá:
+1) Plan detallado por pasos (checklist) con orden de implementación.
+2) Diseño de DB (tablas + campos + constraints).
+3) Interfaces (ports) nuevas y dónde viven.
+4) Lista de endpoints nuevos y ejemplos JSON.
+Luego implementá en el repositorio los cambios (archivos, código y tests), respetando la arquitectura.

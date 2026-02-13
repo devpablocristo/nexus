@@ -164,6 +164,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 			HTTPTimeoutMS:          2000,
 			HTTPMaxResponseBytes:   1048576,
 			RateLimitDefaultPerMin: 60,
+			MasterKey:              "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		},
 	})
 	if err != nil {
@@ -242,6 +243,25 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected redacted fields in audit")
+	}
+
+	exportReq := httptest.NewRequest(http.MethodGet, "/v1/audit/export?format=jsonl&tool_name=transfer&limit=5", nil)
+	exportReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	exportRR := httptest.NewRecorder()
+	app.Router.ServeHTTP(exportRR, exportReq)
+	if exportRR.Code != http.StatusOK {
+		t.Fatalf("export expected 200 got %d body=%s", exportRR.Code, exportRR.Body.String())
+	}
+	lines := bytes.Split(bytes.TrimSpace(exportRR.Body.Bytes()), []byte("\n"))
+	if len(lines) == 0 {
+		t.Fatalf("expected export lines")
+	}
+	var first map[string]any
+	if err := json.Unmarshal(lines[0], &first); err != nil {
+		t.Fatalf("jsonl decode: %v", err)
+	}
+	if _, ok := first["event_hash"]; !ok {
+		t.Fatalf("expected event_hash in export line: %v", first)
 	}
 }
 

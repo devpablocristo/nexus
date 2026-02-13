@@ -18,6 +18,8 @@ type Tool struct {
 	InputSchemaJSON  datatypes.JSON `gorm:"type:jsonb"`
 	OutputSchemaJSON datatypes.JSON `gorm:"type:jsonb"`
 	ActionType       string
+	Classification   string
+	Sensitivity      string
 	RiskLevel        int
 	Enabled          bool
 	CreatedAt        time.Time

@@ -11,7 +11,9 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"nexus-gateway/cmd/config"
+	"nexus-gateway/internal/dlp"
 	gormdb "nexus-gateway/pkg/databases/sql/gorm"
+	"nexus-gateway/pkg/utils"
 	"nexus-gateway/pkg/validations/jsonschema"
 )
 
@@ -50,6 +52,14 @@ func NewDB(cfg config.DBConfig, gormCfg *gorm.Config) (*gorm.DB, func(), error) 
 
 func NewSchemaCache() *jsonschema.CompilerCache {
 	return jsonschema.NewCompilerCache()
+}
+
+func NewDLPDetector() *dlp.Detector {
+	return dlp.NewDetector()
+}
+
+func NewMasterCrypto(cfg config.ServiceConfig) (*utils.AESGCM, error) {
+	return utils.NewAESGCM(cfg.MasterKey)
 }
 
 func NewHTTPServer(cfg config.APIConfig, router *gin.Engine) *http.Server {

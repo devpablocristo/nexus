@@ -6,7 +6,7 @@ import (
 )
 
 func TestLimiter_AllowPerMinuteWindow(t *testing.T) {
-	l := NewLimiter()
+	l := NewInMemoryLimiter()
 	now := time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC)
 	l.now = func() time.Time { return now }
 

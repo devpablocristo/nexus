@@ -82,3 +82,23 @@ func TestEvaluator_RegexInvalidPattern(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 }
+
+func TestEvaluator_ContextRoleScopesDLPAndClassification(t *testing.T) {
+	ev := NewEvaluator()
+	cond := []byte(`{"all":[{"path":"context.role","op":"eq","value":"bot"},{"path":"context.scopes","op":"contains","value":"payments:write"},{"path":"context.dlp.credit_card.count","op":"gt","value":0},{"path":"tool.classification","op":"eq","value":"external"},{"path":"tool.sensitivity","op":"eq","value":"high"}]}`)
+	ok, err := ev.Matches(cond,
+		map[string]any{"amount": 10.0},
+		map[string]any{
+			"role":   "bot",
+			"scopes": []any{"payments:write", "audit:read"},
+			"dlp":    map[string]any{"credit_card": map[string]any{"count": 1.0}},
+		},
+		ToolAttributes{Classification: "external", Sensitivity: "high"},
+	)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected match")
+	}
+}

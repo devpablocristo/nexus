@@ -28,27 +28,31 @@ type Service interface {
 }
 
 type CreateRequest struct {
-	Name         string
-	Kind         string
-	Description  *string
-	Method       string
-	URL          string
-	InputSchema  map[string]any
-	OutputSchema map[string]any
-	ActionType   string
-	RiskLevel    int
-	Enabled      bool
+	Name           string
+	Kind           string
+	Description    *string
+	Method         string
+	URL            string
+	InputSchema    map[string]any
+	OutputSchema   map[string]any
+	ActionType     string
+	Classification string
+	Sensitivity    string
+	RiskLevel      int
+	Enabled        bool
 }
 
 type ToolPatch struct {
-	Description  **string
-	Method       *string
-	URL          *string
-	InputSchema  *map[string]any
-	OutputSchema *map[string]any
-	ActionType   *string
-	RiskLevel    *int
-	Enabled      *bool
+	Description    **string
+	Method         *string
+	URL            *string
+	InputSchema    *map[string]any
+	OutputSchema   *map[string]any
+	ActionType     *string
+	Classification *string
+	Sensitivity    *string
+	RiskLevel      *int
+	Enabled        *bool
 }
 
 type ServiceImpl struct {
@@ -72,6 +76,18 @@ func (s *ServiceImpl) Create(ctx context.Context, orgID uuid.UUID, req CreateReq
 	}
 	if req.ActionType != string(tooldomain.ActionRead) && req.ActionType != string(tooldomain.ActionWrite) {
 		return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "action_type must be read|write")
+	}
+	if req.Classification == "" {
+		req.Classification = "internal"
+	}
+	if req.Classification != "internal" && req.Classification != "external" {
+		return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeToolClassInvalid, "classification must be internal|external")
+	}
+	if req.Sensitivity == "" {
+		req.Sensitivity = "low"
+	}
+	if req.Sensitivity != "low" && req.Sensitivity != "medium" && req.Sensitivity != "high" {
+		return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeToolSensitivity, "sensitivity must be low|medium|high")
 	}
 	if req.RiskLevel < 1 || req.RiskLevel > 5 {
 		return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "risk_level must be 1..5")
@@ -107,6 +123,8 @@ func (s *ServiceImpl) Create(ctx context.Context, orgID uuid.UUID, req CreateReq
 		InputSchemaJSON:  inSchemaBytes,
 		OutputSchemaJSON: outSchemaBytes,
 		ActionType:       tooldomain.ActionType(req.ActionType),
+		Classification:   req.Classification,
+		Sensitivity:      req.Sensitivity,
 		RiskLevel:        req.RiskLevel,
 		Enabled:          req.Enabled,
 	}
@@ -146,6 +164,16 @@ func (s *ServiceImpl) UpdateByName(ctx context.Context, orgID uuid.UUID, name st
 		}
 		if _, err := s.cache.Compile(ctx, orgID.String()+":"+name+":out", b); err != nil {
 			return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeSchemaInvalid, "output_schema is not a valid JSON schema")
+		}
+	}
+	if patch.Classification != nil {
+		if *patch.Classification != "internal" && *patch.Classification != "external" {
+			return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeToolClassInvalid, "classification must be internal|external")
+		}
+	}
+	if patch.Sensitivity != nil {
+		if *patch.Sensitivity != "low" && *patch.Sensitivity != "medium" && *patch.Sensitivity != "high" {
+			return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeToolSensitivity, "sensitivity must be low|medium|high")
 		}
 	}
 	return s.repo.UpdateByName(ctx, orgID, name, patch)

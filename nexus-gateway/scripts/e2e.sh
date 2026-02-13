@@ -113,6 +113,13 @@ put_json() {
   auth_curl_no_fail -X PUT -H "Content-Type: application/json" -d "$payload" -w "\n%{http_code}" "$url"
 }
 
+post_json_with_role() {
+  local url="$1"
+  local payload="$2"
+  local role="$3"
+  curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "X-NEXUS-ROLE: ${role}" -H "Content-Type: application/json" -d "$payload" -w "\n%{http_code}" "$url"
+}
+
 echo "[e2e] list tools payload coherence"
 TOOLS="$(auth_curl "${HTTP_BASE}/v1/tools")"
 assert_jq "$TOOLS" '.items | type=="array"'
@@ -210,6 +217,16 @@ assert_jq "$RUN_ECHO" '.result.received.hello == "world"'
 assert_jq "$RUN_ECHO" '.result.server_time | type=="string" and length>0'
 assert_jq "$RUN_ECHO" '.latency_ms | type=="number" and . >= 0'
 
+echo "[e2e] upsert secret + validate injection"
+SEC_UP_WITH_CODE="$(post_json_with_role "${HTTP_BASE}/v1/tools/echo/secrets" '{"secret_type":"header","key_name":"X-Injected-Token","value":"top-secret","enabled":true}' "secops")"
+SEC_UP_BODY="$(echo "$SEC_UP_WITH_CODE" | head -n1)"
+SEC_UP_CODE="$(echo "$SEC_UP_WITH_CODE" | tail -n1)"
+[[ "$SEC_UP_CODE" == "200" ]] || fail "expected 200 got ${SEC_UP_CODE} body=$SEC_UP_BODY"
+assert_jq "$SEC_UP_BODY" '.secret_type=="header" and .key_name=="X-Injected-Token" and .enabled==true'
+
+RUN_ECHO_SEC="$(auth_curl -H "Content-Type: application/json" -d '{"tool_name":"echo","input":{"hello":"secret"},"context":{"user_id":"u_1"}}' "${HTTP_BASE}/v1/run")"
+assert_jq "$RUN_ECHO_SEC" '.status=="success" and .result.x_injected_token_present==true'
+
 echo "[e2e] run transfer denied > 1000"
 RUN_DENY1_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run" '{"tool_name":"transfer","input":{"amount":5000,"token":"secret"},"context":{"user_id":"u_1"}}')"
 RUN_DENY1="$(echo "$RUN_DENY1_WITH_CODE" | head -n1)"
@@ -229,14 +246,96 @@ RUN_DENY2_CODE="$(echo "$RUN_DENY2_WITH_CODE" | tail -n1)"
 assert_jq "$RUN_DENY2" '.decision == "deny"'
 assert_jq "$RUN_DENY2" '.status == "blocked"'
 
-echo "[e2e] run transfer allowed"
-RUN_OK="$(auth_curl -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500,"card_number":"4111111111111111"},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
+echo "[e2e] run transfer denied missing idempotency key when required"
+RUN_IDEMP_REQ_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run" '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1"}}')"
+RUN_IDEMP_REQ_BODY="$(echo "$RUN_IDEMP_REQ_WITH_CODE" | head -n1)"
+RUN_IDEMP_REQ_CODE="$(echo "$RUN_IDEMP_REQ_WITH_CODE" | tail -n1)"
+[[ "$RUN_IDEMP_REQ_CODE" == "400" ]] || fail "expected 400 got ${RUN_IDEMP_REQ_CODE} body=$RUN_IDEMP_REQ_BODY"
+assert_jq "$RUN_IDEMP_REQ_BODY" '.error.code=="IDEMPOTENCY_REQUIRED" or .status=="blocked"'
+
+echo "[e2e] simulate transfer explain (no upstream execution)"
+SIM_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run/simulate" '{"tool_name":"transfer","input":{"amount":5000,"card_number":"4111111111111111"},"context":{"user_id":"u_1"}}')"
+SIM_BODY="$(echo "$SIM_WITH_CODE" | head -n1)"
+SIM_CODE="$(echo "$SIM_WITH_CODE" | tail -n1)"
+[[ "$SIM_CODE" == "403" ]] || fail "expected 403 got ${SIM_CODE} body=$SIM_BODY"
+assert_jq "$SIM_BODY" '.status=="blocked" and .decision=="deny" and .explain.mode=="simulate" and .explain.dlp_summary.credit_card.count >= 1'
+
+echo "[e2e] run transfer denied by external+dLP policy"
+RUN_DLP_DENY_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run" '{"tool_name":"transfer","input":{"amount":500,"card_number":"4111111111111111"},"context":{"user_id":"u_1"}}')"
+RUN_DLP_DENY_BODY="$(echo "$RUN_DLP_DENY_WITH_CODE" | head -n1)"
+RUN_DLP_DENY_CODE="$(echo "$RUN_DLP_DENY_WITH_CODE" | tail -n1)"
+[[ "$RUN_DLP_DENY_CODE" == "403" ]] || fail "expected 403 got ${RUN_DLP_DENY_CODE} body=$RUN_DLP_DENY_BODY"
+assert_jq "$RUN_DLP_DENY_BODY" '.error.code=="POLICY_DENIED"'
+
+echo "[e2e] run transfer allowed with idempotency key"
+IDK="idem-$(date +%s)"
+RUN_OK="$(curl -fsS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
 assert_jq "$RUN_OK" '.decision == "allow"'
 assert_jq "$RUN_OK" '.tool_name == "transfer"'
 assert_jq "$RUN_OK" '.status == "success"'
 assert_jq "$RUN_OK" '.result.ok == true'
 assert_jq "$RUN_OK" '.result.amount == 500'
 assert_jq "$RUN_OK" '.result.tx_id | type=="string" and length>0'
+
+echo "[e2e] idempotency replay (same key, same payload)"
+RUN_REPLAY="$(curl -fsS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
+assert_jq "$RUN_REPLAY" '.idempotency.outcome=="REPLAY" and .status=="success"'
+TRANS_STATS="$(curl -fsS "${MOCK_BASE}/_stats/transfer")"
+assert_jq "$TRANS_STATS" '.execution_count == 1'
+
+echo "[e2e] idempotency conflict (same key, different input)"
+RUN_CONFLICT_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_CONFLICT_BODY="$(echo "$RUN_CONFLICT_WITH_CODE" | head -n1)"
+RUN_CONFLICT_CODE="$(echo "$RUN_CONFLICT_WITH_CODE" | tail -n1)"
+[[ "$RUN_CONFLICT_CODE" == "409" ]] || fail "expected 409 got ${RUN_CONFLICT_CODE} body=$RUN_CONFLICT_BODY"
+assert_jq "$RUN_CONFLICT_BODY" '.error.code=="IDEMPOTENCY_KEY_CONFLICT" or .status=="blocked"'
+
+echo "[e2e] idempotency in-progress"
+INPROG_KEY="idem-inprog-$(date +%s)"
+curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${INPROG_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":501,"sleep_ms":1500},"context":{"user_id":"u_1"}}' "${HTTP_BASE}/v1/run" >/tmp/inprog_first.json &
+sleep 0.2
+RUN_INPROG_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${INPROG_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":501,"sleep_ms":1500},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_INPROG_BODY="$(echo "$RUN_INPROG_WITH_CODE" | head -n1)"
+RUN_INPROG_CODE="$(echo "$RUN_INPROG_WITH_CODE" | tail -n1)"
+[[ "$RUN_INPROG_CODE" == "409" ]] || fail "expected 409 got ${RUN_INPROG_CODE} body=$RUN_INPROG_BODY"
+assert_jq "$RUN_INPROG_BODY" '.error.code=="IDEMPOTENCY_IN_PROGRESS" or .status=="blocked"'
+wait
+
+echo "[e2e] timeout budget exceeded"
+RUN_TIMEOUT_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: idem-timeout-$(date +%s)" -H "X-Timeout-Ms: 1000" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":510,"sleep_ms":2500},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_TIMEOUT_BODY="$(echo "$RUN_TIMEOUT_WITH_CODE" | head -n1)"
+RUN_TIMEOUT_CODE="$(echo "$RUN_TIMEOUT_WITH_CODE" | tail -n1)"
+[[ "$RUN_TIMEOUT_CODE" == "408" ]] || fail "expected 408 got ${RUN_TIMEOUT_CODE} body=$RUN_TIMEOUT_BODY"
+assert_jq "$RUN_TIMEOUT_BODY" '.error.code=="TIMEOUT_BUDGET_EXCEEDED" or .status=="error"'
+
+echo "[e2e] egress rules allow transfer host + deny mismatched host"
+EGR_UP_WITH_CODE="$(post_json "${HTTP_BASE}/v1/tools/transfer/egress-rules" '{"host":"mock-tools","enabled":true}')"
+EGR_UP_CODE="$(echo "$EGR_UP_WITH_CODE" | tail -n1)"
+[[ "$EGR_UP_CODE" == "204" ]] || fail "expected 204 got ${EGR_UP_CODE}"
+
+CREATE_BAD_WITH_CODE="$(post_json "${HTTP_BASE}/v1/tools" '{
+  "name":"ext-bad",
+  "kind":"http",
+  "method":"POST",
+  "url":"http://example.com/post",
+  "input_schema":{"type":"object"},
+  "action_type":"read",
+  "classification":"external",
+  "risk_level":2,
+  "enabled":true
+}')"
+CREATE_BAD_BODY="$(echo "$CREATE_BAD_WITH_CODE" | head -n1)"
+CREATE_BAD_CODE="$(echo "$CREATE_BAD_WITH_CODE" | tail -n1)"
+[[ "$CREATE_BAD_CODE" == "201" ]] || fail "expected 201 got ${CREATE_BAD_CODE} body=$CREATE_BAD_BODY"
+EGR_BAD_WITH_CODE="$(post_json "${HTTP_BASE}/v1/tools/ext-bad/egress-rules" '{"host":"mock-tools","enabled":true}')"
+EGR_BAD_CODE="$(echo "$EGR_BAD_WITH_CODE" | tail -n1)"
+[[ "$EGR_BAD_CODE" == "204" ]] || fail "expected 204 got ${EGR_BAD_CODE}"
+
+RUN_EGR_DENY_WITH_CODE="$(post_json "${HTTP_BASE}/v1/run" '{"tool_name":"ext-bad","input":{},"context":{}}')"
+RUN_EGR_DENY_BODY="$(echo "$RUN_EGR_DENY_WITH_CODE" | head -n1)"
+RUN_EGR_DENY_CODE="$(echo "$RUN_EGR_DENY_WITH_CODE" | tail -n1)"
+[[ "$RUN_EGR_DENY_CODE" == "403" ]] || fail "expected 403 got ${RUN_EGR_DENY_CODE} body=$RUN_EGR_DENY_BODY"
+assert_jq "$RUN_EGR_DENY_BODY" '.status=="blocked" and .error.code=="EGRESS_DENIED"'
 
 echo "[e2e] audit coherence + redaction"
 AUDIT="$(auth_curl "${HTTP_BASE}/v1/audit?tool_name=transfer&limit=10")"
@@ -246,5 +345,18 @@ assert_jq "$AUDIT" '.items | any(.status=="success")'
 assert_jq "$AUDIT" '.items | any(.status=="blocked")'
 assert_jq "$AUDIT" '.items | any(.input.card_number? == "***")'
 assert_jq "$AUDIT" '.items | any(.context.token? == "***")'
+assert_jq "$AUDIT" '.items | any(.dlp_summary.credit_card.count? >= 1)'
+assert_jq "$AUDIT" '.items[0].event_hash | type=="string"'
+
+echo "[e2e] mcp tools/list and tools/call"
+MCP_LIST="$(auth_curl -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' "${HTTP_BASE}/mcp")"
+assert_jq "$MCP_LIST" '.result.items | type=="array" and length>=2'
+MCP_CALL="$(auth_curl -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"tool_name":"echo","input":{"from":"mcp"},"context":{"user_id":"u_1"},"timeout_ms":5000}}' "${HTTP_BASE}/mcp")"
+assert_jq "$MCP_CALL" '.result.status=="success" and .result.result.received.from=="mcp"'
+
+echo "[e2e] audit export jsonl includes hash-chain"
+EXPORT_JSONL="$(auth_curl "${HTTP_BASE}/v1/audit/export?format=jsonl&tool_name=transfer&limit=5")"
+echo "$EXPORT_JSONL" | head -n 1 | jq -e '.event_hash | type=="string"' >/dev/null || fail "export missing event_hash"
+echo "$EXPORT_JSONL" | head -n 1 | jq -e '.hash_algo=="sha256"' >/dev/null || fail "export missing hash_algo"
 
 echo "[e2e] OK"

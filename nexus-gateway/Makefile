@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: dev down logs migrate-up migrate-down seed test e2e qa fmt wire
+.PHONY: dev down logs migrate-up migrate-down cleanup-idempotency seed test e2e jwt-e2e mcp-e2e secrets-e2e qa fmt wire
 
 dev:
 	docker compose up --build
@@ -17,6 +17,9 @@ migrate-up:
 migrate-down:
 	docker compose exec -T nexus-gateway /app/migrate -cmd down -steps 1
 
+cleanup-idempotency:
+	docker compose exec -T nexus-gateway /app/cleanup-idempotency
+
 seed:
 	bash scripts/seed_demo.sh
 
@@ -24,6 +27,15 @@ test:
 	go test ./...
 
 e2e:
+	bash scripts/e2e.sh
+
+jwt-e2e:
+	bash scripts/e2e_jwt.sh
+
+mcp-e2e:
+	bash scripts/e2e.sh
+
+secrets-e2e:
 	bash scripts/e2e.sh
 
 qa:

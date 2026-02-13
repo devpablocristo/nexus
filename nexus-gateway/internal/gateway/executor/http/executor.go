@@ -35,12 +35,12 @@ func NewExecutor(opts Options) *Executor {
 	}
 }
 
-func (e *Executor) Execute(ctx context.Context, method, rawURL string, input map[string]any) (any, int, *types.HTTPError) {
+func (e *Executor) Execute(ctx context.Context, method, rawURL string, input map[string]any, headers map[string]string) (any, int, *types.HTTPError) {
 	var lastErr *types.HTTPError
 	backoff := 200 * time.Millisecond
 	attempts := 1 + e.retries
 	for i := 0; i < attempts; i++ {
-		res, status, he := e.executeOnce(ctx, method, rawURL, input)
+		res, status, he := e.executeOnce(ctx, method, rawURL, input, headers)
 		if he == nil {
 			return res, status, nil
 		}
@@ -61,7 +61,7 @@ func (e *Executor) Execute(ctx context.Context, method, rawURL string, input map
 	return nil, 0, lastErr
 }
 
-func (e *Executor) executeOnce(ctx context.Context, method, rawURL string, input map[string]any) (any, int, *types.HTTPError) {
+func (e *Executor) executeOnce(ctx context.Context, method, rawURL string, input map[string]any, headers map[string]string) (any, int, *types.HTTPError) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, 0, &types.HTTPError{Status: 0, Code: types.ErrCodeValidation, Message: "invalid url"}
@@ -95,6 +95,9 @@ func (e *Executor) executeOnce(ctx context.Context, method, rawURL string, input
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := e.client.Do(req)

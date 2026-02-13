@@ -5,7 +5,11 @@ import (
 	"time"
 )
 
-type Limiter struct {
+type Adapter interface {
+	Allow(key string, perMinute int) bool
+}
+
+type InMemoryLimiter struct {
 	mu      sync.Mutex
 	windows map[string]*window
 	now     func() time.Time
@@ -16,14 +20,14 @@ type window struct {
 	count int
 }
 
-func NewLimiter() *Limiter {
-	return &Limiter{
+func NewInMemoryLimiter() *InMemoryLimiter {
+	return &InMemoryLimiter{
 		windows: make(map[string]*window),
 		now:     time.Now,
 	}
 }
 
-func (l *Limiter) Allow(key string, perMinute int) bool {
+func (l *InMemoryLimiter) Allow(key string, perMinute int) bool {
 	if perMinute <= 0 {
 		return true
 	}

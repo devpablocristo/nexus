@@ -1,11 +1,10 @@
 package ginmw
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 
+	httperr "nexus-gateway/pkg/http/errors"
 	"nexus-gateway/pkg/types"
 )
 
@@ -17,13 +16,7 @@ func Recovery(l zerolog.Logger) gin.HandlerFunc {
 					Str("request_id", RequestIDFromContext(c)).
 					Interface("panic", r).
 					Msg("panic")
-				c.AbortWithStatusJSON(http.StatusInternalServerError, types.ErrorResponse{
-					RequestID: RequestIDFromContext(c),
-					Error: types.APIError{
-						Code:    types.ErrCodeInternal,
-						Message: "internal error",
-					},
-				})
+				httperr.Write(c, 500, types.ErrCodeInternal, "internal error")
 			}
 		}()
 		c.Next()

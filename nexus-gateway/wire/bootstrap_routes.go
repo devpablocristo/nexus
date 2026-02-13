@@ -7,10 +7,14 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"nexus-gateway/cmd/config"
 	"nexus-gateway/internal/audit"
+	"nexus-gateway/internal/egress"
 	"nexus-gateway/internal/gateway"
+	"nexus-gateway/internal/mcp"
 	"nexus-gateway/internal/policy"
+	"nexus-gateway/internal/secrets"
 	"nexus-gateway/internal/tool"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	ginserver "nexus-gateway/pkg/http/servers/gin"
@@ -26,8 +30,14 @@ func NewRouter(
 	policyH *policy.Handler,
 	auditH *audit.Handler,
 	gwH *gateway.Handler,
+	secretH *secrets.Handler,
+	egressH *egress.Handler,
+	mcpH *mcp.Handler,
 ) *gin.Engine {
 	r := ginserver.NewEngine(ginserver.EngineOptions{}, ginmw.RequestID(), ginmw.Recovery(l), ginmw.BodyLimit(httpCfg.MaxBodyBytes), ginmw.LoggerMiddleware(l))
+	if cfg.OTelEnabled {
+		r.Use(otelgin.Middleware(cfg.OTelServiceName))
+	}
 
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -66,6 +76,12 @@ func NewRouter(
 	policyH.Register(v1)
 	auditH.Register(v1)
 	gwH.Register(v1)
+	secretH.Register(v1)
+	egressH.Register(v1)
+
+	mcpGroup := r.Group("")
+	mcpGroup.Use(authMw)
+	mcpH.Register(mcpGroup)
 
 	return r
 }

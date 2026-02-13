@@ -9,9 +9,14 @@ package wire
 import (
 	"nexus-gateway/cmd/config"
 	"nexus-gateway/internal/audit"
+	"nexus-gateway/internal/egress"
 	"nexus-gateway/internal/gateway"
+	"nexus-gateway/internal/gateway/executor/telemetry"
+	"nexus-gateway/internal/identity"
+	"nexus-gateway/internal/mcp"
 	"nexus-gateway/internal/org"
 	"nexus-gateway/internal/policy"
+	"nexus-gateway/internal/secrets"
 	"nexus-gateway/internal/tool"
 )
 
@@ -29,34 +34,66 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	httpServerConfig := ProvideHTTPServerConfig(cfg)
 	repository := org.NewRepository(db)
 	authUsecase := org.NewAuthUsecase(repository)
-	handlerFunc := NewAuthMiddleware(logger, authUsecase)
+	verifier := NewJWKSVerifier(serviceConfig)
+	identityConfig := NewIdentityConfig(serviceConfig)
+	service := identity.NewService(verifier, identityConfig)
+	handlerFunc := NewAuthMiddleware(logger, serviceConfig, authUsecase, service)
 	toolRepository := tool.NewRepository(db)
 	compilerCache := NewSchemaCache()
 	serviceImpl := tool.NewService(toolRepository, compilerCache)
 	handler := tool.NewHandler(serviceImpl)
 	policyRepository := policy.NewRepository(db)
 	toolLookupPort := ProvidePolicyToolLookup(serviceImpl)
-	service := policy.NewService(policyRepository, toolLookupPort)
-	policyHandler := policy.NewHandler(service)
+	policyService := policy.NewService(policyRepository, toolLookupPort)
+	policyHandler := policy.NewHandler(policyService)
 	auditRepository := audit.NewRepository(db)
 	auditService := audit.NewService(auditRepository)
 	auditHandler := audit.NewHandler(auditService)
 	toolRepoPort := ProvideGatewayToolRepo(toolRepository)
 	policyRepoPort := ProvideGatewayPolicyRepo(policyRepository)
 	auditRepoPort := ProvideGatewayAuditRepo(auditRepository)
-	limiter := NewRateLimiter()
-	rateLimiterPort := ProvideGatewayRateLimiter(limiter)
+	aesgcm, err := NewMasterCrypto(serviceConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	secretsRepository := secrets.NewRepository(db, aesgcm)
+	secretRepoPort := ProvideGatewaySecretRepo(secretsRepository)
+	egressRepository := egress.NewRepository(db)
+	egressToolLookupPort := ProvideEgressToolLookup(serviceImpl)
+	egressService := egress.NewService(egressRepository, egressToolLookupPort)
+	egressPort := ProvideGatewayEgressPort(egressService)
+	adapter, cleanup2, err := NewRateLimiter(serviceConfig)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	rateLimiterPort := ProvideGatewayRateLimiter(adapter)
 	executor := NewHTTPExecutor(serviceConfig)
 	httpExecutorPort := ProvideGatewayHTTPExecutor(executor)
+	idempotencyRepository := gateway.NewIdempotencyRepository(db)
+	idempotencyPort := ProvideGatewayIdempotencyRepo(idempotencyRepository)
+	runMetrics := telemetry.NewRunMetrics()
+	runMetricsPort := ProvideGatewayMetrics(runMetrics)
 	evaluator := policy.NewEvaluator()
+	detector := NewDLPDetector()
 	gatewayConfig := ProvideGatewayConfig(serviceConfig)
-	gatewayService := gateway.NewService(toolRepoPort, policyRepoPort, auditRepoPort, rateLimiterPort, httpExecutorPort, compilerCache, evaluator, gatewayConfig, logger)
+	gatewayService := gateway.NewService(toolRepoPort, policyRepoPort, auditRepoPort, secretRepoPort, egressPort, rateLimiterPort, httpExecutorPort, idempotencyPort, runMetricsPort, compilerCache, evaluator, detector, gatewayConfig, logger)
 	gatewayHandler := gateway.NewHandler(gatewayService)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, gatewayHandler)
+	secretsToolLookupPort := ProvideSecretsToolLookup(serviceImpl)
+	secretsService := secrets.NewService(secretsRepository, secretsToolLookupPort)
+	secretsHandler := secrets.NewHandler(secretsService)
+	egressHandler := egress.NewHandler(egressService)
+	toolPort := ProvideMCPToolPort(serviceImpl)
+	runPort := ProvideMCPRunPort(gatewayService)
+	mcpService := mcp.NewService(toolPort, runPort)
+	mcpHandler := mcp.NewHandler(mcpService)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler)
 	apiConfig := ProvideAPIConfig(cfg)
 	server := NewHTTPServer(apiConfig, engine)
 	app := NewApp(engine, server)
 	return app, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }

@@ -15,6 +15,16 @@ services:
       timeout: 3s
       retries: 30
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${NEXUS_REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   nexus-gateway:
     build:
       context: .
@@ -30,10 +40,28 @@ services:
       NEXUS_MAX_BODY_BYTES: "${NEXUS_MAX_BODY_BYTES}"
       NEXUS_LOG_LEVEL: "${NEXUS_LOG_LEVEL}"
       NEXUS_RATE_LIMIT_DEFAULT_PER_MINUTE: "${NEXUS_RATE_LIMIT_DEFAULT_PER_MINUTE}"
+      NEXUS_RATE_LIMIT_BACKEND: "${NEXUS_RATE_LIMIT_BACKEND}"
+      NEXUS_REDIS_URL: "${NEXUS_REDIS_URL}"
       NEXUS_SWAGGER_CDN: "${NEXUS_SWAGGER_CDN}"
+      NEXUS_MASTER_KEY: "${NEXUS_MASTER_KEY}"
+      NEXUS_AUTH_ALLOW_API_KEY: "${NEXUS_AUTH_ALLOW_API_KEY}"
+      NEXUS_AUTH_ENABLE_JWT: "${NEXUS_AUTH_ENABLE_JWT}"
+      NEXUS_JWKS_URL: "${NEXUS_JWKS_URL}"
+      NEXUS_JWT_ISSUER: "${NEXUS_JWT_ISSUER}"
+      NEXUS_JWT_AUDIENCE: "${NEXUS_JWT_AUDIENCE}"
+      NEXUS_JWT_ORG_CLAIM: "${NEXUS_JWT_ORG_CLAIM}"
+      NEXUS_JWT_ROLE_CLAIM: "${NEXUS_JWT_ROLE_CLAIM}"
+      NEXUS_JWT_SCOPES_CLAIM: "${NEXUS_JWT_SCOPES_CLAIM}"
+      NEXUS_JWT_ACTOR_CLAIM: "${NEXUS_JWT_ACTOR_CLAIM}"
+      NEXUS_OTEL_ENABLED: "${NEXUS_OTEL_ENABLED}"
+      NEXUS_OTEL_SERVICE_NAME: "${NEXUS_OTEL_SERVICE_NAME}"
+      NEXUS_OTLP_ENDPOINT: "${NEXUS_OTLP_ENDPOINT}"
+      NEXUS_OTLP_INSECURE: "${NEXUS_OTLP_INSECURE}"
       NEXUS_MIGRATIONS_DIR: "${NEXUS_MIGRATIONS_DIR}"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "${NEXUS_HTTP_PORT}:8080"

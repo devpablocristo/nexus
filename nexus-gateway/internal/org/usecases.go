@@ -3,15 +3,15 @@ package org
 import (
 	"context"
 
-	"github.com/google/uuid"
+	"nexus-gateway/internal/org/usecases/domain"
 )
 
 type APIKeyRepositoryPort interface {
-	FindOrgIDByAPIKeyHash(ctx context.Context, apiKeyHash string) (orgID uuid.UUID, storedHash string, err error)
+	FindPrincipalByAPIKeyHash(ctx context.Context, apiKeyHash string) (principal domain.Principal, storedHash string, err error)
 }
 
 type AuthUsecase interface {
-	ResolveOrgID(ctx context.Context, apiKeyHash string) (uuid.UUID, error)
+	ResolvePrincipal(ctx context.Context, apiKeyHash string) (domain.Principal, error)
 }
 
 type authService struct {
@@ -22,7 +22,7 @@ func NewAuthUsecase(repo APIKeyRepositoryPort) AuthUsecase {
 	return &authService{repo: repo}
 }
 
-func (s *authService) ResolveOrgID(ctx context.Context, apiKeyHash string) (uuid.UUID, error) {
-	orgID, _, err := s.repo.FindOrgIDByAPIKeyHash(ctx, apiKeyHash)
-	return orgID, err
+func (s *authService) ResolvePrincipal(ctx context.Context, apiKeyHash string) (domain.Principal, error) {
+	principal, _, err := s.repo.FindPrincipalByAPIKeyHash(ctx, apiKeyHash)
+	return principal, err
 }

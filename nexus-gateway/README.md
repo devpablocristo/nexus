@@ -1,126 +1,222 @@
-# Nexus Backend (MVP)
+# Nexus Gateway (Phase 2)
 
-Nexus is a B2B **Agent Tool Gateway**: a single, controlled entrypoint that AI agents use to execute tools safely (authn via API key, tool registry, JSON Schema validation, policy + rate-limit enforcement, HTTP tool execution, and append-only audit).
+Nexus Gateway is a multi-tenant Agent Tool Gateway for Platform/SecOps teams: agents call Nexus (not internal APIs directly), Nexus enforces authn/authz, schema, policies, DLP/egress controls, executes tools, and writes append-only redacted audit events.
 
-## Architecture (hexagonal)
+## Core architecture
 
 ```
-        HTTP (Gin)
-           |
-        Handlers  (internal/*/handler)
-           |
-        Usecases  (internal/*/usecases)  <-- ports (interfaces) live here
-        /     \
-   Repos      Executors
- (GORM)   (HTTP, RateLimit)
+Agent / MCP Client
+        |
+   REST + MCP (Gin)
+        |
+     Handlers
+        |
+     Usecases (ports)
+   /      |        \
+Repos  Executors   Security adapters
+(DB)   (HTTP)      (Secrets, Egress, DLP)
 ```
 
-Key rules:
-- Handlers depend only on usecase interfaces.
-- Usecases import no Gin/GORM.
-- Multi-tenancy enforced via `org_id` in every repository query.
+- `internal/<module>` contains domain modules (`org`, `tool`, `policy`, `audit`, `gateway`, `mcp`, `secrets`, `egress`, `dlp`).
+- `pkg/` stays domain-agnostic.
+- Usecases do not import Gin/GORM.
 
 ## Quickstart
 
 ```bash
+cp .env.example .env
 make dev
 make migrate-up
 make seed
 ```
 
-API:
+Docs:
 - Swagger UI: `http://localhost:8080/docs`
 - OpenAPI: `http://localhost:8080/openapi.yaml`
 
-## Verify (curl)
+## Authentication & delegation
 
-After `make seed`, the script prints `NEXUS_DEMO_API_KEY=...` once. Export it:
+Required header:
+- `X-NEXUS-GATEWAY-KEY`
 
-```bash
-export NEXUS_API_KEY="paste_key_here"
-```
+Optional delegation headers:
+- `X-NEXUS-ACTOR`
+- `X-NEXUS-ROLE`
+- `X-NEXUS-SCOPES` (comma-separated, intersected with key scopes)
+- `Authorization: Bearer <JWT>` (when `NEXUS_AUTH_ENABLE_JWT=true`)
 
-Health:
-```bash
-curl -sS http://localhost:8080/healthz | jq
-curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:8080/readyz
-```
+API keys are stored hashed (`SHA-256`) and resolved to tenant `org_id`.
+JWT/JWKS mode supports strong identity while keeping API key compatibility via flags:
+- `NEXUS_AUTH_ENABLE_JWT`
+- `NEXUS_AUTH_ALLOW_API_KEY`
 
-List tools:
-```bash
-curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" http://localhost:8080/v1/tools | jq
-```
+## Phase 2 capabilities
 
-Run echo:
-```bash
-curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{\"tool_name\":\"echo\",\"input\":{\"hello\":\"world\"},\"context\":{\"user_id\":\"u_123\"}}' \\
-  http://localhost:8080/v1/run | jq
-```
+- MCP server endpoint: `POST /mcp` (`tools/list`, `tools/get`, `tools/call`)
+- Policy simulator/explain endpoint: `POST /v1/run/simulate` (no upstream execution)
+- Secrets vault per tool/org (AES-GCM encrypted at rest)
+- Secret injection into outbound tool calls (`header` / `bearer`)
+- Delegation-aware policy context (`context.actor`, `context.role`, `context.scopes`)
+- Egress allowlist rules per tool (`host` allowlist)
+- DLP summary in runtime context (`context.dlp.*.count`) + persisted in audit (`dlp_summary`)
+- JWT + JWKS authentication mode (issuer/audience/claims configurable)
+- Redis distributed rate limiting (`NEXUS_RATE_LIMIT_BACKEND=redis`)
+- OpenTelemetry basics (HTTP traces + run counters/latency histograms)
+- Audit tamper-evident hash-chain (`prev_event_hash` + `event_hash`)
+- Idempotency for WRITE tools via `Idempotency-Key` (replay/conflict/in-progress semantics)
+- End-to-end timeout budget via `X-Timeout-Ms` (bounded + audited stage durations)
+- SIEM audit export endpoint: `GET /v1/audit/export?format=jsonl|csv`
+- Tool sensitivity level (`low|medium|high`) available for policy matching (`tool.sensitivity`)
 
-Transfer denied (amount > 1000):
-```bash
-curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{\"tool_name\":\"transfer\",\"input\":{\"amount\":5000,\"token\":\"secret\"},\"context\":{\"user_id\":\"u_123\"}}' \\
-  http://localhost:8080/v1/run | jq
-```
-Expected: `status=blocked`, `decision=deny`, `error.code=POLICY_DENIED`.
+## Security policy examples
 
-Transfer denied (missing `context.user_id`):
-```bash
-curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{\"tool_name\":\"transfer\",\"input\":{\"amount\":500},\"context\":{\"token\":\"secret\"}}' \\
-  http://localhost:8080/v1/run | jq
-```
+Deny exfiltration to external tools if credit cards are present:
 
-Transfer allowed:
-```bash
-curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{\"tool_name\":\"transfer\",\"input\":{\"amount\":500,\"card_number\":\"4111111111111111\"},\"context\":{\"user_id\":\"u_123\"}}' \\
-  http://localhost:8080/v1/run | jq
-```
-Expected: `status=success`, `decision=allow`, and audit redaction applied.
-
-Audit query:
-```bash
-curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \\
-  "http://localhost:8080/v1/audit?tool_name=transfer&limit=10" | jq
-```
-
-## Auth (API key hashing)
-
-- Clients send plaintext in `X-NEXUS-GATEWAY-KEY`.
-- Server computes SHA-256 hex and looks up `org_api_keys.api_key_hash`.
-- Server never logs plaintext keys (only truncated hash if needed).
-
-## Policy DSL examples
-
-Leaf:
-```json
-{ "path": "input.amount", "op": "lte", "value": 1000 }
-```
-
-Boolean:
 ```json
 {
   "all": [
-    { "path": "input.amount", "op": "lte", "value": 1000 },
-    { "path": "context.user_id", "op": "exists" }
+    { "path": "context.dlp.credit_card.count", "op": "gt", "value": 0 },
+    { "path": "tool.classification", "op": "eq", "value": "external" }
   ]
 }
 ```
 
-## Audit query
+Allow only SecOps actor role for sensitive operations:
 
-`GET /v1/audit?tool_name=...&decision=allow|deny&status=success|error|blocked&from=...&to=...&limit=...`
+```json
+{
+  "path": "context.role",
+  "op": "eq",
+  "value": "secops"
+}
+```
 
-## MVP limitations
+## cURL examples
 
-- In-memory rate limiting (single instance).
-- HTTP tools only.
-- No UI and no user auth beyond API key.
+Export key after `make seed`:
 
+```bash
+export NEXUS_API_KEY="<printed-by-seed>"
+```
+
+Run tool via REST:
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"u_1"}}' \
+  http://localhost:8080/v1/run | jq
+```
+
+MCP tools/list:
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+  http://localhost:8080/mcp | jq
+```
+
+Create encrypted secret for `echo` tool (requires `X-NEXUS-ROLE: secops` or `admin:secrets` scope):
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "X-NEXUS-ROLE: secops" \
+  -H "Content-Type: application/json" \
+  -d '{"secret_type":"header","key_name":"X-Injected-Token","value":"top-secret","enabled":true}' \
+  http://localhost:8080/v1/tools/echo/secrets | jq
+```
+
+Set egress allowlist:
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" \
+  -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"mock-tools","enabled":true}' \
+  http://localhost:8080/v1/tools/transfer/egress-rules
+```
+
+Simulate decision/explain (dry-run):
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"transfer","input":{"amount":1500,"card_number":"4111111111111111"},"context":{"user_id":"u_1"}}' \
+  http://localhost:8080/v1/run/simulate | jq
+```
+
+## QA commands
+
+- `make test`: unit/integration tests
+- `make e2e`: full API e2e (REST + MCP + secrets + egress + DLP checks)
+- `make jwt-e2e`: JWT/JWKS e2e (`Authorization: Bearer`, API key fallback off)
+- `make qa`: full pipeline (`down` → `up` → `migrate` → `seed` → `test` → `e2e`)
+- `make cleanup-idempotency`: delete expired idempotency records
+
+## Sellable demo route
+
+1) Start stack + seed:
+
+```bash
+cp .env.example .env
+make dev
+make migrate-up
+make seed
+```
+
+2) Export API key from seed output:
+
+```bash
+export NEXUS_API_KEY="<seed-output-value>"
+```
+
+3) Show DLP + external classification deny:
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"transfer","input":{"amount":500,"card_number":"4111111111111111"},"context":{"user_id":"u_1"}}' \
+  http://localhost:8080/v1/run | jq
+```
+
+4) Run WRITE with idempotency + timeout:
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Idempotency-Key: demo-transfer-001" \
+  -H "X-Timeout-Ms: 10000" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1"}}' \
+  http://localhost:8080/v1/run | jq
+```
+
+5) Replay with same idempotency key:
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Idempotency-Key: demo-transfer-001" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1"}}' \
+  http://localhost:8080/v1/run | jq
+```
+
+6) Export SIEM JSONL with hash-chain:
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  "http://localhost:8080/v1/audit/export?format=jsonl&tool_name=transfer&limit=20"
+```
+
+## Threat model (brief)
+
+Protects against:
+- direct agent access to internal APIs bypassing policy
+- plaintext secret leakage in DB/audit/logs
+- outbound calls to non-approved hosts (egress)
+- accidental exfiltration via simple PII/token detection and policy gates
+
+Does not fully protect against:
+- compromised tenant-provided API key
+- advanced content-transform exfiltration and semantic PII evasions
+- side-channel leakage in upstream systems outside Nexus control

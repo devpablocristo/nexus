@@ -2,15 +2,13 @@ package policy
 
 import (
 	"encoding/json"
-	"errors"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"nexus-gateway/internal/policy/handler/dto"
 	policydomain "nexus-gateway/internal/policy/usecases/domain"
-	ginmw "nexus-gateway/pkg/http/middlewares/gin"
+	httperr "nexus-gateway/pkg/http/errors"
 	"nexus-gateway/pkg/types"
 )
 
@@ -33,15 +31,15 @@ func (h *Handler) createForTool(c *gin.Context) {
 	toolName := c.Param("name")
 	var req CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, types.ErrCodeValidation, "invalid json")
+		httperr.BadRequest(c, "invalid json")
 		return
 	}
 	created, err := h.svc.CreateForTool(c.Request.Context(), orgID, toolName, req)
 	if err != nil {
-		writeUCError(c, err)
+		httperr.WriteFrom(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, toResp(created))
+	c.JSON(201, toResp(created))
 }
 
 func (h *Handler) listForTool(c *gin.Context) {
@@ -49,14 +47,14 @@ func (h *Handler) listForTool(c *gin.Context) {
 	toolName := c.Param("name")
 	items, err := h.svc.ListForTool(c.Request.Context(), orgID, toolName)
 	if err != nil {
-		writeUCError(c, err)
+		httperr.WriteFrom(c, err)
 		return
 	}
 	out := dto.ListPoliciesResponse{Items: make([]dto.PolicyResponse, 0, len(items))}
 	for _, p := range items {
 		out.Items = append(out.Items, toResp(p))
 	}
-	c.JSON(http.StatusOK, out)
+	c.JSON(200, out)
 }
 
 func (h *Handler) updateByID(c *gin.Context) {
@@ -64,7 +62,7 @@ func (h *Handler) updateByID(c *gin.Context) {
 	idStr := c.Param("id")
 	pid, err := uuid.Parse(idStr)
 	if err != nil {
-		writeError(c, http.StatusBadRequest, types.ErrCodeValidation, "invalid id")
+		httperr.BadRequest(c, "invalid id")
 		return
 	}
 	var req struct {
@@ -76,7 +74,7 @@ func (h *Handler) updateByID(c *gin.Context) {
 		Enabled        *bool           `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		writeError(c, http.StatusBadRequest, types.ErrCodeValidation, "invalid json")
+		httperr.BadRequest(c, "invalid json")
 		return
 	}
 	updated, err := h.svc.UpdateByID(c.Request.Context(), orgID, pid, PolicyPatch{
@@ -88,10 +86,10 @@ func (h *Handler) updateByID(c *gin.Context) {
 		Enabled:        req.Enabled,
 	})
 	if err != nil {
-		writeUCError(c, err)
+		httperr.WriteFrom(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, toResp(updated))
+	c.JSON(200, toResp(updated))
 }
 
 func toResp(p policydomain.Policy) dto.PolicyResponse {
@@ -124,18 +122,4 @@ func mustOrgID(c *gin.Context) uuid.UUID {
 	return uuid.Nil
 }
 
-func writeUCError(c *gin.Context, err error) {
-	var he types.HTTPError
-	if errors.As(err, &he) {
-		writeError(c, he.Status, he.Code, he.Message)
-		return
-	}
-	writeError(c, http.StatusInternalServerError, types.ErrCodeInternal, "internal error")
-}
-
-func writeError(c *gin.Context, status int, code, msg string) {
-	c.AbortWithStatusJSON(status, types.ErrorResponse{
-		RequestID: ginmw.RequestIDFromContext(c),
-		Error:     types.APIError{Code: code, Message: msg},
-	})
-}
+// centralized error handling via pkg/http/errors

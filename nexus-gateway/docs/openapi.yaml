@@ -87,6 +87,121 @@ paths:
           schema: { type: string }
       responses:
         "201": { description: Created }
+  /v1/tools/{name}/secrets:
+    get:
+      summary: List tool secrets metadata (no plaintext values)
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "403": { description: Requires secops/admin:secrets }
+    post:
+      summary: Upsert tool secret (encrypted at rest)
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                secret_type: { type: string, enum: [header, bearer] }
+                key_name: { type: string }
+                value: { type: string }
+                enabled: { type: boolean }
+              required: [secret_type, value]
+      responses:
+        "200": { description: OK }
+        "403": { description: Requires secops/admin:secrets }
+    delete:
+      summary: Delete secret by key_name
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: key_name
+          in: query
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "403": { description: Requires secops/admin:secrets }
+  /v1/tools/{name}/egress-rules:
+    get:
+      summary: List host allowlist for a tool
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Upsert host allowlist rule
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                host: { type: string }
+                enabled: { type: boolean }
+              required: [host]
+      responses:
+        "204": { description: OK }
+    delete:
+      summary: Delete egress rule by host
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: host
+          in: query
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+  /mcp:
+    post:
+      summary: MCP JSON-RPC endpoint (tools/list, tools/get, tools/call)
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-Timeout-Ms
+          in: header
+          required: false
+          schema: { type: integer, minimum: 1000, maximum: 30000 }
+      responses:
+        "200": { description: JSON-RPC response }
   /v1/policies/{id}:
     put:
       summary: Update policy (partial)
@@ -104,11 +219,30 @@ paths:
       summary: Run a tool through Nexus
       security:
         - NexusApiKey: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+        - name: X-Timeout-Ms
+          in: header
+          required: false
+          schema: { type: integer, minimum: 1000, maximum: 30000 }
       responses:
         "200": { description: Success }
+        "408": { description: Timeout budget exceeded }
+        "409": { description: Idempotency conflict/in-progress }
         "403": { description: Blocked }
         "400": { description: Validation error }
         "502": { description: Upstream error }
+  /v1/run/simulate:
+    post:
+      summary: Simulate policy decision without executing upstream
+      security:
+        - NexusApiKey: []
+      responses:
+        "200": { description: Simulation result }
+        "403": { description: Blocked by policy/egress }
   /v1/audit:
     get:
       summary: Query audit events
@@ -135,10 +269,42 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
       responses:
         "200": { description: OK }
+  /v1/audit/export:
+    get:
+      summary: Export audit events for SIEM ingestion (jsonl/csv)
+      security:
+        - NexusApiKey: []
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [jsonl, csv], default: jsonl }
+        - name: tool_name
+          in: query
+          schema: { type: string }
+        - name: decision
+          in: query
+          schema: { type: string, enum: [allow, deny] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [success, error, blocked] }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 5000, default: 1000 }
+      responses:
+        "200": { description: Stream export payload }
+        "400": { description: Invalid format or range }
 components:
   securitySchemes:
     NexusApiKey:
       type: apiKey
       in: header
       name: X-NEXUS-GATEWAY-KEY
-
+      description: |
+        Required for all protected endpoints.
+        Optional delegation headers: X-NEXUS-ACTOR, X-NEXUS-ROLE, X-NEXUS-SCOPES.

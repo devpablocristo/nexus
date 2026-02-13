@@ -8,12 +8,14 @@ import (
 )
 
 type ToolAttributes struct {
-	Name       string
-	Kind       string
-	Method     string
-	URL        string
-	ActionType string
-	RiskLevel  int
+	Name           string
+	Kind           string
+	Method         string
+	URL            string
+	ActionType     string
+	Classification string
+	Sensitivity    string
+	RiskLevel      int
 }
 
 type Evaluator struct{}
@@ -174,12 +176,14 @@ func getPathValue(path string, input, context map[string]any, tool ToolAttribute
 		return traverse(context, rest)
 	case "tool":
 		toolMap := map[string]any{
-			"name":        tool.Name,
-			"kind":        tool.Kind,
-			"method":      tool.Method,
-			"url":         tool.URL,
-			"action_type": tool.ActionType,
-			"risk_level":  float64(tool.RiskLevel),
+			"name":           tool.Name,
+			"kind":           tool.Kind,
+			"method":         tool.Method,
+			"url":            tool.URL,
+			"action_type":    tool.ActionType,
+			"classification": tool.Classification,
+			"sensitivity":    tool.Sensitivity,
+			"risk_level":     float64(tool.RiskLevel),
 		}
 		return traverse(toolMap, rest)
 	default:

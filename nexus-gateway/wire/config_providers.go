@@ -15,5 +15,9 @@ func ProvideGatewayConfig(cfg config.ServiceConfig) gateway.Config {
 		DefaultRateLimitPerMinute: cfg.RateLimitDefaultPerMin,
 		MaxBytesInputDefault:      262144,
 		MaxBytesContextDefault:    65536,
+		IdempotencyTTLHours:       cfg.IdempotencyTTLHours,
+		TimeoutBudgetDefaultMS:    cfg.TimeoutBudgetDefaultMS,
+		TimeoutBudgetMinMS:        cfg.TimeoutBudgetMinMS,
+		TimeoutBudgetMaxMS:        cfg.TimeoutBudgetMaxMS,
 	}
 }

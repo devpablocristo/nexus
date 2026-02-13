@@ -34,6 +34,8 @@ func (r *Repository) Create(ctx context.Context, orgID uuid.UUID, t tooldomain.T
 		InputSchemaJSON:  t.InputSchemaJSON,
 		OutputSchemaJSON: t.OutputSchemaJSON,
 		ActionType:       string(t.ActionType),
+		Classification:   t.Classification,
+		Sensitivity:      t.Sensitivity,
 		RiskLevel:        t.RiskLevel,
 		Enabled:          t.Enabled,
 	}
@@ -92,6 +94,12 @@ func (r *Repository) UpdateByName(ctx context.Context, orgID uuid.UUID, name str
 	if patch.ActionType != nil {
 		row.ActionType = *patch.ActionType
 	}
+	if patch.Classification != nil {
+		row.Classification = *patch.Classification
+	}
+	if patch.Sensitivity != nil {
+		row.Sensitivity = *patch.Sensitivity
+	}
 	if patch.RiskLevel != nil {
 		row.RiskLevel = *patch.RiskLevel
 	}
@@ -125,6 +133,8 @@ func toDomain(m models.Tool) tooldomain.Tool {
 		InputSchemaJSON:  []byte(m.InputSchemaJSON),
 		OutputSchemaJSON: []byte(m.OutputSchemaJSON),
 		ActionType:       tooldomain.ActionType(m.ActionType),
+		Classification:   m.Classification,
+		Sensitivity:      m.Sensitivity,
 		RiskLevel:        m.RiskLevel,
 		Enabled:          m.Enabled,
 		CreatedAt:        m.CreatedAt,

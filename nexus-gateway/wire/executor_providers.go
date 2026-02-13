@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/wire"
@@ -15,8 +16,15 @@ var ExecutorSet = wire.NewSet(
 	NewHTTPExecutor,
 )
 
-func NewRateLimiter() *ratelimit.Limiter {
-	return ratelimit.NewLimiter()
+func NewRateLimiter(cfg config.ServiceConfig) (ratelimit.Adapter, func(), error) {
+	if strings.EqualFold(cfg.RateLimitBackend, "redis") {
+		limiter, cleanup, err := ratelimit.NewRedisLimiter(cfg.RedisURL)
+		if err != nil {
+			return nil, nil, err
+		}
+		return limiter, cleanup, nil
+	}
+	return ratelimit.NewInMemoryLimiter(), func() {}, nil
 }
 
 func NewHTTPExecutor(cfg config.ServiceConfig) *exechttp.Executor {

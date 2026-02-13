@@ -30,6 +30,8 @@ type Tool struct {
 	InputSchemaJSON  []byte
 	OutputSchemaJSON []byte
 	ActionType       ActionType
+	Classification   string
+	Sensitivity      string
 	RiskLevel        int
 	Enabled          bool
 	CreatedAt        time.Time

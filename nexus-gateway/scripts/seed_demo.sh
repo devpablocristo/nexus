@@ -58,8 +58,17 @@ DELETE FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='demo-key';
 INSERT INTO org_api_keys(org_id, api_key_hash, name)
 VALUES (:'org_id'::uuid, '${API_KEY_HASH}', 'demo-key');
 
+DELETE FROM org_api_key_scopes
+WHERE api_key_id IN (
+  SELECT id FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='demo-key'
+);
+INSERT INTO org_api_key_scopes(api_key_id, scope)
+SELECT id, 'admin:secrets'
+FROM org_api_keys
+WHERE org_id=:'org_id'::uuid AND name='demo-key';
+
 WITH upsert_echo AS (
-  INSERT INTO tools(org_id, name, kind, description, method, url, input_schema_json, output_schema_json, action_type, risk_level, enabled)
+  INSERT INTO tools(org_id, name, kind, description, method, url, input_schema_json, output_schema_json, action_type, classification, risk_level, enabled)
   VALUES (
     :'org_id'::uuid,
     'echo',
@@ -70,6 +79,7 @@ WITH upsert_echo AS (
     '{"type":"object"}'::jsonb,
     NULL,
     'read',
+    'internal',
     1,
     true
   )
@@ -81,12 +91,14 @@ WITH upsert_echo AS (
     input_schema_json=EXCLUDED.input_schema_json,
     output_schema_json=EXCLUDED.output_schema_json,
     action_type=EXCLUDED.action_type,
+    classification=EXCLUDED.classification,
+    sensitivity='low',
     risk_level=EXCLUDED.risk_level,
     enabled=EXCLUDED.enabled
   RETURNING id
 ),
 upsert_transfer AS (
-  INSERT INTO tools(org_id, name, kind, description, method, url, input_schema_json, output_schema_json, action_type, risk_level, enabled)
+  INSERT INTO tools(org_id, name, kind, description, method, url, input_schema_json, output_schema_json, action_type, classification, sensitivity, risk_level, enabled)
   VALUES (
     :'org_id'::uuid,
     'transfer',
@@ -97,6 +109,8 @@ upsert_transfer AS (
     '{"type":"object","properties":{"amount":{"type":"number"}},"required":["amount"],"additionalProperties":true}'::jsonb,
     NULL,
     'write',
+    'external',
+    'high',
     3,
     true
   )
@@ -108,6 +122,8 @@ upsert_transfer AS (
     input_schema_json=EXCLUDED.input_schema_json,
     output_schema_json=EXCLUDED.output_schema_json,
     action_type=EXCLUDED.action_type,
+    classification=EXCLUDED.classification,
+    sensitivity=EXCLUDED.sensitivity,
     risk_level=EXCLUDED.risk_level,
     enabled=EXCLUDED.enabled
   RETURNING id
@@ -147,6 +163,16 @@ VALUES
     :'org_id'::uuid,
     :'transfer_tool_id'::uuid,
     'deny',
+    5,
+    '{"all":[{"path":"tool.classification","op":"eq","value":"external"},{"path":"context.dlp.credit_card.count","op":"gt","value":0}]}'::jsonb,
+    '{}'::jsonb,
+    'Denied: card data cannot be sent to external tools',
+    true
+  ),
+  (
+    :'org_id'::uuid,
+    :'transfer_tool_id'::uuid,
+    'deny',
     10,
     '{"path":"input.amount","op":"gt","value":1000}'::jsonb,
     '{}'::jsonb,
@@ -159,7 +185,7 @@ VALUES
     'allow',
     20,
     '{"all":[{"path":"input.amount","op":"lte","value":1000},{"path":"context.user_id","op":"exists"}]}'::jsonb,
-    '{}'::jsonb,
+    '{"require_idempotency":true}'::jsonb,
     'Allowed',
     true
   );

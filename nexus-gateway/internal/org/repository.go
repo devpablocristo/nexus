@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"nexus-gateway/internal/org/repository/models"
+	orgdomain "nexus-gateway/internal/org/usecases/domain"
 	"nexus-gateway/pkg/types"
 )
 
@@ -20,22 +21,28 @@ func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) FindOrgIDByAPIKeyHash(ctx context.Context, apiKeyHash string) (uuid.UUID, string, error) {
+func (r *Repository) FindPrincipalByAPIKeyHash(ctx context.Context, apiKeyHash string) (orgdomain.Principal, string, error) {
 	var row models.OrgAPIKey
 	err := r.db.WithContext(ctx).
-		Select("org_id", "api_key_hash").
+		Select("id", "org_id", "api_key_hash").
 		Where("api_key_hash = ?", apiKeyHash).
 		Take(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return uuid.Nil, "", types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid api key")
+			return orgdomain.Principal{}, "", types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid api key")
 		}
-		return uuid.Nil, "", err
+		return orgdomain.Principal{}, "", err
 	}
 	if subtle.ConstantTimeCompare([]byte(row.APIKeyHash), []byte(apiKeyHash)) != 1 {
-		return uuid.Nil, row.APIKeyHash, types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid api key")
+		return orgdomain.Principal{}, row.APIKeyHash, types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid api key")
 	}
-	return row.OrgID, row.APIKeyHash, nil
+	var scopes []string
+	if err := r.db.WithContext(ctx).Model(&models.OrgAPIKeyScope{}).
+		Where("api_key_id = ?", row.ID).
+		Pluck("scope", &scopes).Error; err != nil {
+		return orgdomain.Principal{}, row.APIKeyHash, err
+	}
+	return orgdomain.Principal{OrgID: row.OrgID, Scopes: scopes}, row.APIKeyHash, nil
 }
 
 // Helpers for seed/tests.
@@ -70,4 +77,28 @@ func (r *Repository) UpsertAPIKey(ctx context.Context, orgID uuid.UUID, apiKeyHa
 	row := models.OrgAPIKey{OrgID: orgID, APIKeyHash: apiKeyHash, Name: name}
 	row.ID = uuid.New()
 	return r.db.WithContext(ctx).Create(&row).Error
+}
+
+func (r *Repository) ReplaceAPIKeyScopes(ctx context.Context, apiKeyHash string, scopes []string) error {
+	var key models.OrgAPIKey
+	if err := r.db.WithContext(ctx).Where("api_key_hash = ?", apiKeyHash).Take(&key).Error; err != nil {
+		return err
+	}
+	if err := r.db.WithContext(ctx).Where("api_key_id = ?", key.ID).Delete(&models.OrgAPIKeyScope{}).Error; err != nil {
+		return err
+	}
+	for _, scope := range scopes {
+		if scope == "" {
+			continue
+		}
+		row := models.OrgAPIKeyScope{
+			ID:       uuid.New(),
+			APIKeyID: key.ID,
+			Scope:    scope,
+		}
+		if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

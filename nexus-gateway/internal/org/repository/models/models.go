@@ -19,3 +19,10 @@ type OrgAPIKey struct {
 	Name       string
 	CreatedAt  time.Time
 }
+
+type OrgAPIKeyScope struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
+	APIKeyID  uuid.UUID `gorm:"type:uuid;index"`
+	Scope     string
+	CreatedAt time.Time
+}

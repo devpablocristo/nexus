@@ -11,7 +11,12 @@ import (
 )
 
 func main() {
-	r := NewRouter()
+	auth, err := NewAuthArtifacts()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	r := NewRouter(auth)
 	srv := &http.Server{
 		Addr:              "0.0.0.0:8081",
 		Handler:           r,

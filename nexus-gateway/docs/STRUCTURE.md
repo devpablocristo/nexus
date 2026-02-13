@@ -6,22 +6,33 @@
 - `internal/<module>/usecases`: application logic and ports (interfaces).
 - `internal/<module>/repository`: GORM adapters implementing ports.
 - `internal/gateway/executor/*`: gateway adapters (HTTP executor, rate limiting).
+- `internal/identity`: JWT/JWKS authentication usecase + verifier adapter.
+- `internal/gateway/idempotency_repository.go`: idempotency key persistence for write tools.
+- `internal/dlp`: PII/token detectors used to produce `context.dlp` summary.
+- `internal/secrets`: encrypted secret vault + secure injection metadata.
+- `internal/egress`: per-tool host allowlist adapter.
+- `internal/mcp`: MCP JSON-RPC endpoint (`tools/list|get|call`).
 - `pkg/*`: domain-agnostic reusable packages (no Org/Tool/Policy/Audit terms).
 
 Esta sección describe **estructura de carpetas**, no la arquitectura lógica por sí sola.
 
 ## Request flow (/v1/run)
 
-1. **Auth middleware** resolves `org_id` from `X-NEXUS-GATEWAY-KEY` and injects `org_id` + actor (`X-NEXUS-ACTOR`) into context.
+1. **Auth middleware** resolves principal from API key and/or JWT/JWKS, then injects `org_id`, actor/role/scopes into context.
 2. `gateway/handler` parses request, ensures/creates `request_id`, then calls the gateway usecase port.
 3. `gateway/usecases` orchestrates:
    - tool resolve by `(org_id, tool_name)`
    - JSON Schema validation of `input`
-   - policy evaluation (conditions + limits + rate-limit)
+   - DLP summary generation (`context.dlp.*`)
+   - policy evaluation (conditions + limits + distributed/in-memory rate-limit + actor/role/scopes + dlp)
+   - egress allowlist validation
+   - secret lookup/decrypt and runtime header injection
    - tool execution (HTTP executor)
    - output validation (best effort)
-   - audit event persistence (redacted)
-4. `audit/repository` persists an append-only row in `audit_events`.
+   - idempotency handling (`Idempotency-Key`) for write tools
+   - timeout budget handling (`X-Timeout-Ms`) and stage timings
+   - audit event persistence (redacted + `dlp_summary` + hash-chain + idempotency/budget fields)
+4. `mcp/handler` maps MCP methods to tool/gateway usecases without bypassing controls.
 
 ## Multi-tenancy enforcement
 
@@ -34,4 +45,5 @@ Every repository method accepts `orgID` and applies `WHERE org_id = ?` filters (
 ## Wire organization
 
 - Exactly one injector in `wire/wire.go`: `InitializeAPI(cfg) (*App, func(), error)`
-- Provider sets are grouped by infra (`ConfigSet`, `BootstrapSet`, `MiddlewareSet`, `ExecutorSet`) and by module (`OrgSet`, `ToolSet`, `PolicySet`, `AuditSet`, `GatewaySet`).
+- Provider sets are grouped by infra (`BootstrapSet`, `MiddlewareSet`, `ExecutorSet`) and by module (`OrgSet`, `ToolSet`, `PolicySet`, `AuditSet`, `SecretsSet`, `EgressSet`, `GatewaySet`, `MCPSet`).
+- Telemetry is initialized in `cmd/api/main.go` and request tracing is attached via Gin middleware.

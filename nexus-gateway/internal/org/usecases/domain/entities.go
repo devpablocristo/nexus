@@ -19,3 +19,8 @@ type APIKey struct {
 	Name       string
 	CreatedAt  time.Time
 }
+
+type Principal struct {
+	OrgID  uuid.UUID
+	Scopes []string
+}
