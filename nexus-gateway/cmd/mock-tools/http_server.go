@@ -96,8 +96,9 @@ func NewRouter(auth *AuthArtifacts) *gin.Engine {
 
 	r.POST("/transfer", func(c *gin.Context) {
 		var body struct {
-			Amount  float64 `json:"amount"`
-			SleepMS int     `json:"sleep_ms"`
+			Amount   float64 `json:"amount"`
+			SleepMS  int     `json:"sleep_ms"`
+			Force5xx bool    `json:"force_5xx"`
 		}
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -115,6 +116,12 @@ func NewRouter(auth *AuthArtifacts) *gin.Engine {
 			time.Sleep(time.Duration(body.SleepMS) * time.Millisecond)
 		}
 		currentCount := transferExecCount.Add(1)
+		if body.Force5xx {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": gin.H{"code": "UPSTREAM_TEST_5XX", "message": "forced upstream failure"},
+			})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"ok":              true,
 			"tx_id":           uuid.NewString(),

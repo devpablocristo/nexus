@@ -21,7 +21,9 @@ import (
 
 type fakeToolRepo struct{ tool tooldomain.Tool }
 
-func (f fakeToolRepo) GetByName(context.Context, uuid.UUID, string) (tooldomain.Tool, error) { return f.tool, nil }
+func (f fakeToolRepo) GetByName(context.Context, uuid.UUID, string) (tooldomain.Tool, error) {
+	return f.tool, nil
+}
 
 type fakePolicyRepo struct{}
 
@@ -41,7 +43,9 @@ func (fakeSecretRepo) ListForTool(context.Context, uuid.UUID, uuid.UUID) ([]secr
 
 type fakeEgress struct{}
 
-func (fakeEgress) IsHostAllowed(context.Context, uuid.UUID, uuid.UUID, string) (bool, error) { return true, nil }
+func (fakeEgress) IsHostAllowed(context.Context, uuid.UUID, uuid.UUID, string) (bool, error) {
+	return true, nil
+}
 
 type fakeLimiter struct{}
 
@@ -61,12 +65,16 @@ type fakeIdempotency struct {
 func (f fakeIdempotency) Get(context.Context, uuid.UUID, string, string) (*gwdomain.IdempotencyRecord, error) {
 	return f.record, nil
 }
-func (f fakeIdempotency) CreateInProgress(context.Context, gwdomain.IdempotencyRecord) error { return nil }
+func (f fakeIdempotency) CreateInProgress(context.Context, gwdomain.IdempotencyRecord) error {
+	return nil
+}
 func (f fakeIdempotency) MarkCompleted(context.Context, uuid.UUID, string, string, map[string]any) error {
 	return nil
 }
-func (f fakeIdempotency) MarkFailed(context.Context, uuid.UUID, string, string, *string) error { return nil }
-func (f fakeIdempotency) DeleteExpired(context.Context, time.Time) (int64, error)               { return 0, nil }
+func (f fakeIdempotency) MarkFailed(context.Context, uuid.UUID, string, string, *string, map[string]any) error {
+	return nil
+}
+func (f fakeIdempotency) DeleteExpired(context.Context, time.Time) (int64, error) { return 0, nil }
 
 type fakeMetrics struct{}
 
@@ -216,3 +224,86 @@ func TestRun_IdempotencyConflict(t *testing.T) {
 	}
 }
 
+func TestRun_IdempotencyFailedReplayReturnsCachedError(t *testing.T) {
+	orgID := uuid.New()
+	toolID := uuid.New()
+	actor := "bot-1"
+	role := "bot"
+	scopes := []string{"tools:run"}
+	input := map[string]any{"amount": 10.0}
+	fp, err := buildRequestFingerprint("transfer", input, &actor, &role, scopes)
+	if err != nil {
+		t.Fatalf("build fp: %v", err)
+	}
+
+	exec := &fakeExecutor{}
+	svc := NewService(
+		fakeToolRepo{tool: tooldomain.Tool{
+			ID:         toolID,
+			OrgID:      orgID,
+			Name:       "transfer",
+			Kind:       tooldomain.ToolKindHTTP,
+			Method:     "POST",
+			URL:        "http://mock/transfer",
+			ActionType: tooldomain.ActionWrite,
+			Enabled:    true,
+		}},
+		fakePolicyRepo{},
+		fakeAuditRepo{},
+		fakeSecretRepo{},
+		fakeEgress{},
+		fakeLimiter{},
+		exec,
+		fakeIdempotency{record: &gwdomain.IdempotencyRecord{
+			OrgID:              orgID,
+			ToolName:           "transfer",
+			IdempotencyKey:     "k-failed",
+			RequestFingerprint: fp,
+			Status:             gwdomain.IdempotencyStatusFailed,
+			ErrorCode:          ptr(types.ErrCodeUpstream5xx),
+			ResponseRedacted: map[string]any{
+				"status":      "error",
+				"decision":    "allow",
+				"http_status": float64(502),
+				"error": map[string]any{
+					"code":    types.ErrCodeUpstream5xx,
+					"message": "upstream 5xx",
+				},
+			},
+		}},
+		fakeMetrics{},
+		jsonschema.NewCompilerCache(),
+		policy.NewEvaluator(),
+		dlp.NewDetector(),
+		Config{TimeoutBudgetDefaultMS: 10000, TimeoutBudgetMinMS: 1000, TimeoutBudgetMaxMS: 30000},
+		zerolog.Nop(),
+	)
+
+	idk := "k-failed"
+	resp, err := svc.Run(context.Background(), orgID, gwdomain.RunRequest{
+		ToolName:       "transfer",
+		Input:          input,
+		Context:        map[string]any{},
+		Actor:          &actor,
+		Role:           &role,
+		Scopes:         scopes,
+		IdempotencyKey: &idk,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if resp.Idempotency.Outcome != gwdomain.IdempotencyReplay {
+		t.Fatalf("expected replay got %s", resp.Idempotency.Outcome)
+	}
+	if resp.Status != gwdomain.RunStatusError {
+		t.Fatalf("expected error status got %s", resp.Status)
+	}
+	if resp.ErrorCode == nil || *resp.ErrorCode != types.ErrCodeUpstream5xx {
+		t.Fatalf("expected upstream error code got %+v", resp.ErrorCode)
+	}
+	if exec.calls != 0 {
+		t.Fatalf("expected no executor calls on failed replay, got %d", exec.calls)
+	}
+}
+
+func ptr(v string) *string { return &v }

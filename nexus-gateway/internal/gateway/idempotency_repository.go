@@ -75,13 +75,15 @@ func (r *IdempotencyRepository) MarkCompleted(ctx context.Context, orgID uuid.UU
 		}).Error
 }
 
-func (r *IdempotencyRepository) MarkFailed(ctx context.Context, orgID uuid.UUID, toolName, key string, code *string) error {
+func (r *IdempotencyRepository) MarkFailed(ctx context.Context, orgID uuid.UUID, toolName, key string, code *string, responseRedacted map[string]any) error {
+	body, _ := json.Marshal(responseRedacted)
 	return r.db.WithContext(ctx).
 		Model(&idempotencyRow{}).
 		Where("org_id = ? and tool_name = ? and idempotency_key = ?", orgID, toolName, key).
 		Updates(map[string]any{
-			"status":     string(gwdomain.IdempotencyStatusFailed),
-			"error_code": code,
+			"status":                 string(gwdomain.IdempotencyStatusFailed),
+			"error_code":             code,
+			"response_redacted_json": body,
 		}).Error
 }
 

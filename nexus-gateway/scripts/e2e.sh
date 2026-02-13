@@ -308,6 +308,24 @@ RUN_TIMEOUT_CODE="$(echo "$RUN_TIMEOUT_WITH_CODE" | tail -n1)"
 [[ "$RUN_TIMEOUT_CODE" == "408" ]] || fail "expected 408 got ${RUN_TIMEOUT_CODE} body=$RUN_TIMEOUT_BODY"
 assert_jq "$RUN_TIMEOUT_BODY" '.error.code=="TIMEOUT_BUDGET_EXCEEDED" or .status=="error"'
 
+echo "[e2e] idempotency failed is terminal (same key -> replay same error)"
+FAIL_KEY="idem-failed-$(date +%s)"
+TRANS_BEFORE="$(curl -fsS "${MOCK_BASE}/_stats/transfer" | jq -r '.execution_count')"
+RUN_FAIL_1_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${FAIL_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700,"force_5xx":true},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_FAIL_1_BODY="$(echo "$RUN_FAIL_1_WITH_CODE" | head -n1)"
+RUN_FAIL_1_CODE="$(echo "$RUN_FAIL_1_WITH_CODE" | tail -n1)"
+[[ "$RUN_FAIL_1_CODE" == "502" ]] || fail "expected 502 got ${RUN_FAIL_1_CODE} body=$RUN_FAIL_1_BODY"
+assert_jq "$RUN_FAIL_1_BODY" '.status=="error" and .error.code=="UPSTREAM_5XX"'
+TRANS_AFTER_FIRST="$(curl -fsS "${MOCK_BASE}/_stats/transfer" | jq -r '.execution_count')"
+RUN_FAIL_2_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${FAIL_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700,"force_5xx":true},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_FAIL_2_BODY="$(echo "$RUN_FAIL_2_WITH_CODE" | head -n1)"
+RUN_FAIL_2_CODE="$(echo "$RUN_FAIL_2_WITH_CODE" | tail -n1)"
+[[ "$RUN_FAIL_2_CODE" == "502" ]] || fail "expected replay 502 got ${RUN_FAIL_2_CODE} body=$RUN_FAIL_2_BODY"
+assert_jq "$RUN_FAIL_2_BODY" '.status=="error" and .error.code=="UPSTREAM_5XX" and .idempotency.outcome=="REPLAY"'
+TRANS_AFTER="$(curl -fsS "${MOCK_BASE}/_stats/transfer" | jq -r '.execution_count')"
+[[ "$((TRANS_AFTER_FIRST - TRANS_BEFORE))" -ge "1" ]] || fail "expected upstream execution on first failed call, before=${TRANS_BEFORE} after_first=${TRANS_AFTER_FIRST}"
+[[ "$((TRANS_AFTER - TRANS_AFTER_FIRST))" == "0" ]] || fail "expected replay to avoid extra upstream execution, after_first=${TRANS_AFTER_FIRST} after_second=${TRANS_AFTER}"
+
 echo "[e2e] egress rules allow transfer host + deny mismatched host"
 EGR_UP_WITH_CODE="$(post_json "${HTTP_BASE}/v1/tools/transfer/egress-rules" '{"host":"mock-tools","enabled":true}')"
 EGR_UP_CODE="$(echo "$EGR_UP_WITH_CODE" | tail -n1)"

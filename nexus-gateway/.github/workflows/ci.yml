@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,6 +13,60 @@ jobs:
         with:
           go-version: "1.24.x"
           cache: true
-      - name: Test
+      - name: Unit tests
         run: go test ./...
 
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - name: Install e2e dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: Smoke up + migrate + seed
+        run: |
+          docker compose up --build -d
+          make migrate-up
+          make seed
+      - name: Smoke assertions
+        run: |
+          curl -fsS http://localhost:8080/healthz | jq -e '.ok==true'
+          curl -fsS http://localhost:8080/readyz | jq -e '.ok==true'
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - name: Install e2e dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: QA
+        run: make qa
+
+  jwt-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - name: Install e2e dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: JWT E2E
+        run: make jwt-e2e

@@ -68,6 +68,13 @@ JWT/JWKS mode supports strong identity while keeping API key compatibility via f
 - SIEM audit export endpoint: `GET /v1/audit/export?format=jsonl|csv`
 - Tool sensitivity level (`low|medium|high`) available for policy matching (`tool.sensitivity`)
 
+## Idempotency (final semantics)
+
+- Applies to WRITE tool runs (`POST /v1/run` with `Idempotency-Key`).
+- `FAILED` is terminal per key+fingerprint: the same call returns the same cached error response (replay), without re-executing upstream.
+- To retry after `FAILED`, clients must use a **new** `Idempotency-Key`.
+- `IDEMPOTENCY_IN_PROGRESS` and `IDEMPOTENCY_KEY_CONFLICT` remain `409`.
+
 ## Security policy examples
 
 Deny exfiltration to external tools if credit cards are present:
@@ -153,6 +160,24 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
 - `make jwt-e2e`: JWT/JWKS e2e (`Authorization: Bearer`, API key fallback off)
 - `make qa`: full pipeline (`down` → `up` → `migrate` → `seed` → `test` → `e2e`)
 - `make cleanup-idempotency`: delete expired idempotency records
+
+## Operations Runbook (Pilot)
+
+- **Health checks**: `GET /healthz` (liveness), `GET /readyz` (DB readiness).
+- **Idempotency cleanup**:
+  - TTL controlled by `NEXUS_IDEMPOTENCY_TTL_HOURS` (default 24h).
+  - Run manually: `make cleanup-idempotency` (executes `cmd/cleanup-idempotency` in container).
+- **What to monitor**:
+  - OTel metrics: `nexus_run_total` (slice by `status`, `decision`, `tool_name`) and `nexus_run_latency_ms`.
+  - Alerting slices:
+    - blocked: `status=blocked` (policy/rate/egress denies)
+    - timeout: `status=error` + logs/audit `TIMEOUT` or `TIMEOUT_BUDGET_EXCEEDED`
+    - upstream errors: `status=error` + logs/audit `UPSTREAM_5XX`/`NETWORK_ERROR`
+- **Audit retention (pilot recommendation)**: keep at least 30 days online in Postgres; export daily to SIEM (`/v1/audit/export?format=jsonl`).
+- **If Redis rate-limit backend degrades**: switch to in-memory backend (`NEXUS_RATE_LIMIT_BACKEND=memory`) as temporary single-instance fallback and monitor `RATE_LIMITED` behavior.
+- **SIEM export**:
+  - JSONL: `curl -H \"X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY\" \"http://localhost:8080/v1/audit/export?format=jsonl&from=2026-01-01T00:00:00Z\"`
+  - CSV: `curl -H \"X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY\" \"http://localhost:8080/v1/audit/export?format=csv&limit=2000\"`
 
 ## Sellable demo route
 

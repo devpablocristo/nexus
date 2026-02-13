@@ -57,7 +57,7 @@ type IdempotencyPort interface {
 	Get(ctx context.Context, orgID uuid.UUID, toolName, key string) (*gwdomain.IdempotencyRecord, error)
 	CreateInProgress(ctx context.Context, rec gwdomain.IdempotencyRecord) error
 	MarkCompleted(ctx context.Context, orgID uuid.UUID, toolName, key string, responseRedacted map[string]any) error
-	MarkFailed(ctx context.Context, orgID uuid.UUID, toolName, key string, code *string) error
+	MarkFailed(ctx context.Context, orgID uuid.UUID, toolName, key string, code *string, responseRedacted map[string]any) error
 	DeleteExpired(ctx context.Context, before time.Time) (int64, error)
 }
 
@@ -273,6 +273,76 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 				reason := "idempotency request in progress"
 				code := types.ErrCodeIdempotencyProgress
 				return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
+			case gwdomain.IdempotencyStatusFailed:
+				idemMeta.Outcome = gwdomain.IdempotencyReplay
+				latency := time.Since(start).Milliseconds()
+				code := types.ErrCodeInternal
+				msg := "previous failed idempotent request"
+				httpStatus := http.StatusBadGateway
+				status := gwdomain.RunStatusError
+				decision := gwdomain.DecisionAllow
+				var reason *string
+				if existing.ErrorCode != nil && *existing.ErrorCode != "" {
+					code = *existing.ErrorCode
+				}
+				if existing.ResponseRedacted != nil {
+					if v, ok := existing.ResponseRedacted["status"].(string); ok && v != "" {
+						status = gwdomain.RunStatus(v)
+					}
+					if v, ok := existing.ResponseRedacted["decision"].(string); ok && v != "" {
+						decision = gwdomain.Decision(v)
+					}
+					if v, ok := existing.ResponseRedacted["http_status"].(float64); ok && int(v) > 0 {
+						httpStatus = int(v)
+					}
+					if errObj, ok := existing.ResponseRedacted["error"].(map[string]any); ok {
+						if v, ok := errObj["code"].(string); ok && v != "" {
+							code = v
+						}
+						if v, ok := errObj["message"].(string); ok && v != "" {
+							msg = v
+						}
+					}
+					if v, ok := existing.ResponseRedacted["reason"].(string); ok && v != "" {
+						reason = &v
+					}
+				}
+				errCode := code
+				errMsg := msg
+				_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
+					OrgID:              orgID,
+					ToolID:             tool.ID,
+					ToolName:           tool.Name,
+					RequestID:          requestID,
+					Actor:              req.Actor,
+					ActorRole:          req.Role,
+					ActorScopes:        req.Scopes,
+					InputRedacted:      utils.Redact(input),
+					ContextRedacted:    utils.Redact(contextMap),
+					DLPSummary:         map[string]any{},
+					Decision:           auditdomain.Decision(decision),
+					Reason:             reason,
+					Status:             auditdomain.Status(status),
+					ErrorCode:          &errCode,
+					ErrorMessage:       &errMsg,
+					LatencyMS:          int(latency),
+					IdempotencyPresent: idemMeta.Present,
+					IdempotencyOutcome: string(idemMeta.Outcome),
+					TimeoutMS:          intPtr(req.TimeoutMS),
+				})
+				s.observeRun(ctx, tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
+				return gwdomain.RunResponse{
+					RequestID:   requestID,
+					Decision:    decision,
+					ToolName:    tool.Name,
+					Status:      status,
+					Reason:      reason,
+					ErrorCode:   &errCode,
+					ErrorMsg:    &errMsg,
+					LatencyMS:   latency,
+					HTTPStatus:  httpStatus,
+					Idempotency: idemMeta,
+				}, nil
 			}
 		} else {
 			err = s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
@@ -291,12 +361,12 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 	}
 	if !tool.Enabled {
 		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "tool disabled", types.ErrCodePolicyDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 	if tool.Kind != tooldomain.ToolKindHTTP {
 		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "unsupported tool kind", types.ErrCodeValidation, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 
@@ -322,12 +392,12 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 	inSchema, err := s.cache.Compile(ctx, tool.ID.String()+":in", tool.InputSchemaJSON)
 	if err != nil {
 		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "tool input schema invalid", types.ErrCodeSchemaInvalid, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 	if err := jsonschema.Validate(inSchema, input); err != nil {
 		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "input does not match schema", types.ErrCodeValidation, http.StatusBadRequest, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 	budget.Consume("schema_validation", time.Since(schemaStart))
@@ -373,7 +443,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 			}
 			if n > maxIn {
 				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "input too large", types.ErrCodePolicyDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-				s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+				s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 				return resp, nil
 			}
 		}
@@ -384,7 +454,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 			}
 			if n > maxCtx {
 				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "context too large", types.ErrCodePolicyDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-				s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+				s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 				return resp, nil
 			}
 		}
@@ -394,7 +464,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		reason := matchReason
 		code := types.ErrCodePolicyDenied
 		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, reason, code, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 
@@ -404,7 +474,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		key := orgID.String() + ":" + tool.Name
 		if !s.limiter.Allow(key, perMin) {
 			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 			return resp, nil
 		}
 	}
@@ -412,7 +482,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 	u, parseErr := url.Parse(tool.URL)
 	if parseErr != nil || u.Hostname() == "" {
 		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "invalid tool url", types.ErrCodeValidation, http.StatusBadRequest, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 	allowed, err := s.egress.IsHostAllowed(ctx, orgID, tool.ID, strings.ToLower(u.Hostname()))
@@ -421,7 +491,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 	}
 	if !allowed {
 		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "egress host denied", types.ErrCodeEgressDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 
@@ -447,7 +517,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		code := types.ErrCodeTimeoutBudget
 		reason := "timeout budget exhausted before execute"
 		resp := s.errorRun(ctx, orgID, req, tool, requestID, policyID, matchReason, reason, &code, &reason, http.StatusRequestTimeout, start, input, contextMap, dlpSummary, idemMeta, req.TimeoutMS, intPtr(0), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, resp.ErrorCode)
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
 	execTimeoutMS := remainingBeforeExec
@@ -492,7 +562,8 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 				BudgetRemainingMSAtExecute: intPtr(remainingBeforeExec),
 				StageDurationsMS:           budget.StageDurationsMS(),
 			})
-			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &code)
+			resp := gwdomain.RunResponse{Decision: gwdomain.DecisionAllow, Status: gwdomain.RunStatusError, ErrorCode: &code, ErrorMsg: &msg, HTTPStatus: http.StatusBadGateway}
+			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 			s.observeRun(ctx, tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(latency)*time.Millisecond)
 			return gwdomain.RunResponse{
 				RequestID:   requestID,
@@ -547,8 +618,6 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 			BudgetRemainingMSAtExecute: intPtr(remainingBeforeExec),
 			StageDurationsMS:           budget.StageDurationsMS(),
 		})
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &code)
-		s.observeRun(ctx, tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(latency)*time.Millisecond)
 		status := http.StatusBadGateway
 		if he.Code == types.ErrCodeInvalidGETInput || he.Code == types.ErrCodeValidation {
 			status = http.StatusBadRequest
@@ -556,6 +625,9 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		if code == types.ErrCodeTimeoutBudget {
 			status = http.StatusRequestTimeout
 		}
+		respForIdem := gwdomain.RunResponse{Decision: gwdomain.DecisionAllow, Status: gwdomain.RunStatusError, ErrorCode: &code, ErrorMsg: &msg, HTTPStatus: status}
+		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &respForIdem)
+		s.observeRun(ctx, tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(latency)*time.Millisecond)
 		return gwdomain.RunResponse{
 			RequestID:   requestID,
 			Decision:    gwdomain.DecisionAllow,
@@ -995,11 +1067,37 @@ func (s *service) observeRun(ctx context.Context, toolName, decision, status str
 	s.metrics.ObserveRun(ctx, toolName, decision, status, latency)
 }
 
-func (s *service) failIdempotencyIfNeeded(ctx context.Context, shouldUpdate bool, orgID uuid.UUID, toolName, key string, code *string) {
+func (s *service) failIdempotencyIfNeeded(ctx context.Context, shouldUpdate bool, orgID uuid.UUID, toolName, key string, resp *gwdomain.RunResponse) {
 	if !shouldUpdate || key == "" {
 		return
 	}
-	_ = s.idempotency.MarkFailed(ctx, orgID, toolName, key, code)
+	var code *string
+	response := map[string]any{}
+	if resp != nil {
+		response["decision"] = string(resp.Decision)
+		response["status"] = string(resp.Status)
+		response["http_status"] = resp.HTTPStatus
+		if resp.Result != nil {
+			response["result"] = utils.Redact(resp.Result)
+		}
+		if resp.Reason != nil && *resp.Reason != "" {
+			response["reason"] = *resp.Reason
+		}
+		if resp.ErrorCode != nil || resp.ErrorMsg != nil {
+			errorObj := map[string]any{}
+			if resp.ErrorCode != nil && *resp.ErrorCode != "" {
+				errorObj["code"] = *resp.ErrorCode
+				code = resp.ErrorCode
+			}
+			if resp.ErrorMsg != nil && *resp.ErrorMsg != "" {
+				errorObj["message"] = *resp.ErrorMsg
+			}
+			if len(errorObj) > 0 {
+				response["error"] = errorObj
+			}
+		}
+	}
+	_ = s.idempotency.MarkFailed(ctx, orgID, toolName, key, code, response)
 }
 
 func buildRequestFingerprint(toolName string, input map[string]any, actor, role *string, scopes []string) (string, error) {
