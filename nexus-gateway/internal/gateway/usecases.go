@@ -65,6 +65,10 @@ type RunMetricsPort interface {
 	ObserveRun(ctx context.Context, toolName, decision, status string, latency time.Duration)
 }
 
+type TenantLimitsPort interface {
+	GetRunRPM(ctx context.Context, orgID uuid.UUID) (int, error)
+}
+
 type Service interface {
 	Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
 	Simulate(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.SimulateResponse, error)
@@ -92,6 +96,7 @@ type service struct {
 	limiter     RateLimiterPort
 	executor    HTTPExecutorPort
 	idempotency IdempotencyPort
+	tenantCaps  TenantLimitsPort
 	metrics     RunMetricsPort
 	cache       *jsonschema.CompilerCache
 	evaluator   *policy.Evaluator
@@ -100,7 +105,7 @@ type service struct {
 	log         zerolog.Logger
 }
 
-func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo AuditRepoPort, secretRepo SecretRepoPort, egress EgressPort, limiter RateLimiterPort, executor HTTPExecutorPort, idempotency IdempotencyPort, metrics RunMetricsPort, cache *jsonschema.CompilerCache, evaluator *policy.Evaluator, detector *dlp.Detector, cfg Config, log zerolog.Logger) Service {
+func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo AuditRepoPort, secretRepo SecretRepoPort, egress EgressPort, limiter RateLimiterPort, executor HTTPExecutorPort, idempotency IdempotencyPort, tenantCaps TenantLimitsPort, metrics RunMetricsPort, cache *jsonschema.CompilerCache, evaluator *policy.Evaluator, detector *dlp.Detector, cfg Config, log zerolog.Logger) Service {
 	if cfg.DisableSSRFProtection {
 		log.Warn().Msg("SSRF protection is DISABLED — this must only be used in test/dev environments")
 	}
@@ -113,6 +118,7 @@ func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo Audi
 		limiter:     limiter,
 		executor:    executor,
 		idempotency: idempotency,
+		tenantCaps:  tenantCaps,
 		metrics:     metrics,
 		cache:       cache,
 		evaluator:   evaluator,
@@ -512,6 +518,23 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		return resp, nil
 	}
 
+	// Tenant-level hard limit (plan cap)
+	tenantRunRPM := 0
+	if s.tenantCaps != nil {
+		tenantRunRPM, err = s.tenantCaps.GetRunRPM(ctx, orgID)
+		if err != nil {
+			return gwdomain.RunResponse{}, err
+		}
+		if tenantRunRPM > 0 {
+			tenantKey := orgID.String() + ":tenant"
+			if !s.limiter.Allow(tenantKey, tenantRunRPM) {
+				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "tenant run rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
+				s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
+				return resp, nil
+			}
+		}
+	}
+
 	// Rate limit
 	perMin := limits.rateLimitPerMinute(s.cfg.DefaultRateLimitPerMinute)
 	if perMin > 0 {
@@ -529,6 +552,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
 		return resp, nil
 	}
+
 	if !s.cfg.DisableSSRFProtection {
 		if err := utils.ValidateEgressURL(tool.URL); err != nil {
 			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "ssrf blocked: "+err.Error(), types.ErrCodeEgressDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())

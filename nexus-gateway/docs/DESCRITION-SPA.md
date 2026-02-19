@@ -29,6 +29,50 @@ En vez de que el agente llame directo a Jira/Slack/GitHub/tu API interna (con to
 
 ---
 
+## Cómo correr y probar en local (Docker Compose)
+
+Requisitos: `docker compose`, `make`, `curl`, `jq`.
+
+1) Levantar stack + migraciones + seed:
+
+```bash
+cp .env.example .env
+make up
+make migrate-up
+make seed
+```
+
+2) Probar `POST /v1/run` (REST):
+
+```bash
+export NEXUS_API_KEY="<seed-output-value>"
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"u_1"}}' \
+  http://localhost:8080/v1/run | jq
+```
+
+3) E2E automatizado:
+
+```bash
+make e2e
+make jwt-e2e
+make qa
+```
+
+### Nota importante: SSRF vs Docker (mock-tools)
+
+En Docker Compose, `mock-tools` resuelve a una IP privada tipo `172.18.x.x` (red bridge).
+Con la protección SSRF activada (default), **las IPs privadas se bloquean por diseño**, así que
+las tools que apunten a `http://mock-tools:8081/...` van a fallar con `EGRESS_DENIED` + mensaje SSRF.
+
+Opciones:
+
+* **Demo local (manual)**: setear `NEXUS_DISABLE_SSRF_PROTECTION=true` en `.env` (solo dev/test).
+* **E2E (scripts)**: `scripts/e2e.sh` y `scripts/e2e_jwt.sh` ya fuerzan `NEXUS_DISABLE_SSRF_PROTECTION=true` durante el run para que funcione en Docker.
+
+---
+
 ## Flujo real de ejecución (`POST /v1/run`) — en el orden exacto del código
 
 1. **Autenticación (middleware)**: API key hash o JWT/JWKS → resuelve `org_id` + principal.
@@ -101,6 +145,7 @@ En vez de que el agente llame directo a Jira/Slack/GitHub/tu API interna (con to
 * **Default-deny** si no hay reglas.
 * SSRF 3 capas: pre-check + Safe Dialer (anti DNS rebinding) + no redirects.
 * Bloquea private/loopback/link-local/metadata + IPv6 ULA (`fc00::/7`).
+* Flag (solo dev/test): `NEXUS_DISABLE_SSRF_PROTECTION=true` desactiva checks SSRF para poder correr demos/E2E en Docker con `mock-tools` (IP privada). No usar en prod.
 
 ### 7) Secrets Vault
 

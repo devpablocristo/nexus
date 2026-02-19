@@ -138,6 +138,7 @@ func TestRun_IdempotencyReplayDoesNotExecute(t *testing.T) {
 				"result":   map[string]any{"ok": true},
 			},
 		}},
+		nil,
 		fakeMetrics{},
 		jsonschema.NewCompilerCache(),
 		policy.NewEvaluator(),
@@ -196,6 +197,7 @@ func TestRun_IdempotencyConflict(t *testing.T) {
 			RequestFingerprint: "other",
 			Status:             gwdomain.IdempotencyStatusCompleted,
 		}},
+		nil,
 		fakeMetrics{},
 		jsonschema.NewCompilerCache(),
 		policy.NewEvaluator(),
@@ -271,6 +273,7 @@ func TestRun_IdempotencyFailedReplayReturnsCachedError(t *testing.T) {
 				},
 			},
 		}},
+		nil,
 		fakeMetrics{},
 		jsonschema.NewCompilerCache(),
 		policy.NewEvaluator(),
@@ -305,4 +308,3 @@ func TestRun_IdempotencyFailedReplayReturnsCachedError(t *testing.T) {
 		t.Fatalf("expected no executor calls on failed replay, got %d", exec.calls)
 	}
 }
-

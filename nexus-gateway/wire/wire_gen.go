@@ -8,6 +8,8 @@ package wire
 
 import (
 	"nexus-gateway/cmd/config"
+	"nexus-gateway/internal/a2a"
+	"nexus-gateway/internal/admin"
 	"nexus-gateway/internal/audit"
 	"nexus-gateway/internal/egress"
 	"nexus-gateway/internal/gateway"
@@ -39,8 +41,10 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	service := identity.NewService(verifier, identityConfig)
 	handlerFunc := NewAuthMiddleware(logger, serviceConfig, authUsecase, service)
 	toolRepository := tool.NewRepository(db)
+	adminRepository := admin.NewRepository(db)
+	tenantLimitsPort := ProvideToolTenantLimits(adminRepository)
 	compilerCache := NewSchemaCache()
-	serviceImpl := tool.NewService(toolRepository, compilerCache)
+	serviceImpl := tool.NewService(toolRepository, tenantLimitsPort, compilerCache)
 	handler := tool.NewHandler(serviceImpl)
 	policyRepository := policy.NewRepository(db)
 	toolLookupPort := ProvidePolicyToolLookup(serviceImpl)
@@ -49,6 +53,8 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	auditRepository := audit.NewRepository(db)
 	auditService := audit.NewService(auditRepository)
 	auditHandler := audit.NewHandler(auditService)
+	adminService := admin.NewService(adminRepository)
+	adminHandler := admin.NewHandler(adminService)
 	toolRepoPort := ProvideGatewayToolRepo(toolRepository)
 	policyRepoPort := ProvideGatewayPolicyRepo(policyRepository)
 	auditRepoPort := ProvideGatewayAuditRepo(auditRepository)
@@ -73,12 +79,13 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	httpExecutorPort := ProvideGatewayHTTPExecutor(executor)
 	idempotencyRepository := gateway.NewIdempotencyRepository(db)
 	idempotencyPort := ProvideGatewayIdempotencyRepo(idempotencyRepository)
+	gatewayTenantLimitsPort := ProvideGatewayTenantCaps(adminRepository)
 	runMetrics := telemetry.NewRunMetrics()
 	runMetricsPort := ProvideGatewayMetrics(runMetrics)
 	evaluator := policy.NewEvaluator()
 	detector := NewDLPDetector()
 	gatewayConfig := ProvideGatewayConfig(serviceConfig)
-	gatewayService := gateway.NewService(toolRepoPort, policyRepoPort, auditRepoPort, secretRepoPort, egressPort, rateLimiterPort, httpExecutorPort, idempotencyPort, runMetricsPort, compilerCache, evaluator, detector, gatewayConfig, logger)
+	gatewayService := gateway.NewService(toolRepoPort, policyRepoPort, auditRepoPort, secretRepoPort, egressPort, rateLimiterPort, httpExecutorPort, idempotencyPort, gatewayTenantLimitsPort, runMetricsPort, compilerCache, evaluator, detector, gatewayConfig, logger)
 	gatewayHandler := gateway.NewHandler(gatewayService)
 	secretsToolLookupPort := ProvideSecretsToolLookup(serviceImpl)
 	secretsService := secrets.NewService(secretsRepository, secretsToolLookupPort)
@@ -88,7 +95,10 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	runPort := ProvideMCPRunPort(gatewayService)
 	mcpService := mcp.NewService(toolPort, runPort)
 	mcpHandler := mcp.NewHandler(mcpService)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler)
+	a2aRunPort := ProvideA2ARunPort(gatewayService)
+	a2aService := a2a.NewService(a2aRunPort)
+	a2aHandler := a2a.NewHandler(a2aService)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, adminHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler, a2aHandler)
 	apiConfig := ProvideAPIConfig(cfg)
 	server := NewHTTPServer(apiConfig, engine)
 	app := NewApp(engine, server)

@@ -1,10 +1,13 @@
 package egress
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"nexus-gateway/internal/egress/handler/dto"
+	"nexus-gateway/internal/shared/authz"
 	httperr "nexus-gateway/pkg/http/errors"
 	"nexus-gateway/pkg/types"
 )
@@ -20,6 +23,10 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) upsert(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeEgressWrite) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeEgressWrite+" scope required")
+		return
+	}
 	var req dto.UpsertRuleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httperr.BadRequest(c, "invalid json")
@@ -37,6 +44,10 @@ func (h *Handler) upsert(c *gin.Context) {
 }
 
 func (h *Handler) list(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeEgressRead) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeEgressRead+" scope required")
+		return
+	}
 	hosts, err := h.svc.ListRules(c.Request.Context(), mustOrgID(c), c.Param("name"))
 	if err != nil {
 		httperr.WriteFrom(c, err)
@@ -46,6 +57,10 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) delete(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeEgressWrite) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeEgressWrite+" scope required")
+		return
+	}
 	if err := h.svc.DeleteRule(c.Request.Context(), mustOrgID(c), c.Param("name"), c.Query("host")); err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -57,6 +72,24 @@ func mustOrgID(c *gin.Context) uuid.UUID {
 	v, _ := c.Get(string(types.CtxKeyOrgID))
 	id, _ := v.(uuid.UUID)
 	return id
+}
+
+func roleFromCtx(c *gin.Context) *string {
+	if v, ok := c.Get(string(types.CtxKeyRole)); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return &s
+		}
+	}
+	return nil
+}
+
+func scopesFromCtx(c *gin.Context) []string {
+	if v, ok := c.Get(string(types.CtxKeyScopes)); ok {
+		if scopes, ok := v.([]string); ok {
+			return scopes
+		}
+	}
+	return nil
 }
 
 // centralized error handling via pkg/http/errors

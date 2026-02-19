@@ -38,5 +38,6 @@ func NewHTTPExecutor(cfg config.ServiceConfig) *exechttp.Executor {
 		opts.Transport = utils.SafeTransport()
 		opts.CheckRedirect = utils.NoFollowRedirectPolicy
 	}
+
 	return exechttp.NewExecutor(opts)
 }

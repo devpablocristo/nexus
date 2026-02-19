@@ -7,8 +7,11 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/zsais/go-gin-prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"nexus-gateway/cmd/config"
+	"nexus-gateway/internal/a2a"
+	"nexus-gateway/internal/admin"
 	"nexus-gateway/internal/audit"
 	"nexus-gateway/internal/egress"
 	"nexus-gateway/internal/gateway"
@@ -29,15 +32,19 @@ func NewRouter(
 	toolH *tool.Handler,
 	policyH *policy.Handler,
 	auditH *audit.Handler,
+	adminH *admin.Handler,
 	gwH *gateway.Handler,
 	secretH *secrets.Handler,
 	egressH *egress.Handler,
 	mcpH *mcp.Handler,
+	a2aH *a2a.Handler,
 ) *gin.Engine {
 	r := ginserver.NewEngine(ginserver.EngineOptions{}, ginmw.RequestID(), ginmw.Recovery(l), ginmw.BodyLimit(httpCfg.MaxBodyBytes), ginmw.LoggerMiddleware(l))
 	if cfg.OTelEnabled {
 		r.Use(otelgin.Middleware(cfg.OTelServiceName))
 	}
+	prom := ginprometheus.NewPrometheus("nexus_gateway")
+	prom.Use(r)
 
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -45,14 +52,14 @@ func NewRouter(
 	r.GET("/readyz", func(c *gin.Context) {
 		sqlDB, err := db.DB()
 		if err != nil {
-			c.Status(http.StatusServiceUnavailable)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false})
 			return
 		}
 		if err := sqlDB.PingContext(c.Request.Context()); err != nil {
-			c.Status(http.StatusServiceUnavailable)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false})
 			return
 		}
-		c.Status(http.StatusOK)
+		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
 	r.GET("/openapi.yaml", func(c *gin.Context) {
@@ -69,12 +76,15 @@ func NewRouter(
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.String(http.StatusOK, swaggerHTMLOfflineNote)
 	})
+	r.Static("/admin/assets", "docs/admin/assets")
+	r.StaticFile("/admin", "docs/admin/index.html")
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
 	toolH.Register(v1)
 	policyH.Register(v1)
 	auditH.Register(v1)
+	adminH.Register(v1)
 	gwH.Register(v1)
 	secretH.Register(v1)
 	egressH.Register(v1)
@@ -82,6 +92,10 @@ func NewRouter(
 	mcpGroup := r.Group("")
 	mcpGroup.Use(authMw)
 	mcpH.Register(mcpGroup)
+
+	a2aGroup := r.Group("")
+	a2aGroup.Use(authMw)
+	a2aH.Register(a2aGroup)
 
 	return r
 }

@@ -1,8 +1,8 @@
 SHELL := /bin/bash
 
-.PHONY: dev down logs migrate-up migrate-down cleanup-idempotency seed test e2e jwt-e2e mcp-e2e secrets-e2e qa fmt wire
+.PHONY: up down logs migrate-up migrate-down cleanup-idempotency seed test e2e jwt-e2e mcp-e2e secrets-e2e qa fmt wire quickstart-admin
 
-dev:
+up:
 	docker compose up --build
 
 down:
@@ -45,6 +45,9 @@ qa:
 	$(MAKE) seed
 	$(MAKE) test
 	$(MAKE) e2e
+
+quickstart-admin:
+	bash scripts/quickstart_admin.sh
 
 fmt:
 	gofmt -w .

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 
 	gwdto "nexus-gateway/internal/gateway/handler/dto"
 	gwdomain "nexus-gateway/internal/gateway/usecases/domain"
+	"nexus-gateway/internal/shared/authz"
 	httperr "nexus-gateway/pkg/http/errors"
 	"nexus-gateway/pkg/types"
 )
@@ -27,6 +29,10 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) run(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeGatewayRun) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeGatewayRun+" scope required")
+		return
+	}
 	var req gwdto.RunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httperr.BadRequest(c, "invalid json")
@@ -111,6 +117,10 @@ func (h *Handler) run(c *gin.Context) {
 }
 
 func (h *Handler) simulate(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeGatewaySimulate) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeGatewaySimulate+" scope required")
+		return
+	}
 	var req gwdto.RunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httperr.BadRequest(c, "invalid json")

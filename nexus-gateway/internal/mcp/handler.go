@@ -11,6 +11,7 @@ import (
 
 	gwdomain "nexus-gateway/internal/gateway/usecases/domain"
 	mcpdto "nexus-gateway/internal/mcp/handler/dto"
+	"nexus-gateway/internal/shared/authz"
 	httperr "nexus-gateway/pkg/http/errors"
 	ginmw "nexus-gateway/pkg/http/middlewares/gin"
 	"nexus-gateway/pkg/types"
@@ -33,6 +34,10 @@ func (h *Handler) rpc(c *gin.Context) {
 	orgID := mustOrgID(c)
 	switch req.Method {
 	case "tools/list":
+		if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeMCPRead) {
+			h.rpcErr(c, req.ID, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeMCPRead+" scope required"))
+			return
+		}
 		items, err := h.svc.ListTools(c.Request.Context(), orgID)
 		if err != nil {
 			h.rpcErr(c, req.ID, err)
@@ -44,6 +49,10 @@ func (h *Handler) rpc(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, mcpdto.JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"items": out}})
 	case "tools/get":
+		if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeMCPRead) {
+			h.rpcErr(c, req.ID, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeMCPRead+" scope required"))
+			return
+		}
 		name, _ := req.Params["tool_name"].(string)
 		tool, err := h.svc.GetTool(c.Request.Context(), orgID, name)
 		if err != nil {
@@ -52,6 +61,10 @@ func (h *Handler) rpc(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, mcpdto.JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"name": tool.Name, "kind": tool.Kind, "method": tool.Method, "url": tool.URL, "input_schema": jsonRawToAny(tool.InputSchemaJSON), "output_schema": jsonRawToAny(tool.OutputSchemaJSON), "action_type": tool.ActionType, "classification": tool.Classification, "sensitivity": tool.Sensitivity, "risk_level": tool.RiskLevel, "enabled": tool.Enabled}})
 	case "tools/call":
+		if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeMCPCall) {
+			h.rpcErr(c, req.ID, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeMCPCall+" scope required"))
+			return
+		}
 		toolName, _ := req.Params["tool_name"].(string)
 		input, _ := req.Params["input"].(map[string]any)
 		ctxMap, _ := req.Params["context"].(map[string]any)

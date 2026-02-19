@@ -3,6 +3,7 @@ package wire
 import (
 	"github.com/google/wire"
 
+	"nexus-gateway/internal/admin"
 	"nexus-gateway/internal/audit"
 	"nexus-gateway/internal/egress"
 	"nexus-gateway/internal/gateway"
@@ -21,6 +22,7 @@ func ProvideGatewayIdempotencyRepo(r *gateway.IdempotencyRepository) gateway.Ide
 	return r
 }
 func ProvideGatewaySecretRepo(r *secrets.Repository) gateway.SecretRepoPort { return r }
+func ProvideGatewayTenantCaps(r *admin.Repository) gateway.TenantLimitsPort { return r }
 func ProvideGatewayEgressPort(s egress.Service) gateway.EgressPort          { return s }
 func ProvideGatewayRateLimiter(l ratelimit.Adapter) gateway.RateLimiterPort {
 	return l
@@ -34,6 +36,7 @@ var GatewaySet = wire.NewSet(
 	ProvideGatewayAuditRepo,
 	ProvideGatewayIdempotencyRepo,
 	ProvideGatewaySecretRepo,
+	ProvideGatewayTenantCaps,
 	ProvideGatewayEgressPort,
 	ProvideGatewayRateLimiter,
 	ProvideGatewayMetrics,

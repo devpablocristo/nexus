@@ -17,13 +17,29 @@ set +a
 HTTP_BASE="http://localhost:${NEXUS_HTTP_PORT}"
 MOCK_BASE="http://localhost:${NEXUS_MOCK_TOOLS_PORT}"
 
+# In docker compose, mock-tools resolves to a private IP (bridge network). With SSRF protection enabled,
+# outbound calls to private IPs are blocked by design, which breaks E2E runs. For E2E we disable SSRF
+# protection explicitly (dev/test only).
+: "${NEXUS_DISABLE_SSRF_PROTECTION:=true}"
+export NEXUS_DISABLE_SSRF_PROTECTION
+
 require() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }
 }
 
 require curl
 require jq
-require rg
+
+# Prefer ripgrep when available; fall back to grep so the suite works on minimal dev machines/CI images.
+match() {
+  local pattern="$1"
+  if command -v rg >/dev/null 2>&1; then
+    rg -n "$pattern"
+  else
+    # ERE is enough for our patterns (^ anchors, plain substrings).
+    grep -nE "$pattern"
+  fi
+}
 
 fail() { echo "E2E FAIL: $*" >&2; exit 1; }
 
@@ -68,8 +84,8 @@ make migrate-up >/dev/null
 
 echo "[e2e] seed demo"
 SEED_OUT="$(bash scripts/seed_demo.sh)"
-echo "$SEED_OUT" | rg -n "^NEXUS_DEMO_API_KEY=" >/dev/null || fail "seed did not print api key"
-API_KEY="$(echo "$SEED_OUT" | rg -n "^NEXUS_DEMO_API_KEY=" | tail -n1 | cut -d= -f2)"
+echo "$SEED_OUT" | match "^NEXUS_DEMO_API_KEY=" >/dev/null || fail "seed did not print api key"
+API_KEY="$(echo "$SEED_OUT" | match "^NEXUS_DEMO_API_KEY=" | tail -n1 | cut -d= -f2)"
 [[ -n "$API_KEY" ]] || fail "empty api key"
 
 echo "[e2e] /healthz payload"
@@ -78,12 +94,12 @@ assert_jq "$H" '.ok == true'
 
 echo "[e2e] /openapi.yaml contains gateway header"
 SPEC="$(curl -fsS "${HTTP_BASE}/openapi.yaml")"
-echo "$SPEC" | rg -n "openapi:" >/dev/null || fail "openapi.yaml missing openapi:"
-echo "$SPEC" | rg -n "X-NEXUS-GATEWAY-KEY" >/dev/null || fail "openapi.yaml missing X-NEXUS-GATEWAY-KEY"
+echo "$SPEC" | match "openapi:" >/dev/null || fail "openapi.yaml missing openapi:"
+echo "$SPEC" | match "X-NEXUS-GATEWAY-KEY" >/dev/null || fail "openapi.yaml missing X-NEXUS-GATEWAY-KEY"
 
 echo "[e2e] /docs returns html"
 DOCS="$(curl -fsS "${HTTP_BASE}/docs")"
-echo "$DOCS" | rg -n "<html" >/dev/null || fail "/docs not html"
+echo "$DOCS" | match "<html" >/dev/null || fail "/docs not html"
 
 echo "[e2e] unauthorized error format"
 U_BODY="$(curl -sS "${HTTP_BASE}/v1/tools" || true)"
@@ -376,6 +392,10 @@ MCP_LIST="$(auth_curl -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","
 assert_jq "$MCP_LIST" '.result.items | type=="array" and length>=2'
 MCP_CALL="$(auth_curl -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"tool_name":"echo","input":{"from":"mcp"},"context":{"user_id":"u_1"},"timeout_ms":5000}}' "${HTTP_BASE}/mcp")"
 assert_jq "$MCP_CALL" '.result.status=="success" and .result.result.received.from=="mcp"'
+
+echo "[e2e] a2a call uses same run pipeline"
+A2A_CALL="$(auth_curl -H "X-NEXUS-SCOPES: a2a:call" -H "Content-Type: application/json" -d '{"tool_name":"echo","input":{"from":"a2a"},"context":{"user_id":"u_1"},"timeout_ms":5000}' "${HTTP_BASE}/a2a/call")"
+assert_jq "$A2A_CALL" '.status=="success" and .result.received.from=="a2a"'
 
 echo "[e2e] audit export jsonl includes hash-chain"
 EXPORT_JSONL="$(auth_curl "${HTTP_BASE}/v1/audit/export?format=jsonl&tool_name=transfer&limit=5")"

@@ -106,6 +106,8 @@ func Load() (Config, error) {
 	cfg.Service.TimeoutBudgetMinMS = tbMin
 	cfg.Service.TimeoutBudgetMaxMS = tbMax
 
+	cfg.Service.DisableSSRFProtection = mustBoolDefault("NEXUS_DISABLE_SSRF_PROTECTION", false)
+
 	cfg.Migrations.Dir = mustStrDefault("NEXUS_MIGRATIONS_DIR", "./migrations")
 
 	return cfg, nil

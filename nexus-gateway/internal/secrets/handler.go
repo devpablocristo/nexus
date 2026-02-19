@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 
 	"nexus-gateway/internal/secrets/handler/dto"
+	"nexus-gateway/internal/shared/authz"
 	httperr "nexus-gateway/pkg/http/errors"
 	"nexus-gateway/pkg/types"
 )
@@ -22,7 +23,7 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) upsert(c *gin.Context) {
-	if !hasSecretAdmin(c) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeSecretsAdmin) {
 		httperr.Write(c, 403, types.ErrCodeSecretDenied, "secret admin scope required")
 		return
 	}
@@ -45,7 +46,7 @@ func (h *Handler) upsert(c *gin.Context) {
 }
 
 func (h *Handler) list(c *gin.Context) {
-	if !hasSecretAdmin(c) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeSecretsAdmin) {
 		httperr.Write(c, 403, types.ErrCodeSecretDenied, "secret admin scope required")
 		return
 	}
@@ -63,7 +64,7 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) delete(c *gin.Context) {
-	if !hasSecretAdmin(c) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeSecretsAdmin) {
 		httperr.Write(c, 403, types.ErrCodeSecretDenied, "secret admin scope required")
 		return
 	}
@@ -75,26 +76,26 @@ func (h *Handler) delete(c *gin.Context) {
 	c.Status(204)
 }
 
-func hasSecretAdmin(c *gin.Context) bool {
-	if v, ok := c.Get(string(types.CtxKeyRole)); ok {
-		if role, ok := v.(string); ok && (role == "secops" || role == "admin") {
-			return true
-		}
-	}
-	if v, ok := c.Get(string(types.CtxKeyScopes)); ok {
-		if scopes, ok := v.([]string); ok {
-			for _, s := range scopes {
-				if s == "admin:secrets" {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
 func mustOrgID(c *gin.Context) uuid.UUID {
 	v, _ := c.Get(string(types.CtxKeyOrgID))
 	id, _ := v.(uuid.UUID)
 	return id
+}
+
+func roleFromCtx(c *gin.Context) *string {
+	if v, ok := c.Get(string(types.CtxKeyRole)); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return &s
+		}
+	}
+	return nil
+}
+
+func scopesFromCtx(c *gin.Context) []string {
+	if v, ok := c.Get(string(types.CtxKeyScopes)); ok {
+		if scopes, ok := v.([]string); ok {
+			return scopes
+		}
+	}
+	return nil
 }

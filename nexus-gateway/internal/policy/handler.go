@@ -2,12 +2,14 @@ package policy
 
 import (
 	"encoding/json"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"nexus-gateway/internal/policy/handler/dto"
 	policydomain "nexus-gateway/internal/policy/usecases/domain"
+	"nexus-gateway/internal/shared/authz"
 	httperr "nexus-gateway/pkg/http/errors"
 	"nexus-gateway/pkg/types"
 )
@@ -27,6 +29,10 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) createForTool(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopePolicyWrite) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopePolicyWrite+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	toolName := c.Param("name")
 	var req CreateRequest
@@ -43,6 +49,10 @@ func (h *Handler) createForTool(c *gin.Context) {
 }
 
 func (h *Handler) listForTool(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopePolicyRead) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopePolicyRead+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	toolName := c.Param("name")
 	items, err := h.svc.ListForTool(c.Request.Context(), orgID, toolName)
@@ -58,6 +68,10 @@ func (h *Handler) listForTool(c *gin.Context) {
 }
 
 func (h *Handler) updateByID(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopePolicyWrite) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopePolicyWrite+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	idStr := c.Param("id")
 	pid, err := uuid.Parse(idStr)
@@ -120,6 +134,24 @@ func mustOrgID(c *gin.Context) uuid.UUID {
 		return id
 	}
 	return uuid.Nil
+}
+
+func roleFromCtx(c *gin.Context) *string {
+	if v, ok := c.Get(string(types.CtxKeyRole)); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return &s
+		}
+	}
+	return nil
+}
+
+func scopesFromCtx(c *gin.Context) []string {
+	if v, ok := c.Get(string(types.CtxKeyScopes)); ok {
+		if scopes, ok := v.([]string); ok {
+			return scopes
+		}
+	}
+	return nil
 }
 
 // centralized error handling via pkg/http/errors

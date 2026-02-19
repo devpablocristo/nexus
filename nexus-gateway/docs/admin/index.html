@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexus Admin Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/assets/styles.css" />
+</head>
+<body>
+  <div class="grain"></div>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">Nexus Gateway</p>
+      <h1>Admin Control Plane</h1>
+      <p class="subtitle">MVP console para operar tools, policies, tenant limits y validaciones REST/MCP en menos de 20 minutos.</p>
+    </header>
+
+    <section class="panel auth-panel">
+      <h2>Session</h2>
+      <div class="grid two">
+        <label>
+          Base URL
+          <input id="baseUrl" value="http://localhost:8080" />
+        </label>
+        <label>
+          API Key
+          <input id="apiKey" placeholder="X-NEXUS-GATEWAY-KEY" />
+        </label>
+      </div>
+      <div class="grid two">
+        <label>
+          Actor
+          <input id="actor" placeholder="ops@company.com" />
+        </label>
+        <label>
+          Role
+          <input id="role" placeholder="admin" />
+        </label>
+      </div>
+      <label>
+        Scopes (CSV)
+        <input id="scopes" placeholder="admin:console:read,admin:console:write,admin:secrets" />
+      </label>
+      <div class="actions">
+        <button id="btnBootstrap">Load Bootstrap</button>
+        <button id="btnSave" class="ghost">Save Session</button>
+      </div>
+      <pre id="bootstrapOut" class="mono"></pre>
+    </section>
+
+    <section class="grid three">
+      <article class="panel">
+        <h3>Tenant Settings</h3>
+        <label>Plan
+          <select id="planCode">
+            <option value="starter">starter</option>
+            <option value="growth">growth</option>
+            <option value="enterprise">enterprise</option>
+          </select>
+        </label>
+        <label>Hard Limits JSON
+          <textarea id="hardLimits" rows="6"></textarea>
+        </label>
+        <button id="btnSaveSettings">Upsert Settings</button>
+      </article>
+
+      <article class="panel">
+        <h3>Tools Snapshot</h3>
+        <button id="btnTools">Refresh Tools</button>
+        <pre id="toolsOut" class="mono"></pre>
+      </article>
+
+      <article class="panel">
+        <h3>Audit Snapshot</h3>
+        <button id="btnAudit">Refresh Audit</button>
+        <pre id="auditOut" class="mono"></pre>
+      </article>
+    </section>
+
+    <section class="grid two">
+      <article class="panel">
+        <h3>REST Run Demo</h3>
+        <textarea id="restPayload" rows="7">{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"demo-user"}}</textarea>
+        <button id="btnRunRest">POST /v1/run</button>
+        <pre id="restOut" class="mono"></pre>
+      </article>
+      <article class="panel">
+        <h3>MCP Call Demo</h3>
+        <textarea id="mcpPayload" rows="7">{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}</textarea>
+        <button id="btnRunMcp">POST /mcp</button>
+        <pre id="mcpOut" class="mono"></pre>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h3>Admin Activity</h3>
+      <button id="btnAdminActivity">Refresh Admin Activity</button>
+      <pre id="adminActivityOut" class="mono"></pre>
+    </section>
+  </main>
+
+  <script src="/admin/assets/app.js"></script>
+</body>
+</html>

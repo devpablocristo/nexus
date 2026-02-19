@@ -12,6 +12,7 @@ import (
 
 	auditdto "nexus-gateway/internal/audit/handler/dto"
 	auditdomain "nexus-gateway/internal/audit/usecases/domain"
+	"nexus-gateway/internal/shared/authz"
 	httperr "nexus-gateway/pkg/http/errors"
 	"nexus-gateway/pkg/types"
 )
@@ -30,6 +31,10 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) query(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeAuditRead) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeAuditRead+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	q, err := parseQuery(c)
 	if err != nil {
@@ -132,6 +137,10 @@ func toItem(ev auditdomain.AuditEvent) auditdto.AuditItem {
 }
 
 func (h *Handler) export(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeAuditRead) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeAuditRead+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	q, err := parseQuery(c)
 	if err != nil {
@@ -245,6 +254,24 @@ func mustOrgID(c *gin.Context) uuid.UUID {
 		return id
 	}
 	return uuid.Nil
+}
+
+func roleFromCtx(c *gin.Context) *string {
+	if v, ok := c.Get(string(types.CtxKeyRole)); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return &s
+		}
+	}
+	return nil
+}
+
+func scopesFromCtx(c *gin.Context) []string {
+	if v, ok := c.Get(string(types.CtxKeyScopes)); ok {
+		if scopes, ok := v.([]string); ok {
+			return scopes
+		}
+	}
+	return nil
 }
 
 // centralized error handling via pkg/http/errors

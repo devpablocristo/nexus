@@ -63,8 +63,25 @@ WHERE api_key_id IN (
   SELECT id FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='demo-key'
 );
 INSERT INTO org_api_key_scopes(api_key_id, scope)
-SELECT id, 'admin:secrets'
+SELECT id, scope
 FROM org_api_keys
+JOIN (VALUES
+  ('tools:read'),
+  ('tools:write'),
+  ('policy:read'),
+  ('policy:write'),
+  ('egress:read'),
+  ('egress:write'),
+  ('audit:read'),
+  ('gateway:run'),
+  ('gateway:simulate'),
+  ('mcp:read'),
+  ('mcp:call'),
+  ('a2a:call'),
+  ('admin:secrets'),
+  ('admin:console:read'),
+  ('admin:console:write')
+) AS scopes(scope) ON true
 WHERE org_id=:'org_id'::uuid AND name='demo-key';
 
 WITH upsert_echo AS (

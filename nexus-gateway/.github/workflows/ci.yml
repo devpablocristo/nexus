@@ -38,7 +38,26 @@ jobs:
       - name: Smoke assertions
         run: |
           curl -fsS http://localhost:8080/healthz | jq -e '.ok==true'
-          curl -fsS http://localhost:8080/readyz | jq -e '.ok==true'
+          test "$(curl -sS -o /dev/null -w "%{http_code}" http://localhost:8080/readyz)" = "200"
+          test "$(curl -sS -o /dev/null -w "%{http_code}" http://localhost:8080/admin)" = "200"
+          curl -fsS http://localhost:8080/metrics | rg -q "nexus_run_total_prom|nexus_gateway_req_count"
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
+  quickstart-admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - name: Install quickstart dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep
+      - name: Quickstart admin
+        run: make quickstart-admin
       - name: Teardown
         if: always()
         run: docker compose down -v

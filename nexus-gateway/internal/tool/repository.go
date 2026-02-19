@@ -48,6 +48,12 @@ func (r *Repository) Create(ctx context.Context, orgID uuid.UUID, t tooldomain.T
 	return toDomain(m), nil
 }
 
+func (r *Repository) CountByOrg(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&models.Tool{}).Where("org_id = ?", orgID).Count(&count).Error
+	return count, err
+}
+
 func (r *Repository) List(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error) {
 	var rows []models.Tool
 	if err := r.db.WithContext(ctx).Where("org_id = ?", orgID).Order("name asc").Find(&rows).Error; err != nil {

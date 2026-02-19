@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"nexus-gateway/internal/shared/authz"
 	"nexus-gateway/internal/tool/handler/dto"
 	tooldomain "nexus-gateway/internal/tool/usecases/domain"
 	httperr "nexus-gateway/pkg/http/errors"
@@ -44,6 +45,10 @@ type createToolRequest struct {
 }
 
 func (h *Handler) create(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeToolsWrite) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeToolsWrite+" scope required")
+		return
+	}
 	var req createToolRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httperr.BadRequest(c, "invalid json")
@@ -72,6 +77,10 @@ func (h *Handler) create(c *gin.Context) {
 }
 
 func (h *Handler) list(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeToolsRead) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeToolsRead+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	items, err := h.svc.List(c.Request.Context(), orgID)
 	if err != nil {
@@ -86,6 +95,10 @@ func (h *Handler) list(c *gin.Context) {
 }
 
 func (h *Handler) get(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeToolsRead) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeToolsRead+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	name := c.Param("name")
 	t, err := h.svc.GetByName(c.Request.Context(), orgID, name)
@@ -110,6 +123,10 @@ type updateToolRequest struct {
 }
 
 func (h *Handler) update(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeToolsWrite) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeToolsWrite+" scope required")
+		return
+	}
 	orgID := mustOrgID(c)
 	name := c.Param("name")
 	var req updateToolRequest
@@ -185,6 +202,24 @@ func mustOrgID(c *gin.Context) uuid.UUID {
 		return id
 	}
 	return uuid.Nil
+}
+
+func roleFromCtx(c *gin.Context) *string {
+	if v, ok := c.Get(string(types.CtxKeyRole)); ok {
+		if s, ok := v.(string); ok && s != "" {
+			return &s
+		}
+	}
+	return nil
+}
+
+func scopesFromCtx(c *gin.Context) []string {
+	if v, ok := c.Get(string(types.CtxKeyScopes)); ok {
+		if s, ok := v.([]string); ok {
+			return s
+		}
+	}
+	return nil
 }
 
 // centralized error handling via pkg/http/errors

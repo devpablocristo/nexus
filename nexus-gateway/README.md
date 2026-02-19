@@ -25,15 +25,23 @@ Repos  Executors   Security adapters
 
 ```bash
 cp .env.example .env
-make dev
+# For Docker demo: allow gateway to call mock-tools (private IP). Omit in production.
+# echo "NEXUS_DISABLE_SSRF_PROTECTION=true" >> .env
+make up
 make migrate-up
 make seed
+# or one-command bootstrap (admin console + REST/MCP smoke):
+# make quickstart-admin
 ```
 
 Docs:
 - Swagger UI: `http://localhost:8080/docs`
 - OpenAPI: `http://localhost:8080/openapi.yaml`
 - Architecture notes: `docs/ARCHITECTURE.md`
+- Roadmap (go-to-market + vanguardia): `docs/ROADMAP-GO-TO-MARKET-Y-VANGUARDIA.md`
+- Admin Console MVP: `http://localhost:8080/admin`
+- Prometheus: `http://localhost:9090`
+- Grafana (starter dashboard): `http://localhost:3000` (`admin/admin`)
 
 ## Product packaging status
 
@@ -61,6 +69,7 @@ JWT/JWKS mode supports strong identity while keeping API key compatibility via f
 ## Phase 2 capabilities
 
 - MCP server endpoint: `POST /mcp` (`tools/list`, `tools/get`, `tools/call`)
+- A2A bridge endpoint: `POST /a2a/call` (delegates to same `/v1/run` control pipeline)
 - Policy simulator/explain endpoint: `POST /v1/run/simulate` (no upstream execution)
 - Secrets vault per tool/org (AES-GCM encrypted at rest)
 - Secret injection into outbound tool calls (`header` / `bearer`)
@@ -132,6 +141,16 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   http://localhost:8080/mcp | jq
 ```
 
+A2A tool call (same pipeline, no bypass):
+
+```bash
+curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+  -H "X-NEXUS-SCOPES: a2a:call" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name":"echo","input":{"from":"a2a"},"context":{"user_id":"u_1"}}' \
+  http://localhost:8080/a2a/call | jq
+```
+
 Create encrypted secret for `echo` tool (requires `X-NEXUS-ROLE: secops` or `admin:secrets` scope):
 
 ```bash
@@ -167,6 +186,7 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
 - `make e2e`: full API e2e (REST + MCP + secrets + egress + DLP checks)
 - `make jwt-e2e`: JWT/JWKS e2e (`Authorization: Bearer`, API key fallback off)
 - `make qa`: full pipeline (`down` → `up` → `migrate` → `seed` → `test` → `e2e`)
+- `make quickstart-admin`: clean bootstrap + REST/MCP smoke + admin bootstrap check
 - `make cleanup-idempotency`: delete expired idempotency records
 - `go test ./internal/audit -run TestAuditExport`: contract/snapshot export tests
 
@@ -192,7 +212,7 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   - Safe `DialContext` validates resolved IPs at connection time (blocks DNS rebinding).
   - Redirects are disabled (blocks redirect-based SSRF).
   - Blocked: loopback, private ranges, link-local, IPv6 ULA (`fc00::/7`), cloud metadata (`169.254.169.254`).
-  - `DisableSSRFProtection` config flag exists for test environments only; a WARN log is emitted at startup if set.
+  - For local Docker demo only, set `NEXUS_DISABLE_SSRF_PROTECTION=true` so the gateway can call mock-tools (private IP). A WARN log is emitted at startup when set. Never enable in production.
 
 ## 5-Minute Demo (Copy/Paste)
 
@@ -202,7 +222,9 @@ Also available as `scripts/demo.sh`.
 
 ```bash
 cp .env.example .env
-make dev
+# In Docker, mock-tools resolves to a private IP; enable this so the demo can call it (dev only).
+echo "NEXUS_DISABLE_SSRF_PROTECTION=true" >> .env
+make up
 make migrate-up
 make seed
 ```
@@ -275,13 +297,20 @@ curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
 8) (Optional) Verify SSRF protection blocks internal targets:
 
 ```bash
+# NOTE: If you enabled `NEXUS_DISABLE_SSRF_PROTECTION=true` for the Docker demo,
+# SSRF checks are disabled and this call may be blocked by egress instead.
+# To explicitly demo SSRF, run with SSRF enabled:
+#   export NEXUS_DISABLE_SSRF_PROTECTION=false
+#   make down && docker compose up --build -d
+#   make migrate-up && make seed
+#
 # Create a tool pointing to the cloud metadata endpoint
 curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name":"ssrf-test","kind":"http","method":"GET","url":"http://169.254.169.254/latest/meta-data/","input_schema":{"type":"object"},"action_type":"read","risk_level":5,"enabled":true}' \
   http://localhost:8080/v1/tools | jq
 
-# Try to call it — blocked by SSRF protection before egress check
+# Try to call it — blocked by SSRF protection (when enabled) before egress check
 curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"tool_name":"ssrf-test","input":{}}' \

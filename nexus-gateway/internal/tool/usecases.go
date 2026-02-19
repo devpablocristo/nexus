@@ -18,6 +18,11 @@ type RepositoryPort interface {
 	List(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error)
 	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
 	UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch ToolPatch) (tooldomain.Tool, error)
+	CountByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
+}
+
+type TenantLimitsPort interface {
+	GetToolsMax(ctx context.Context, orgID uuid.UUID) (int, error)
 }
 
 type Service interface {
@@ -56,12 +61,13 @@ type ToolPatch struct {
 }
 
 type ServiceImpl struct {
-	repo  RepositoryPort
-	cache *jsonschema.CompilerCache
+	repo      RepositoryPort
+	tenantCap TenantLimitsPort
+	cache     *jsonschema.CompilerCache
 }
 
-func NewService(repo RepositoryPort, cache *jsonschema.CompilerCache) *ServiceImpl {
-	return &ServiceImpl{repo: repo, cache: cache}
+func NewService(repo RepositoryPort, tenantCap TenantLimitsPort, cache *jsonschema.CompilerCache) *ServiceImpl {
+	return &ServiceImpl{repo: repo, tenantCap: tenantCap, cache: cache}
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, orgID uuid.UUID, req CreateRequest) (tooldomain.Tool, error) {
@@ -91,6 +97,21 @@ func (s *ServiceImpl) Create(ctx context.Context, orgID uuid.UUID, req CreateReq
 	}
 	if req.RiskLevel < 1 || req.RiskLevel > 5 {
 		return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "risk_level must be 1..5")
+	}
+	if s.tenantCap != nil {
+		toolsMax, err := s.tenantCap.GetToolsMax(ctx, orgID)
+		if err != nil {
+			return tooldomain.Tool{}, err
+		}
+		if toolsMax > 0 {
+			count, err := s.repo.CountByOrg(ctx, orgID)
+			if err != nil {
+				return tooldomain.Tool{}, err
+			}
+			if int(count) >= toolsMax {
+				return tooldomain.Tool{}, types.NewHTTPError(http.StatusForbidden, types.ErrCodeRateLimited, "tenant tools_max limit exceeded")
+			}
+		}
 	}
 	inSchemaBytes, err := json.Marshal(req.InputSchema)
 	if err != nil {

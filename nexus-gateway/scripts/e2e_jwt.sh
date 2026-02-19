@@ -23,8 +23,17 @@ require() {
 
 require curl
 require jq
-require rg
 require sha256sum
+
+# Prefer ripgrep when available; fall back to grep so the suite works on minimal dev machines/CI images.
+match() {
+  local pattern="$1"
+  if command -v rg >/dev/null 2>&1; then
+    rg -n "$pattern"
+  else
+    grep -nE "$pattern"
+  fi
+}
 
 fail() { echo "E2E JWT FAIL: $*" >&2; exit 1; }
 
@@ -46,6 +55,11 @@ trap cleanup EXIT
 echo "[e2e-jwt] bring stack up (JWT only)"
 export NEXUS_AUTH_ENABLE_JWT=true
 export NEXUS_AUTH_ALLOW_API_KEY=false
+# In docker compose, mock-tools resolves to a private IP (bridge network). With SSRF protection enabled,
+# outbound calls to private IPs are blocked by design, which breaks E2E runs. For E2E we disable SSRF
+# protection explicitly (dev/test only).
+: "${NEXUS_DISABLE_SSRF_PROTECTION:=true}"
+export NEXUS_DISABLE_SSRF_PROTECTION
 docker compose up --build -d >/dev/null
 
 for _ in {1..60}; do
@@ -58,7 +72,7 @@ done
 echo "[e2e-jwt] migrate + seed"
 make migrate-up >/dev/null
 SEED_OUT="$(bash scripts/seed_demo.sh)"
-API_KEY="$(echo "$SEED_OUT" | rg -n "^NEXUS_DEMO_API_KEY=" | tail -n1 | cut -d= -f2)"
+API_KEY="$(echo "$SEED_OUT" | match "^NEXUS_DEMO_API_KEY=" | tail -n1 | cut -d= -f2)"
 [[ -n "$API_KEY" ]] || fail "seed key not found"
 API_HASH="$(printf "%s" "$API_KEY" | sha256sum | awk '{print $1}')"
 

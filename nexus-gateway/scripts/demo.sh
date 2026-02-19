@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # 5-Minute Demo — mirrors the README "5-Minute Demo (Copy/Paste)" section.
-# Prerequisites: docker compose stack running (make dev), migrations applied, seed done.
+# Prerequisites: docker compose stack running (make up), migrations applied, seed done.
 # Usage:
 #   cp .env.example .env
-#   make dev && make migrate-up && make seed
+#   make up && make migrate-up && make seed
 #   export NEXUS_API_KEY="<seed-output-value>"
 #   bash scripts/demo.sh
 set -euo pipefail
@@ -61,7 +61,10 @@ acurl "${BASE}/v1/audit/export?format=jsonl&tool_name=transfer&limit=5"
 echo
 
 # 7) (Optional) SSRF protection demo
-hdr "7. SSRF protection: block cloud metadata endpoint"
+# Note: if SSRF protection is disabled (NEXUS_DISABLE_SSRF_PROTECTION=true),
+# this call is still expected to be blocked by egress default-deny unless you
+# explicitly allowlist the IP/host.
+hdr "7. SSRF/egress protection: block cloud metadata endpoint"
 echo "Creating tool pointing to 169.254.169.254..."
 acurl -H "Content-Type: application/json" \
   -d '{"name":"ssrf-test","kind":"http","method":"GET","url":"http://169.254.169.254/latest/meta-data/","input_schema":{"type":"object"},"action_type":"read","risk_level":5,"enabled":true}' \
