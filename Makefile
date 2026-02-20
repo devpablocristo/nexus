@@ -5,12 +5,37 @@ OPERATOR_DIR := nexus-operator
 TOWER_DIR := nexus-tower
 CORE_SERVICE := nexus-core
 
-.PHONY: up down logs migrate-up migrate-down cleanup-idempotency seed \
+.PHONY: up up-ready down logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test operator-test tower-test qa e2e jwt-e2e quickstart-admin \
 	core-dev operator-dev tower-dev
 
 up:
-	docker compose up --build -d
+	docker compose up --build
+
+up-ready:
+	docker compose up --build 
+	@echo "Waiting for core services to be healthy..."
+	@for i in $$(seq 1 90); do \
+		ok=1; \
+		for svc in postgres redis nexus-core mock-tools nexus-operator nexus-tower; do \
+			cid=$$(docker compose ps -q $$svc); \
+			if [ -z "$$cid" ]; then ok=0; break; fi; \
+			state=$$(docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' $$cid); \
+			case "$$state" in \
+				"running healthy"|"running none") ;; \
+				*) ok=0; break ;; \
+			esac; \
+		done; \
+		if [ "$$ok" -eq 1 ]; then \
+			echo "Services are healthy."; \
+			$(MAKE) seed; \
+			exit 0; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "Timeout waiting for services health." >&2; \
+	docker compose ps; \
+	exit 1
 
 down:
 	docker compose down -v

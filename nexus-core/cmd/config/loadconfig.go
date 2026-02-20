@@ -108,6 +108,25 @@ func Load() (Config, error) {
 
 	cfg.Service.DisableSSRFProtection = mustBoolDefault("NEXUS_DISABLE_SSRF_PROTECTION", false)
 
+	// OIDC/SSO
+	cfg.Service.OIDCEnabled = mustBoolDefault("NEXUS_OIDC_ENABLED", false)
+	cfg.Service.OIDCIssuerURL = mustStrDefault("NEXUS_OIDC_ISSUER_URL", "")
+	cfg.Service.OIDCClientID = mustStrDefault("NEXUS_OIDC_CLIENT_ID", "")
+	cfg.Service.OIDCClientSecret = mustStrDefault("NEXUS_OIDC_CLIENT_SECRET", "")
+	cfg.Service.OIDCRedirectURL = mustStrDefault("NEXUS_OIDC_REDIRECT_URL", "")
+	cfg.Service.OIDCScopes = mustStrDefault("NEXUS_OIDC_SCOPES", "openid profile email")
+	if cfg.Service.OIDCEnabled {
+		if cfg.Service.OIDCIssuerURL == "" {
+			return Config{}, errors.New("NEXUS_OIDC_ISSUER_URL required when NEXUS_OIDC_ENABLED=true")
+		}
+		if cfg.Service.OIDCClientID == "" {
+			return Config{}, errors.New("NEXUS_OIDC_CLIENT_ID required when NEXUS_OIDC_ENABLED=true")
+		}
+		if cfg.Service.OIDCRedirectURL == "" {
+			return Config{}, errors.New("NEXUS_OIDC_REDIRECT_URL required when NEXUS_OIDC_ENABLED=true")
+		}
+	}
+
 	cfg.Migrations.Dir = mustStrDefault("NEXUS_MIGRATIONS_DIR", "./migrations")
 
 	return cfg, nil

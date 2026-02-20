@@ -43,7 +43,7 @@ services:
         condition: service_healthy
     ports:
       - "${NEXUS_HTTP_PORT}:8080"
-    command: ["/app/nexus-core"]
+    command: ["sh", "-c", "/app/migrate -cmd up && /app/nexus-core"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz >/dev/null 2>&1 || exit 1"]
       interval: 2s
@@ -70,6 +70,20 @@ services:
       timeout: 3s
       retries: 30
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/api/tags >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    profiles:
+      - ollama
+
   nexus-operator:
     build:
       context: .
@@ -81,6 +95,11 @@ services:
       NEXUS_CORE_API_KEY: "${NEXUS_CORE_API_KEY}"
       OPERATOR_PORT: "${NEXUS_OPERATOR_PORT}"
       OPERATOR_INTERNAL_KEY: "${OPERATOR_INTERNAL_KEY}"
+      LLM_BACKEND: "${LLM_BACKEND:-fallback}"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.1:8b}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}"
     depends_on:
       nexus-core:
         condition: service_healthy
@@ -96,21 +115,24 @@ services:
     build:
       context: .
       dockerfile: nexus-tower/Dockerfile
-    env_file:
-      - .env
-    environment:
-      VITE_NEXUS_CORE_URL: "${VITE_NEXUS_CORE_URL}"
-      VITE_NEXUS_OPERATOR_URL: "${VITE_NEXUS_OPERATOR_URL}"
-      VITE_NEXUS_API_KEY: "${VITE_NEXUS_API_KEY}"
-      VITE_NEXUS_SCOPES: "${VITE_NEXUS_SCOPES}"
-      VITE_OPERATOR_ACTION_KEY: "${VITE_OPERATOR_ACTION_KEY}"
+      args:
+        VITE_NEXUS_CORE_URL: "${VITE_NEXUS_CORE_URL}"
+        VITE_NEXUS_OPERATOR_URL: "${VITE_NEXUS_OPERATOR_URL}"
+        VITE_NEXUS_API_KEY: "${VITE_NEXUS_API_KEY}"
+        VITE_NEXUS_SCOPES: "${VITE_NEXUS_SCOPES}"
+        VITE_OPERATOR_ACTION_KEY: "${VITE_OPERATOR_ACTION_KEY}"
     depends_on:
       nexus-core:
         condition: service_healthy
       nexus-operator:
         condition: service_healthy
     ports:
-      - "${NEXUS_TOWER_PORT}:5173"
+      - "${NEXUS_TOWER_PORT}:4173"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4173/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -140,3 +162,4 @@ services:
 
 volumes:
   postgres_data:
+  ollama_data:

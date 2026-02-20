@@ -29,3 +29,5 @@ RUN chown -R app:app /app
 
 USER app
 EXPOSE 8080 8081
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:8080/readyz >/dev/null 2>&1 || exit 1

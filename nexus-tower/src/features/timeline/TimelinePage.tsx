@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { Card } from '../../components/Card';
+import { QueryError } from '../../components/QueryError';
 import { getEvents } from '../../lib/api';
 
 export function TimelinePage() {
@@ -8,6 +9,8 @@ export function TimelinePage() {
 
   return (
     <Card title="Operational Timeline">
+      <QueryError error={query.error} onRetry={() => query.refetch()} />
+      {query.isLoading && <p className="muted">Loading events...</p>}
       <ul className="timeline">
         {(query.data?.items || []).map((event) => (
           <li key={event.id}>

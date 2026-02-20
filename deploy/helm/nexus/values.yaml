@@ -1,0 +1,307 @@
+## ------------------------------------------------------------------
+## Global
+## ------------------------------------------------------------------
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+## ------------------------------------------------------------------
+## nexus-core  (Go API gateway)
+## ------------------------------------------------------------------
+core:
+  replicaCount: 2
+  image:
+    repository: nexus-core
+    tag: ""            # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  probes:
+    readiness:
+      path: /readyz
+      port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    liveness:
+      path: /healthz
+      port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 5
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+## ------------------------------------------------------------------
+## nexus-operator  (Python / FastAPI)
+## ------------------------------------------------------------------
+operator:
+  replicaCount: 1
+  image:
+    repository: nexus-operator
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probes:
+    readiness:
+      path: /readyz
+      port: 8000
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    liveness:
+      path: /readyz
+      port: 8000
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 5
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containerSecurityContext:
+    readOnlyRootFilesystem: false   # python writes bytecode / tmp
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+## ------------------------------------------------------------------
+## nexus-tower  (Vite SPA on Nginx)
+## ------------------------------------------------------------------
+tower:
+  replicaCount: 1
+  image:
+    repository: nexus-tower
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 4173
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  probes:
+    readiness:
+      path: /
+      port: 4173
+      initialDelaySeconds: 3
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    liveness:
+      path: /
+      port: 4173
+      initialDelaySeconds: 5
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 5
+  securityContext:
+    runAsNonRoot: false   # nginx alpine needs root for master process
+    fsGroup: 101
+  containerSecurityContext:
+    readOnlyRootFilesystem: false   # nginx writes to /var/cache, /var/run
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+      add: [NET_BIND_SERVICE]
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+## ------------------------------------------------------------------
+## Ingress
+## ------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls: []
+  #  - secretName: nexus-tls
+  #    hosts:
+  #      - nexus.example.com
+  hosts:
+    - host: nexus.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: tower
+        - path: /api
+          pathType: Prefix
+          service: core
+
+## ------------------------------------------------------------------
+## PostgreSQL  (internal, for dev / staging)
+## ------------------------------------------------------------------
+postgres:
+  internal:
+    enabled: false
+    image:
+      repository: postgres
+      tag: "16"
+      pullPolicy: IfNotPresent
+    storage:
+      size: 10Gi
+      storageClassName: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+      runAsGroup: 999
+      fsGroup: 999
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+    auth:
+      username: postgres
+      password: postgres
+      database: nexus
+
+## ------------------------------------------------------------------
+## Redis  (internal, for dev / staging)
+## ------------------------------------------------------------------
+redis:
+  internal:
+    enabled: false
+    image:
+      repository: redis
+      tag: "7-alpine"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+      runAsGroup: 999
+      fsGroup: 999
+    containerSecurityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+
+## ------------------------------------------------------------------
+## Application configuration  (non-secret)
+## ------------------------------------------------------------------
+config:
+  # Core
+  NEXUS_HTTP_TIMEOUT_MS: "5000"
+  NEXUS_HTTP_MAX_RESPONSE_BYTES: "1048576"
+  NEXUS_MAX_BODY_BYTES: "262144"
+  NEXUS_LOG_LEVEL: "info"
+  NEXUS_RATE_LIMIT_DEFAULT_PER_MINUTE: "60"
+  NEXUS_RATE_LIMIT_BACKEND: "inmemory"
+  NEXUS_SWAGGER_CDN: "true"
+  NEXUS_AUTH_ALLOW_API_KEY: "true"
+  NEXUS_AUTH_ENABLE_JWT: "false"
+  NEXUS_AUTH_LEGACY_SCOPE_FALLBACK: "true"
+  NEXUS_JWT_ISSUER: "nexus-demo-issuer"
+  NEXUS_JWT_AUDIENCE: "nexus-core"
+  NEXUS_JWT_ORG_CLAIM: "org_id"
+  NEXUS_JWT_ROLE_CLAIM: "role"
+  NEXUS_JWT_SCOPES_CLAIM: "scopes"
+  NEXUS_JWT_ACTOR_CLAIM: "sub"
+  NEXUS_OTEL_ENABLED: "false"
+  NEXUS_OTEL_SERVICE_NAME: "nexus-core"
+  NEXUS_OTLP_ENDPOINT: ""
+  NEXUS_OTLP_INSECURE: "true"
+  NEXUS_IDEMPOTENCY_TTL_HOURS: "24"
+  NEXUS_TIMEOUT_BUDGET_DEFAULT_MS: "10000"
+  NEXUS_TIMEOUT_BUDGET_MIN_MS: "1000"
+  NEXUS_TIMEOUT_BUDGET_MAX_MS: "30000"
+  NEXUS_DISABLE_SSRF_PROTECTION: "false"
+  NEXUS_MIGRATIONS_DIR: "/app/migrations"
+  NEXUS_ACTION_TTL_SWEEP_SECONDS: "15"
+  NEXUS_ACTION_TTL_SWEEP_BATCH: "200"
+  # Operator
+  NEXUS_CORE_TIMEOUT_SECONDS: "5"
+  OPERATOR_POLL_INTERVAL_SECONDS: "10"
+  OPERATOR_POLL_BATCH_SIZE: "100"
+  OPERATOR_DENY_RATIO_THRESHOLD: "0.35"
+  OPERATOR_MIN_EVENTS_FOR_SIGNAL: "20"
+  OPERATOR_ACTION_COOLDOWN_SECONDS: "300"
+  OPERATOR_ACTION_TTL_SECONDS: "300"
+
+## ------------------------------------------------------------------
+## Secrets  (override via --set or external secrets operator)
+## ------------------------------------------------------------------
+secrets:
+  # Database URL (required) - when postgres.internal.enabled is true this
+  # is auto-generated from the internal postgres values.
+  NEXUS_DATABASE_URL: "postgres://postgres:postgres@nexus-postgres:5432/nexus?sslmode=disable"
+  # Redis URL
+  NEXUS_REDIS_URL: "redis://nexus-redis:6379/0"
+  # Master key used for encryption at rest (change in production!)
+  NEXUS_MASTER_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  # JWKS URL for JWT verification
+  NEXUS_JWKS_URL: ""
+  # Internal communication keys
+  NEXUS_OPERATOR_INTERNAL_KEY: "operator-internal-key"
+  OPERATOR_INTERNAL_KEY: "operator-internal-key"
+  # API keys
+  NEXUS_CORE_API_KEY: "nexus-operator-local-key"
+  NEXUS_OPERATOR_API_KEY: "nexus-operator-local-key"
+  # Anthropic key for operator LLM features
+  ANTHROPIC_API_KEY: ""
+  # Tower build-time keys baked into the SPA - override via image build args
+  VITE_NEXUS_API_KEY: ""
+  VITE_OPERATOR_ACTION_KEY: "operator-internal-key"
+  VITE_NEXUS_SCOPES: "admin:console:read,admin:console:write,audit:read"

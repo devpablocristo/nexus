@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nexus.fullname" . }}-core
+  labels:
+    {{- include "nexus.core.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.core.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "nexus.core.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.core.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "nexus.core.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "nexus.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.core.securityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: nexus-core
+          image: {{ include "nexus.core.image" . }}
+          imagePullPolicy: {{ .Values.core.image.pullPolicy }}
+          command: ["/app/nexus-core"]
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "nexus.configmapName" . }}
+            - secretRef:
+                name: {{ include "nexus.secretName" . }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.core.probes.readiness.path }}
+              port: {{ .Values.core.probes.readiness.port }}
+            initialDelaySeconds: {{ .Values.core.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.core.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.core.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.core.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.core.probes.liveness.path }}
+              port: {{ .Values.core.probes.liveness.port }}
+            initialDelaySeconds: {{ .Values.core.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.core.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.core.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.core.probes.liveness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.core.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.core.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.core.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.core.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.core.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

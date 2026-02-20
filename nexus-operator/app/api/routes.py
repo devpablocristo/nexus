@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import Settings
 from app.services.engine import OperatorEngine
+from app.services.llm_client import LLMClient
 
 router = APIRouter()
 
@@ -49,7 +50,9 @@ async def healthz() -> dict[str, bool]:
 
 @router.get('/readyz')
 async def readyz(request: Request) -> dict[str, bool]:
-    _engine(request)
+    engine = _engine(request)
+    if engine._task is None or engine._task.done():
+        raise HTTPException(status_code=503, detail='engine loop not running')
     return {'ok': True}
 
 
@@ -73,16 +76,33 @@ async def assistant_query(
     _: None = Depends(verify_operator_key),
 ) -> AssistantQueryResponse:
     engine = _engine(request)
-    summary = engine.state.latest_summary
+    settings = _settings(request)
+    state = engine.state
+
+    llm = LLMClient(settings)
+
+    if llm.is_configured:
+        system_prompt = (
+            "You are the Nexus Operator assistant. You have access to the current operator "
+            "state and should answer the user's question concisely.\n\n"
+            "## Operator State\n"
+            f"- cursor: {state.cursor}\n"
+            f"- last_action_at: {state.last_action_at}\n"
+            f"- latest_summary: {state.latest_summary}\n"
+        )
+        summary = await llm.query(system_prompt, payload.query)
+    else:
+        summary = f"{state.latest_summary} | query={payload.query}"
+
     return AssistantQueryResponse(
-        summary=f"{summary} | query={payload.query}",
+        summary=summary,
         tables=[
             {
                 'title': 'Operator State',
                 'columns': ['field', 'value'],
                 'rows': [
-                    {'field': 'cursor', 'value': str(engine.state.cursor)},
-                    {'field': 'last_action_at', 'value': str(engine.state.last_action_at)},
+                    {'field': 'cursor', 'value': str(state.cursor)},
+                    {'field': 'last_action_at', 'value': str(state.last_action_at)},
                 ],
             }
         ],

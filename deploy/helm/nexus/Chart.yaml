@@ -1,0 +1,12 @@
+apiVersion: v2
+name: nexus
+description: Nexus - API gateway with operator intelligence and admin tower
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - nexus
+  - api-gateway
+  - operator
+maintainers:
+  - name: Pablo

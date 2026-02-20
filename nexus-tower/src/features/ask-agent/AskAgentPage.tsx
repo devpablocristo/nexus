@@ -25,12 +25,30 @@ export function AskAgentPage() {
       <form className="ask-form" onSubmit={onSubmit}>
         <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={5} />
         <div className="button-row">
-          <button type="submit">Query Operator</button>
-          <button type="button" className="ghost" onClick={() => tick.mutate()}>
-            Trigger Tick
+          <button type="submit" disabled={ask.isPending}>
+            {ask.isPending ? 'Querying...' : 'Query Operator'}
+          </button>
+          <button type="button" className="ghost" disabled={tick.isPending} onClick={() => tick.mutate()}>
+            {tick.isPending ? 'Running...' : 'Trigger Tick'}
           </button>
         </div>
       </form>
+
+      {ask.error && (
+        <div className="error-banner">
+          <strong>Query failed</strong>
+          <p>{ask.error.message}</p>
+        </div>
+      )}
+
+      {tick.error && (
+        <div className="error-banner">
+          <strong>Tick failed</strong>
+          <p>{tick.error.message}</p>
+        </div>
+      )}
+
+      {tick.isSuccess && <p className="success-msg">Operator tick completed.</p>}
 
       {ask.data && (
         <section className="agent-answer">

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { Card } from '../../components/Card';
+import { QueryError } from '../../components/QueryError';
 import { getActions, getEvents, getIncidents } from '../../lib/api';
 
 export function OverviewPage() {
@@ -24,6 +25,7 @@ export function OverviewPage() {
   return (
     <div className="grid two">
       <Card title="Control Status">
+        <QueryError error={eventsQ.error} onRetry={() => eventsQ.refetch()} />
         <div className="stat-grid">
           <div>
             <p className="stat-label">Events</p>
@@ -41,6 +43,7 @@ export function OverviewPage() {
       </Card>
 
       <Card title="Event Mix">
+        <QueryError error={eventsQ.error} onRetry={() => eventsQ.refetch()} />
         <div style={{ width: '100%', height: 260 }}>
           <ResponsiveContainer>
             <BarChart data={chartData}>
@@ -54,6 +57,7 @@ export function OverviewPage() {
       </Card>
 
       <Card title="Latest Incidents">
+        <QueryError error={incidentsQ.error} onRetry={() => incidentsQ.refetch()} />
         <table className="table">
           <thead>
             <tr>
@@ -75,6 +79,7 @@ export function OverviewPage() {
       </Card>
 
       <Card title="Latest Actions">
+        <QueryError error={actionsQ.error} onRetry={() => actionsQ.refetch()} />
         <table className="table">
           <thead>
             <tr>

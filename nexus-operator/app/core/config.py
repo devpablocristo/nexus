@@ -22,5 +22,12 @@ class Settings(BaseSettings):
 
     operator_internal_key: str = Field(default='operator-internal-key', alias='OPERATOR_INTERNAL_KEY')
 
+    # LLM configuration — infra decides, code stays the same
+    llm_backend: str = Field(default='fallback', alias='LLM_BACKEND')  # ollama | anthropic | fallback
+    anthropic_api_key: str = Field(default='', alias='ANTHROPIC_API_KEY')
+    anthropic_model: str = Field(default='claude-sonnet-4-20250514', alias='ANTHROPIC_MODEL')
+    ollama_base_url: str = Field(default='http://ollama:11434', alias='OLLAMA_BASE_URL')
+    ollama_model: str = Field(default='llama3.1:8b', alias='OLLAMA_MODEL')
+
 
 settings = Settings()

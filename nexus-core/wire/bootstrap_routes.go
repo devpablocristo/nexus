@@ -12,6 +12,7 @@ import (
 	"nexus-core/cmd/config"
 	"nexus-core/internal/a2a"
 	"nexus-core/internal/assistant"
+	"nexus-core/internal/identity"
 	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/incidents"
 	"nexus-core/internal/events"
@@ -48,6 +49,7 @@ func NewRouter(
 	egressH *egress.Handler,
 	mcpH *mcp.Handler,
 	a2aH *a2a.Handler,
+	oidcH *identity.OIDCHandler,
 ) *gin.Engine {
 	r := ginserver.NewEngine(ginserver.EngineOptions{}, ginmw.RequestID(), ginmw.Recovery(l), ginmw.BodyLimit(httpCfg.MaxBodyBytes), ginmw.LoggerMiddleware(l))
 	if cfg.OTelEnabled {
@@ -88,6 +90,11 @@ func NewRouter(
 	})
 	r.Static("/admin/assets", "docs/admin/assets")
 	r.StaticFile("/admin", "docs/admin/index.html")
+
+	// OIDC endpoints are public (no auth middleware) because they are
+	// the entry point for authentication itself.
+	oidcGroup := r.Group("/v1")
+	oidcH.Register(oidcGroup)
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)

@@ -15,90 +15,351 @@
     <header class="hero">
       <p class="eyebrow">Nexus Gateway</p>
       <h1>Admin Control Plane</h1>
-      <p class="subtitle">MVP console para operar tools, policies, tenant limits y validaciones REST/MCP en menos de 20 minutos.</p>
+      <p class="subtitle">Full CRUD console for tools, policies, egress, secrets, incidents and actions.</p>
     </header>
 
-    <section class="panel auth-panel">
-      <h2>Session</h2>
-      <div class="grid two">
+    <!-- ── Nav Tabs ────────────────────────────────────────── -->
+    <nav class="tab-bar">
+      <button class="tab active" data-tab="session">Session</button>
+      <button class="tab" data-tab="tools">Tools</button>
+      <button class="tab" data-tab="policies">Policies</button>
+      <button class="tab" data-tab="egress">Egress</button>
+      <button class="tab" data-tab="secrets">Secrets</button>
+      <button class="tab" data-tab="incidents">Incidents</button>
+      <button class="tab" data-tab="actions">Actions</button>
+      <button class="tab" data-tab="demos">Demos</button>
+    </nav>
+
+    <!-- ── Session ─────────────────────────────────────────── -->
+    <section class="tab-content active" id="tab-session">
+      <article class="panel auth-panel">
+        <h2>Session</h2>
+        <div class="grid two">
+          <label>
+            Base URL
+            <input id="baseUrl" value="http://localhost:8080" />
+          </label>
+          <label>
+            API Key
+            <input id="apiKey" placeholder="X-NEXUS-GATEWAY-KEY" />
+          </label>
+        </div>
+        <div class="grid two">
+          <label>
+            Actor
+            <input id="actor" placeholder="ops@company.com" />
+          </label>
+          <label>
+            Role
+            <input id="role" placeholder="admin" />
+          </label>
+        </div>
         <label>
-          Base URL
-          <input id="baseUrl" value="http://localhost:8080" />
+          Scopes (CSV)
+          <input id="scopes" placeholder="admin:console:read,admin:console:write,admin:secrets,tools:read,tools:write,policy:read,policy:write,egress:read,egress:write" />
         </label>
-        <label>
-          API Key
-          <input id="apiKey" placeholder="X-NEXUS-GATEWAY-KEY" />
-        </label>
-      </div>
-      <div class="grid two">
-        <label>
-          Actor
-          <input id="actor" placeholder="ops@company.com" />
-        </label>
-        <label>
-          Role
-          <input id="role" placeholder="admin" />
-        </label>
-      </div>
-      <label>
-        Scopes (CSV)
-        <input id="scopes" placeholder="admin:console:read,admin:console:write,admin:secrets" />
-      </label>
-      <div class="actions">
-        <button id="btnBootstrap">Load Bootstrap</button>
-        <button id="btnSave" class="ghost">Save Session</button>
-      </div>
-      <pre id="bootstrapOut" class="mono"></pre>
+        <div class="actions">
+          <button id="btnBootstrap">Load Bootstrap</button>
+          <button id="btnSave" class="ghost">Save Session</button>
+        </div>
+        <pre id="bootstrapOut" class="mono"></pre>
+      </article>
+
+      <section class="grid three">
+        <article class="panel">
+          <h3>Tenant Settings</h3>
+          <label>Plan
+            <select id="planCode">
+              <option value="starter">starter</option>
+              <option value="growth">growth</option>
+              <option value="enterprise">enterprise</option>
+            </select>
+          </label>
+          <label>Hard Limits JSON
+            <textarea id="hardLimits" rows="6"></textarea>
+          </label>
+          <button id="btnSaveSettings">Upsert Settings</button>
+        </article>
+
+        <article class="panel">
+          <h3>Audit Snapshot</h3>
+          <button id="btnAudit">Refresh Audit</button>
+          <pre id="auditOut" class="mono"></pre>
+        </article>
+
+        <article class="panel">
+          <h3>Admin Activity</h3>
+          <button id="btnAdminActivity">Refresh Admin Activity</button>
+          <pre id="adminActivityOut" class="mono"></pre>
+        </article>
+      </section>
     </section>
 
-    <section class="grid three">
+    <!-- ── Tools CRUD ──────────────────────────────────────── -->
+    <section class="tab-content" id="tab-tools">
       <article class="panel">
-        <h3>Tenant Settings</h3>
-        <label>Plan
-          <select id="planCode">
-            <option value="starter">starter</option>
-            <option value="growth">growth</option>
-            <option value="enterprise">enterprise</option>
+        <h2>Tools</h2>
+        <div class="actions" style="margin-bottom:12px">
+          <button id="btnRefreshTools">Refresh List</button>
+          <button id="btnShowCreateTool" class="ghost">+ New Tool</button>
+        </div>
+
+        <!-- Create / Update form (hidden by default) -->
+        <div id="toolFormWrap" class="sub-panel" style="display:none">
+          <h3 id="toolFormTitle">Create Tool</h3>
+          <input type="hidden" id="toolFormMode" value="create" />
+          <div class="grid two">
+            <label>Name <input id="tfName" placeholder="my-tool" /></label>
+            <label>Kind
+              <select id="tfKind">
+                <option value="rest">rest</option>
+                <option value="mcp">mcp</option>
+                <option value="a2a">a2a</option>
+              </select>
+            </label>
+          </div>
+          <div class="grid two">
+            <label>Method
+              <select id="tfMethod">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="PATCH">PATCH</option>
+                <option value="DELETE">DELETE</option>
+              </select>
+            </label>
+            <label>URL <input id="tfUrl" placeholder="https://api.example.com/action" /></label>
+          </div>
+          <label>Description <input id="tfDescription" placeholder="(optional)" /></label>
+          <div class="grid three">
+            <label>Action Type
+              <select id="tfActionType">
+                <option value="query">query</option>
+                <option value="mutation">mutation</option>
+                <option value="destructive">destructive</option>
+              </select>
+            </label>
+            <label>Classification <input id="tfClassification" placeholder="internal" /></label>
+            <label>Sensitivity
+              <select id="tfSensitivity">
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+                <option value="critical">critical</option>
+              </select>
+            </label>
+          </div>
+          <div class="grid two">
+            <label>Risk Level (0-10) <input id="tfRiskLevel" type="number" min="0" max="10" value="1" /></label>
+            <label>Enabled
+              <select id="tfEnabled">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </label>
+          </div>
+          <label>Input Schema (JSON)
+            <textarea id="tfInputSchema" rows="4">{}</textarea>
+          </label>
+          <div class="actions">
+            <button id="btnSubmitTool">Save Tool</button>
+            <button id="btnCancelTool" class="ghost">Cancel</button>
+          </div>
+        </div>
+
+        <div id="toolsList"></div>
+        <pre id="toolDetailOut" class="mono" style="display:none"></pre>
+      </article>
+    </section>
+
+    <!-- ── Policy Management ───────────────────────────────── -->
+    <section class="tab-content" id="tab-policies">
+      <article class="panel">
+        <h2>Policies</h2>
+        <div class="grid two" style="margin-bottom:12px">
+          <label>Tool Name <input id="policyToolName" placeholder="my-tool" /></label>
+          <div class="actions" style="align-self:end">
+            <button id="btnRefreshPolicies">Refresh List</button>
+            <button id="btnShowCreatePolicy" class="ghost">+ New Policy</button>
+          </div>
+        </div>
+
+        <div id="policyFormWrap" class="sub-panel" style="display:none">
+          <h3 id="policyFormTitle">Create Policy</h3>
+          <input type="hidden" id="policyFormMode" value="create" />
+          <input type="hidden" id="policyFormId" value="" />
+          <div class="grid three">
+            <label>Effect
+              <select id="pfEffect">
+                <option value="allow">allow</option>
+                <option value="deny">deny</option>
+                <option value="require_approval">require_approval</option>
+              </select>
+            </label>
+            <label>Priority <input id="pfPriority" type="number" value="100" /></label>
+            <label>Enabled
+              <select id="pfEnabled">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </label>
+          </div>
+          <label>Reason Template <input id="pfReasonTemplate" placeholder="Action denied: {{.reason}}" /></label>
+          <label>Conditions (JSON)
+            <textarea id="pfConditions" rows="3">{}</textarea>
+          </label>
+          <label>Limits (JSON)
+            <textarea id="pfLimits" rows="3">{}</textarea>
+          </label>
+          <div class="actions">
+            <button id="btnSubmitPolicy">Save Policy</button>
+            <button id="btnCancelPolicy" class="ghost">Cancel</button>
+          </div>
+        </div>
+
+        <div id="policiesList"></div>
+      </article>
+    </section>
+
+    <!-- ── Egress Allowlist ────────────────────────────────── -->
+    <section class="tab-content" id="tab-egress">
+      <article class="panel">
+        <h2>Egress Allowlist</h2>
+        <div class="grid two" style="margin-bottom:12px">
+          <label>Tool Name <input id="egressToolName" placeholder="my-tool" /></label>
+          <div class="actions" style="align-self:end">
+            <button id="btnRefreshEgress">Refresh List</button>
+          </div>
+        </div>
+
+        <div class="sub-panel">
+          <h3>Add Egress Rule</h3>
+          <div class="grid two">
+            <label>Host <input id="efHost" placeholder="api.example.com" /></label>
+            <label>Enabled
+              <select id="efEnabled">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </label>
+          </div>
+          <div class="actions">
+            <button id="btnAddEgress">Add Rule</button>
+          </div>
+        </div>
+
+        <div id="egressList"></div>
+      </article>
+    </section>
+
+    <!-- ── Secrets Vault ───────────────────────────────────── -->
+    <section class="tab-content" id="tab-secrets">
+      <article class="panel">
+        <h2>Secrets Vault</h2>
+        <div class="grid two" style="margin-bottom:12px">
+          <label>Tool Name <input id="secretsToolName" placeholder="my-tool" /></label>
+          <div class="actions" style="align-self:end">
+            <button id="btnRefreshSecrets">Refresh List</button>
+          </div>
+        </div>
+
+        <div class="sub-panel">
+          <h3>Add / Update Secret</h3>
+          <div class="grid three">
+            <label>Secret Type
+              <select id="sfType">
+                <option value="header">header</option>
+                <option value="bearer">bearer</option>
+              </select>
+            </label>
+            <label>Key Name <input id="sfKeyName" placeholder="Authorization" /></label>
+            <label>Value <input id="sfValue" type="password" placeholder="sk-..." /></label>
+          </div>
+          <div class="actions">
+            <button id="btnAddSecret">Upsert Secret</button>
+          </div>
+        </div>
+
+        <div id="secretsList"></div>
+      </article>
+    </section>
+
+    <!-- ── Incidents Dashboard ─────────────────────────────── -->
+    <section class="tab-content" id="tab-incidents">
+      <article class="panel">
+        <h2>Incidents</h2>
+        <div class="actions" style="margin-bottom:12px">
+          <button id="btnRefreshIncidents">Refresh List</button>
+          <button id="btnShowCreateIncident" class="ghost">+ New Incident</button>
+          <select id="incidentStatusFilter">
+            <option value="">all</option>
+            <option value="open">open</option>
+            <option value="closed">closed</option>
           </select>
-        </label>
-        <label>Hard Limits JSON
-          <textarea id="hardLimits" rows="6"></textarea>
-        </label>
-        <button id="btnSaveSettings">Upsert Settings</button>
-      </article>
+        </div>
 
-      <article class="panel">
-        <h3>Tools Snapshot</h3>
-        <button id="btnTools">Refresh Tools</button>
-        <pre id="toolsOut" class="mono"></pre>
-      </article>
+        <div id="incidentFormWrap" class="sub-panel" style="display:none">
+          <h3>Create Incident</h3>
+          <div class="grid two">
+            <label>Severity
+              <select id="ifSeverity">
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+                <option value="critical">critical</option>
+              </select>
+            </label>
+            <label>Title <input id="ifTitle" placeholder="Incident title" /></label>
+          </div>
+          <label>Summary <textarea id="ifSummary" rows="3" placeholder="Describe the incident..."></textarea></label>
+          <label>Related Action IDs (CSV) <input id="ifActionIds" placeholder="uuid1,uuid2" /></label>
+          <label>Evidence Refs (CSV) <input id="ifEvidenceRefs" placeholder="https://..." /></label>
+          <div class="actions">
+            <button id="btnSubmitIncident">Create Incident</button>
+            <button id="btnCancelIncident" class="ghost">Cancel</button>
+          </div>
+        </div>
 
-      <article class="panel">
-        <h3>Audit Snapshot</h3>
-        <button id="btnAudit">Refresh Audit</button>
-        <pre id="auditOut" class="mono"></pre>
+        <div id="incidentsList"></div>
+        <pre id="incidentDetailOut" class="mono" style="display:none"></pre>
       </article>
     </section>
 
-    <section class="grid two">
+    <!-- ── Actions Dashboard ───────────────────────────────── -->
+    <section class="tab-content" id="tab-actions">
       <article class="panel">
-        <h3>REST Run Demo</h3>
-        <textarea id="restPayload" rows="7">{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"demo-user"}}</textarea>
-        <button id="btnRunRest">POST /v1/run</button>
-        <pre id="restOut" class="mono"></pre>
-      </article>
-      <article class="panel">
-        <h3>MCP Call Demo</h3>
-        <textarea id="mcpPayload" rows="7">{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}</textarea>
-        <button id="btnRunMcp">POST /mcp</button>
-        <pre id="mcpOut" class="mono"></pre>
+        <h2>Actions</h2>
+        <div class="actions" style="margin-bottom:12px">
+          <button id="btnRefreshActions">Refresh List</button>
+          <select id="actionStatusFilter">
+            <option value="">all</option>
+            <option value="active">active</option>
+            <option value="expired">expired</option>
+            <option value="rolled_back">rolled_back</option>
+          </select>
+        </div>
+
+        <div id="actionsList"></div>
+        <pre id="actionDetailOut" class="mono" style="display:none"></pre>
       </article>
     </section>
 
-    <section class="panel">
-      <h3>Admin Activity</h3>
-      <button id="btnAdminActivity">Refresh Admin Activity</button>
-      <pre id="adminActivityOut" class="mono"></pre>
+    <!-- ── Demos ───────────────────────────────────────────── -->
+    <section class="tab-content" id="tab-demos">
+      <section class="grid two">
+        <article class="panel">
+          <h3>REST Run Demo</h3>
+          <textarea id="restPayload" rows="7">{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"demo-user"}}</textarea>
+          <button id="btnRunRest">POST /v1/run</button>
+          <pre id="restOut" class="mono"></pre>
+        </article>
+        <article class="panel">
+          <h3>MCP Call Demo</h3>
+          <textarea id="mcpPayload" rows="7">{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}</textarea>
+          <button id="btnRunMcp">POST /mcp</button>
+          <pre id="mcpOut" class="mono"></pre>
+        </article>
+      </section>
     </section>
   </main>
 

@@ -27,4 +27,12 @@ type ServiceConfig struct {
 	TimeoutBudgetMinMS     int
 	TimeoutBudgetMaxMS     int
 	DisableSSRFProtection  bool
+
+	// OIDC/SSO configuration
+	OIDCEnabled      bool
+	OIDCIssuerURL    string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCRedirectURL  string
+	OIDCScopes       string
 }
