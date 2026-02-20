@@ -1,0 +1,2079 @@
+openapi: 3.0.3
+info:
+  title: Nexus Core API
+  version: "1.1.0"
+  description: |
+    Multi-tenant Agent Tool Gateway for controlled tool execution.
+
+    Authentication supports API key (`X-NEXUS-GATEWAY-KEY`) and optional JWT bearer mode (`Authorization: Bearer`) when enabled by feature flags.
+
+    Idempotency semantics for `POST /v1/run` on WRITE tools:
+    - Same `Idempotency-Key` + same request fingerprint + `COMPLETED` => replay cached success.
+    - Same `Idempotency-Key` + same fingerprint + `IN_PROGRESS` => `IDEMPOTENCY_IN_PROGRESS`.
+    - Same `Idempotency-Key` + different fingerprint => `IDEMPOTENCY_KEY_CONFLICT`.
+    - Same `Idempotency-Key` + same fingerprint + `FAILED` => terminal replay of cached error.
+    - To retry after `FAILED`, clients MUST use a new `Idempotency-Key`.
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: Health
+  - name: Tools
+  - name: Policies
+  - name: Run
+  - name: Audit
+  - name: Secrets
+  - name: Egress
+  - name: MCP
+  - name: A2A
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      operationId: healthz
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /readyz:
+    get:
+      tags: [Health]
+      operationId: readyz
+      summary: Readiness probe
+      security: []
+      responses:
+        "200":
+          description: Dependencies are ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+        "503":
+          description: Dependency not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /openapi.yaml:
+    get:
+      tags: [Health]
+      operationId: openapiSpec
+      summary: OpenAPI YAML
+      security: []
+      responses:
+        "200":
+          description: OpenAPI document.
+
+  /v1/tools:
+    get:
+      tags: [Tools]
+      operationId: listTools
+      summary: List tenant tools
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+      responses:
+        "200":
+          description: Tools list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolListResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Tools]
+      operationId: createTool
+      summary: Create tool
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolCreateRequest"
+      responses:
+        "201":
+          description: Tool created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tool"
+        "400":
+          description: Validation or schema error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/tools/{name}:
+    get:
+      tags: [Tools]
+      operationId: getToolByName
+      summary: Get tool by name
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      responses:
+        "200":
+          description: Tool detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tool"
+        "404":
+          description: Tool not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags: [Tools]
+      operationId: updateToolByName
+      summary: Partial update tool (name immutable)
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolUpdateRequest"
+      responses:
+        "200":
+          description: Tool updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tool"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/tools/{name}/policies:
+    get:
+      tags: [Policies]
+      operationId: listPoliciesByTool
+      summary: List policies for a tool
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      responses:
+        "200":
+          description: Policies list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyListResponse"
+    post:
+      tags: [Policies]
+      operationId: createPolicyByTool
+      summary: Create policy for a tool
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyCreateRequest"
+      responses:
+        "201":
+          description: Policy created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/policies/{id}:
+    put:
+      tags: [Policies]
+      operationId: updatePolicyById
+      summary: Partial update policy by ID
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyUpdateRequest"
+      responses:
+        "200":
+          description: Policy updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/run:
+    post:
+      tags: [Run]
+      operationId: runTool
+      summary: Run a tool through Nexus policy pipeline
+      description: |
+        Executes: tool resolution -> schema validation -> policy/limits -> DLP/egress -> HTTP executor -> audit append.
+
+        Idempotency applies to WRITE tools (non-GET by fallback).
+        `FAILED` idempotency records are terminal: repeated same key/fingerprint returns cached error.
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/TimeoutMs"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunRequest"
+      responses:
+        "200":
+          description: Allowed and executed successfully.
+          headers:
+            X-Idempotency-Outcome:
+              schema:
+                type: string
+                enum: [NEW, REPLAY, SKIPPED_NOT_WRITE]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSuccessResponse"
+        "400":
+          description: Validation/policy requirement errors.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/RunBlockedResponse"
+                  - $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                idempotencyRequired:
+                  value:
+                    request_id: "b6a0fa23-58a4-41ea-a45e-1a45f9c3f0e1"
+                    decision: deny
+                    status: blocked
+                    reason: idempotency key required by policy
+                    error:
+                      code: IDEMPOTENCY_REQUIRED
+                      message: idempotency key required by policy
+                    latency_ms: 4
+        "403":
+          description: Blocked by policy/egress/rate limit.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunBlockedResponse"
+        "408":
+          description: Timeout budget exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunErrorResponse"
+        "409":
+          description: Idempotency conflict or in-progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunBlockedResponse"
+              examples:
+                keyConflict:
+                  value:
+                    request_id: "e6372db4-0cf4-43e9-b31f-6ebd1f8a0463"
+                    decision: deny
+                    status: blocked
+                    reason: idempotency key used with different payload
+                    error:
+                      code: IDEMPOTENCY_KEY_CONFLICT
+                      message: idempotency key used with different payload
+                    latency_ms: 1
+                inProgress:
+                  value:
+                    request_id: "f6b2e850-ad19-4bd4-ab20-4f2d98db3b57"
+                    decision: deny
+                    status: blocked
+                    reason: idempotency request in progress
+                    error:
+                      code: IDEMPOTENCY_IN_PROGRESS
+                      message: idempotency request in progress
+                    latency_ms: 1
+        "502":
+          description: Upstream/network/output schema execution errors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunErrorResponse"
+              examples:
+                failedReplay:
+                  value:
+                    request_id: "6fa0e110-df8f-4277-a4e6-4d9f2a3200e1"
+                    decision: allow
+                    status: error
+                    error:
+                      code: UPSTREAM_5XX
+                      message: upstream server returned 5xx
+                    latency_ms: 2
+                    idempotency:
+                      present: true
+                      outcome: REPLAY
+
+  /v1/run/simulate:
+    post:
+      tags: [Run]
+      operationId: simulateRun
+      summary: Simulate run decision/explain without upstream execution
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateRequest"
+      responses:
+        "200":
+          description: Simulation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulateResponse"
+        "403":
+          description: Denied simulation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulateResponse"
+
+  /v1/audit:
+    get:
+      tags: [Audit]
+      operationId: queryAudit
+      summary: Query audit events
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AuditToolName"
+        - $ref: "#/components/parameters/AuditDecision"
+        - $ref: "#/components/parameters/AuditStatus"
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditLimit"
+      responses:
+        "200":
+          description: Audit items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditListResponse"
+        "400":
+          description: Invalid filters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/audit/export:
+    get:
+      tags: [Audit]
+      operationId: exportAudit
+      summary: Stream audit export for SIEM ingestion
+      description: |
+        Streams events in ascending `created_at` order.
+
+        - `format=jsonl`: `application/x-ndjson` stream, one JSON object per line.
+        - `format=csv`: `text/csv` stream with a fixed header.
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AuditExportFormat"
+        - $ref: "#/components/parameters/AuditToolName"
+        - $ref: "#/components/parameters/AuditDecision"
+        - $ref: "#/components/parameters/AuditStatus"
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 1000
+      responses:
+        "200":
+          description: Streamed export payload.
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+              examples:
+                jsonl:
+                  value: |
+                    {"request_id":"req_1","tool_name":"transfer","decision":"deny","status":"blocked","event_hash":"hash_1","hash_algo":"sha256"}
+                    {"request_id":"req_2","tool_name":"transfer","decision":"allow","status":"success","event_hash":"hash_2","prev_event_hash":"hash_1","hash_algo":"sha256"}
+            text/csv:
+              schema:
+                type: string
+              examples:
+                csv:
+                  value: |
+                    created_at,org_id,request_id,tool_name,actor,role,scopes,decision,status,latency_ms,error_code,idempotency_present,idempotency_outcome,timeout_ms,budget_remaining_ms_at_execute,stage_durations_ms,dlp_summary,input,context,output,prev_event_hash,event_hash,hash_algo
+                    2026-01-10T08:00:00Z,11111111-1111-1111-1111-111111111111,req_1,transfer,agent-1,bot,"[""tools:run""]",deny,blocked,7,POLICY_DENIED,true,NEW,10000,8800,"{""schema_validation"":1}","{""credit_card"":{""count"":1}}","{""amount"":500}","{""user_id"":""u1""}",null,,hash_1,sha256
+        "400":
+          description: Invalid format or time range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/tools/{name}/secrets:
+    get:
+      tags: [Secrets]
+      operationId: listToolSecrets
+      summary: List secret metadata (never returns plaintext values)
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      responses:
+        "200":
+          description: Secret metadata list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SecretMetadataResponse"
+                required: [items]
+        "403":
+          description: Requires secops/admin role or admin:secrets scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Secrets]
+      operationId: upsertToolSecret
+      summary: Upsert encrypted secret
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecretUpsertRequest"
+      responses:
+        "200":
+          description: Secret metadata saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretMetadataResponse"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Secrets]
+      operationId: deleteToolSecret
+      summary: Delete secret by key_name
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+        - name: key_name
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted.
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/tools/{name}/egress-rules:
+    get:
+      tags: [Egress]
+      operationId: listToolEgressRules
+      summary: List host allowlist rules
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      responses:
+        "200":
+          description: Egress rules list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EgressRule"
+                required: [items]
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Egress]
+      operationId: upsertToolEgressRule
+      summary: Upsert host allowlist rule
+      description: |
+        Default egress policy is deny-all. Tools MUST have at least one egress rule
+        to make outbound calls. Only explicitly allowed hosts are reachable.
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EgressRule"
+      responses:
+        "204":
+          description: Upserted.
+        "400":
+          description: Validation error (empty host).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Egress]
+      operationId: deleteToolEgressRule
+      summary: Delete egress rule by host
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ToolNamePath"
+        - name: host
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp:
+    post:
+      tags: [MCP]
+      operationId: mcpJsonRpc
+      summary: MCP JSON-RPC endpoint
+      description: |
+        JSON-RPC 2.0 methods:
+        - `tools/list`
+        - `tools/get`
+        - `tools/call`
+
+        For `tools/call`, timeout/idempotency can be provided either in `params` (`timeout_ms`, `idempotency_key`) or HTTP headers (`X-Timeout-Ms`, `Idempotency-Key`).
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/TimeoutMs"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JSONRPCRequest"
+      responses:
+        "200":
+          description: JSON-RPC response envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JSONRPCResponse"
+
+  /a2a/call:
+    post:
+      tags: [A2A]
+      operationId: a2aCall
+      summary: A2A bridge call (delegates to gateway run pipeline)
+      description: |
+        Calls a tool through the same control pipeline used by `POST /v1/run` and MCP `tools/call`.
+        No alternate executor path is used.
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/TimeoutMs"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/A2ACallRequest"
+      responses:
+        "200":
+          description: Successful call result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/A2ACallResponse"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden by scope/policy/egress/rate-limits.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/A2ACallResponse"
+                  - $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/events:
+    get:
+      tags: [Audit]
+      operationId: listOperationalEvents
+      summary: List operational event feed by cursor
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+        - name: cursor
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Event feed page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventFeedResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing required scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/actions:
+    get:
+      tags: [Audit]
+      operationId: listActions
+      summary: List temporary control actions
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, expired, rolled_back]
+        - name: action_type
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Action list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionListResponse"
+
+  /v1/actions/apply:
+    post:
+      tags: [Audit]
+      operationId: applyAction
+      summary: Apply temporary reversible action
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionApplyRequest"
+      responses:
+        "201":
+          description: Action created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/actions/rollback:
+    post:
+      tags: [Audit]
+      operationId: rollbackAction
+      summary: Roll back active action
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionRollbackRequest"
+      responses:
+        "200":
+          description: Action rolled back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+
+  /v1/incidents:
+    get:
+      tags: [Audit]
+      operationId: listIncidents
+      summary: List incidents
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, closed]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Incident list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentListResponse"
+    post:
+      tags: [Audit]
+      operationId: createIncident
+      summary: Create incident
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentCreateRequest"
+      responses:
+        "201":
+          description: Incident created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentItem"
+
+  /v1/incidents/{id}:
+    get:
+      tags: [Audit]
+      operationId: getIncidentByID
+      summary: Get incident by ID
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Incident record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentItem"
+
+  /v1/incidents/{id}/close:
+    post:
+      tags: [Audit]
+      operationId: closeIncident
+      summary: Close incident
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Incident closed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentItem"
+
+  /v1/policy-proposals:
+    get:
+      tags: [Policies]
+      operationId: listPolicyProposals
+      summary: List policy proposals
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, pending, approved, rejected, shadow]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Proposal list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyProposalListResponse"
+    post:
+      tags: [Policies]
+      operationId: createPolicyProposal
+      summary: Create policy proposal
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyProposalCreateRequest"
+      responses:
+        "201":
+          description: Proposal created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyProposalItem"
+
+  /v1/policy-proposals/{id}/approve:
+    post:
+      tags: [Policies]
+      operationId: approvePolicyProposal
+      summary: Approve policy proposal
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Proposal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyProposalItem"
+
+  /v1/policy-proposals/{id}/reject:
+    post:
+      tags: [Policies]
+      operationId: rejectPolicyProposal
+      summary: Reject policy proposal
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Proposal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyProposalItem"
+
+  /v1/policy-proposals/{id}/shadow:
+    post:
+      tags: [Policies]
+      operationId: shadowPolicyProposal
+      summary: Start proposal in shadow mode
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Proposal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyProposalItem"
+
+  /v1/assistant/query:
+    post:
+      tags: [A2A]
+      operationId: queryAssistant
+      summary: Query operator assistant through nexus-core proxy
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantQueryRequest"
+      responses:
+        "200":
+          description: Structured assistant response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantQueryResponse"
+components:
+  securitySchemes:
+    NexusApiKey:
+      type: apiKey
+      in: header
+      name: X-NEXUS-GATEWAY-KEY
+      description: Tenant API key (stored hashed in DB).
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Optional JWT+JWKS auth mode when enabled by feature flags.
+
+  parameters:
+    ToolNamePath:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    XNexusActor:
+      name: X-NEXUS-ACTOR
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Delegated actor identifier for audit/policy context.
+    XNexusRole:
+      name: X-NEXUS-ROLE
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Delegated role for policy context.
+    XNexusScopes:
+      name: X-NEXUS-SCOPES
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Comma-separated scopes; intersected with key/JWT scopes.
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      description: |
+        Idempotency key for WRITE tool executions. `FAILED` records are terminal; retry requires a new key.
+    TimeoutMs:
+      name: X-Timeout-Ms
+      in: header
+      required: false
+      schema:
+        type: integer
+        minimum: 1000
+        maximum: 30000
+      description: End-to-end timeout budget in milliseconds (clamped by server config).
+    AuditToolName:
+      name: tool_name
+      in: query
+      schema:
+        type: string
+    AuditDecision:
+      name: decision
+      in: query
+      schema:
+        type: string
+        enum: [allow, deny]
+    AuditStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [success, error, blocked]
+    AuditFrom:
+      name: from
+      in: query
+      schema:
+        type: string
+        format: date-time
+    AuditTo:
+      name: to
+      in: query
+      schema:
+        type: string
+        format: date-time
+    AuditLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    AuditExportFormat:
+      name: format
+      in: query
+      schema:
+        type: string
+        enum: [jsonl, csv]
+        default: jsonl
+
+  schemas:
+    ErrorObject:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required: [code, message]
+
+    ErrorResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+      required: [request_id, error]
+
+    IdempotencyMeta:
+      type: object
+      properties:
+        present:
+          type: boolean
+        outcome:
+          type: string
+          enum: [NEW, REPLAY, IN_PROGRESS, CONFLICT, MISSING_REQUIRED, SKIPPED_NOT_WRITE]
+      required: [present, outcome]
+
+    RunRequest:
+      type: object
+      properties:
+        request_id:
+          type: string
+        tool_name:
+          type: string
+        input:
+          type: object
+          additionalProperties: true
+        context:
+          type: object
+          additionalProperties: true
+      required: [tool_name, input]
+
+    A2ACallRequest:
+      type: object
+      properties:
+        request_id:
+          type: string
+        tool_name:
+          type: string
+        input:
+          type: object
+          additionalProperties: true
+        context:
+          type: object
+          additionalProperties: true
+        timeout_ms:
+          type: integer
+          minimum: 1000
+          maximum: 30000
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 255
+      required: [tool_name, input]
+
+    A2ACallResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+        decision:
+          type: string
+          enum: [allow, deny]
+        tool_name:
+          type: string
+        status:
+          type: string
+          enum: [success, blocked, error]
+        reason:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        latency_ms:
+          type: integer
+        idempotency:
+          $ref: "#/components/schemas/IdempotencyMeta"
+      required: [request_id, decision, tool_name, status, error, latency_ms]
+
+    RunSuccessResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+        decision:
+          type: string
+          enum: [allow]
+        tool_name:
+          type: string
+        status:
+          type: string
+          enum: [success]
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        latency_ms:
+          type: integer
+        idempotency:
+          $ref: "#/components/schemas/IdempotencyMeta"
+      required: [request_id, decision, tool_name, status, latency_ms]
+
+    RunBlockedResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+        decision:
+          type: string
+          enum: [deny]
+        status:
+          type: string
+          enum: [blocked]
+        reason:
+          type: string
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        latency_ms:
+          type: integer
+        idempotency:
+          $ref: "#/components/schemas/IdempotencyMeta"
+      required: [request_id, decision, status, reason, error, latency_ms]
+
+    RunErrorResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+        decision:
+          type: string
+          enum: [allow]
+        status:
+          type: string
+          enum: [error]
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        latency_ms:
+          type: integer
+        idempotency:
+          $ref: "#/components/schemas/IdempotencyMeta"
+      required: [request_id, decision, status, error, latency_ms]
+
+    SimulateRequest:
+      allOf:
+        - $ref: "#/components/schemas/RunRequest"
+
+    SimulateResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+        decision:
+          type: string
+          enum: [allow, deny]
+        tool_name:
+          type: string
+        status:
+          type: string
+          enum: [success, error, blocked]
+        reason:
+          type: string
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        explain:
+          type: object
+          additionalProperties: true
+        latency_ms:
+          type: integer
+      required: [request_id, decision, tool_name, status, explain, latency_ms]
+
+    Tool:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [http]
+        description:
+          type: string
+          nullable: true
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+        url:
+          type: string
+        input_schema:
+          type: object
+          additionalProperties: true
+        output_schema:
+          type: object
+          additionalProperties: true
+          nullable: true
+        action_type:
+          type: string
+          enum: [read, write]
+        classification:
+          type: string
+          enum: [internal, external]
+        sensitivity:
+          type: string
+          enum: [low, medium, high]
+        risk_level:
+          type: integer
+          minimum: 1
+          maximum: 5
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - kind
+        - method
+        - url
+        - input_schema
+        - action_type
+        - classification
+        - sensitivity
+        - risk_level
+        - enabled
+        - created_at
+        - updated_at
+
+    ToolCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [http]
+        description:
+          type: string
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+        url:
+          type: string
+        input_schema:
+          type: object
+          additionalProperties: true
+        output_schema:
+          type: object
+          additionalProperties: true
+        action_type:
+          type: string
+          enum: [read, write]
+        classification:
+          type: string
+          enum: [internal, external]
+          default: internal
+        sensitivity:
+          type: string
+          enum: [low, medium, high]
+          default: low
+        risk_level:
+          type: integer
+          minimum: 1
+          maximum: 5
+        enabled:
+          type: boolean
+      required: [name, kind, method, url, input_schema, action_type, risk_level, enabled]
+
+    ToolUpdateRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          nullable: true
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+        url:
+          type: string
+        input_schema:
+          type: object
+          additionalProperties: true
+        output_schema:
+          type: object
+          additionalProperties: true
+          nullable: true
+        action_type:
+          type: string
+          enum: [read, write]
+        classification:
+          type: string
+          enum: [internal, external]
+        sensitivity:
+          type: string
+          enum: [low, medium, high]
+        risk_level:
+          type: integer
+          minimum: 1
+          maximum: 5
+        enabled:
+          type: boolean
+
+    ToolListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tool"
+      required: [items]
+
+    Policy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tool_id:
+          type: string
+          format: uuid
+        effect:
+          type: string
+          enum: [allow, deny]
+        priority:
+          type: integer
+        conditions:
+          type: object
+          additionalProperties: true
+        limits:
+          type: object
+          additionalProperties: true
+        reason_template:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, tool_id, effect, priority, conditions, limits, reason_template, enabled, created_at, updated_at]
+
+    PolicyCreateRequest:
+      type: object
+      properties:
+        effect:
+          type: string
+          enum: [allow, deny]
+        priority:
+          type: integer
+        conditions:
+          type: object
+          additionalProperties: true
+        limits:
+          type: object
+          additionalProperties: true
+        reason_template:
+          type: string
+        enabled:
+          type: boolean
+      required: [effect, priority, conditions, limits, reason_template, enabled]
+
+    PolicyUpdateRequest:
+      type: object
+      properties:
+        effect:
+          type: string
+          enum: [allow, deny]
+        priority:
+          type: integer
+        conditions:
+          type: object
+          additionalProperties: true
+        limits:
+          type: object
+          additionalProperties: true
+        reason_template:
+          type: string
+        enabled:
+          type: boolean
+
+    PolicyListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Policy"
+      required: [items]
+
+    AuditEvent:
+      type: object
+      properties:
+        request_id:
+          type: string
+        org_id:
+          type: string
+          format: uuid
+        tool_name:
+          type: string
+        actor:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        scopes:
+          type: array
+          items:
+            type: string
+        decision:
+          type: string
+          enum: [allow, deny]
+        status:
+          type: string
+          enum: [success, error, blocked]
+        reason:
+          type: string
+          nullable: true
+        latency_ms:
+          type: integer
+        idempotency_present:
+          type: boolean
+        idempotency_outcome:
+          type: string
+        timeout_ms:
+          type: integer
+          nullable: true
+        budget_remaining_ms_at_execute:
+          type: integer
+          nullable: true
+        stage_durations_ms:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        created_at:
+          type: string
+          format: date-time
+        input:
+          type: object
+          additionalProperties: true
+          nullable: true
+        context:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+        dlp_summary:
+          type: object
+          additionalProperties: true
+          nullable: true
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+        prev_event_hash:
+          type: string
+          nullable: true
+        event_hash:
+          type: string
+          nullable: true
+        hash_algo:
+          type: string
+      required: [request_id, tool_name, decision, status, latency_ms, created_at]
+
+    AuditListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+      required: [items]
+
+    SecretUpsertRequest:
+      type: object
+      properties:
+        secret_type:
+          type: string
+          enum: [header, bearer]
+        key_name:
+          type: string
+        value:
+          type: string
+          description: Plaintext provided by caller; encrypted at rest server-side.
+        enabled:
+          type: boolean
+      required: [secret_type, value]
+
+    SecretMetadataResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        secret_type:
+          type: string
+          enum: [header, bearer]
+        key_name:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, secret_type, key_name, enabled, created_at, updated_at]
+
+    EgressRule:
+      type: object
+      properties:
+        host:
+          type: string
+        enabled:
+          type: boolean
+      required: [host]
+
+    JSONRPCRequest:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          type: string
+        method:
+          type: string
+          enum: [tools/list, tools/get, tools/call]
+        params:
+          type: object
+          additionalProperties: true
+      required: [jsonrpc, id, method, params]
+
+    JSONRPCError:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+      required: [code, message]
+
+    JSONRPCResponse:
+      type: object
+      properties:
+        jsonrpc:
+          type: string
+          enum: ["2.0"]
+        id:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/JSONRPCError"
+      required: [jsonrpc]
+
+    EventItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        event_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+      required: [id, event_type, created_at, payload]
+
+    EventFeedResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventItem"
+        next_cursor:
+          type: integer
+      required: [items, next_cursor]
+
+    ActionApplyRequest:
+      type: object
+      properties:
+        scope_type:
+          type: string
+          enum: [tenant, tool, agent, global]
+        scope_id:
+          type: string
+        action_type:
+          type: string
+          enum: [throttle_tenant_rpm, throttle_tool_rpm, quarantine_tool, disable_tool]
+        params:
+          type: object
+          additionalProperties: true
+        ttl_seconds:
+          type: integer
+          minimum: 0
+        evidence_refs:
+          type: array
+          items:
+            type: string
+      required: [scope_type, action_type]
+
+    ActionRollbackRequest:
+      type: object
+      properties:
+        action_id:
+          type: string
+          format: uuid
+      required: [action_id]
+
+    ActionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+          nullable: true
+        action_type:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+        ttl_seconds:
+          type: integer
+        status:
+          type: string
+          enum: [active, expired, rolled_back]
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        rolled_back_at:
+          type: string
+          format: date-time
+          nullable: true
+        rolled_back_by:
+          type: string
+          nullable: true
+      required: [id, scope_type, action_type, params, ttl_seconds, status, evidence_refs, created_at]
+
+    ActionListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionItem"
+      required: [items]
+
+    IncidentCreateRequest:
+      type: object
+      properties:
+        severity:
+          type: string
+          enum: [LOW, MED, HIGH, CRIT]
+        title:
+          type: string
+        summary:
+          type: string
+        related_action_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        evidence_refs:
+          type: array
+          items:
+            type: string
+      required: [severity, title, summary]
+
+    IncidentItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        severity:
+          type: string
+        status:
+          type: string
+          enum: [open, closed]
+        title:
+          type: string
+        summary:
+          type: string
+        related_action_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: string
+          nullable: true
+        opened_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, severity, status, title, summary, related_action_ids, evidence_refs, opened_at]
+
+    IncidentListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentItem"
+      required: [items]
+
+    PolicyProposalCreateRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, pending]
+        diff:
+          type: object
+          additionalProperties: true
+        rationale:
+          type: string
+        tests_suggested:
+          type: array
+          items:
+            type: string
+        rollback_plan:
+          type: string
+      required: [diff, rationale]
+
+    PolicyProposalItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, pending, approved, rejected, shadow]
+        diff:
+          type: object
+          additionalProperties: true
+        rationale:
+          type: string
+        tests_suggested:
+          type: array
+          items:
+            type: string
+        rollback_plan:
+          type: string
+        created_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        decided_by:
+          type: string
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, status, diff, rationale, tests_suggested, rollback_plan, created_at]
+
+    PolicyProposalListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicyProposalItem"
+      required: [items]
+
+    AssistantQueryRequest:
+      type: object
+      properties:
+        query:
+          type: string
+      required: [query]
+
+    AssistantQueryResponse:
+      type: object
+      properties:
+        summary:
+          type: string
+        tables:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              columns:
+                type: array
+                items:
+                  type: string
+              rows:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: string
+        actions:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              action_type:
+                type: string
+              payload:
+                type: object
+                additionalProperties: true
+      required: [summary]
