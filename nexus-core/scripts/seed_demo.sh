@@ -21,8 +21,10 @@ for i in {1..60}; do
   sleep 1
 done
 
-# Fixed key for local dev — must match VITE_NEXUS_API_KEY in .env
-API_KEY="nexus-local-dev-key-do-not-use-in-production"
+# Fixed keys for local dev.
+# Keep these stable so local environments are deterministic.
+API_KEY="nexus-tower-local-key"
+OPERATOR_API_KEY="nexus-operator-local-key"
 
 API_KEY_HASH="$(
 API_KEY="$API_KEY" python3 - <<'PY'
@@ -33,8 +35,6 @@ PY
 )"
 
 export API_KEY
-
-OPERATOR_API_KEY="${NEXUS_OPERATOR_API_KEY:-${NEXUS_CORE_API_KEY:-nexus-operator-local-key}}"
 OPERATOR_API_KEY_HASH="$(
 OPERATOR_API_KEY="$OPERATOR_API_KEY" python3 - <<'PY'
 import hashlib, os
@@ -236,6 +236,14 @@ VALUES
     true
   );
 SQL
+
+seeded_count="$(
+compose exec -T postgres psql "$DB_URL_EXEC" -At -c "SELECT count(*) FROM org_api_keys WHERE api_key_hash IN ('${API_KEY_HASH}', '${OPERATOR_API_KEY_HASH}');"
+)"
+if [[ "$seeded_count" != "2" ]]; then
+  echo "Seed verification failed: expected 2 local API keys, got ${seeded_count}" >&2
+  exit 1
+fi
 
 echo "NEXUS_DEMO_API_KEY=$API_KEY"
 

@@ -92,7 +92,7 @@ services:
       - .env
     environment:
       NEXUS_CORE_BASE_URL: "http://nexus-core:8080"
-      NEXUS_CORE_API_KEY: "${NEXUS_CORE_API_KEY}"
+      NEXUS_CORE_API_KEY: "${NEXUS_OPERATOR_API_KEY}"
       OPERATOR_PORT: "${NEXUS_OPERATOR_PORT}"
       OPERATOR_INTERNAL_KEY: "${OPERATOR_INTERNAL_KEY}"
       LLM_BACKEND: "${LLM_BACKEND:-fallback}"

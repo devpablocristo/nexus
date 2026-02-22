@@ -5,7 +5,7 @@ OPERATOR_DIR := nexus-operator
 TOWER_DIR := nexus-tower
 CORE_SERVICE := nexus-core
 
-.PHONY: up build down logs migrate-up migrate-down cleanup-idempotency seed \
+.PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test operator-test tower-test qa e2e jwt-e2e quickstart-admin \
 	core-dev operator-dev tower-dev
 
@@ -16,6 +16,9 @@ build:
 	docker compose build
 
 down:
+	docker compose down
+
+clean:
 	docker compose down -v
 
 logs:

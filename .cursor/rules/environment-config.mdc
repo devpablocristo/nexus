@@ -1,0 +1,13 @@
+---
+description: Reglas de entorno y configuracion
+globs:
+alwaysApply: true
+---
+
+# Principios obligatorios para este repo
+
+- El codigo de aplicacion es uno solo para todos los ambientes (local, dev, staging, prod).
+- No se permiten forks de logica por ambiente dentro del codigo fuente.
+- Las diferencias por ambiente se definen por configuracion externa (variables de entorno, secretos, compose, CI/CD, infraestructura).
+- En local, las API keys de desarrollo deben ser deterministicas y estables (sin generacion aleatoria en runtime/seed).
+- Si una API key local cambia, debe actualizarse de forma centralizada en configuracion y scripts de seed, nunca manualmente servicio por servicio.
