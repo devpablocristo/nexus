@@ -64,9 +64,8 @@ Docs and UI:
   - `POST /v1/policy-proposals/:id/reject`
   - `POST /v1/policy-proposals/:id/shadow`
 
-## Compatibility
+## API Stability
 
-- HTTP API headers remain backward-compatible (`X-NEXUS-GATEWAY-KEY`, etc.).
-- Legacy naming remains as aliases where needed (for example `/app/nexus-gateway` binary alias in container).
+- HTTP API headers remain stable (`X-NEXUS-GATEWAY-KEY`, etc.).
 - Existing REST/MCP endpoints are unchanged.
 

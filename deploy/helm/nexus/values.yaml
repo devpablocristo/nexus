@@ -252,7 +252,6 @@ config:
   NEXUS_SWAGGER_CDN: "true"
   NEXUS_AUTH_ALLOW_API_KEY: "true"
   NEXUS_AUTH_ENABLE_JWT: "false"
-  NEXUS_AUTH_LEGACY_SCOPE_FALLBACK: "true"
   NEXUS_JWT_ISSUER: "nexus-demo-issuer"
   NEXUS_JWT_AUDIENCE: "nexus-core"
   NEXUS_JWT_ORG_CLAIM: "org_id"

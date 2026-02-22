@@ -117,6 +117,13 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 	if err := orgR.UpsertAPIKey(ctx, orgID, apiHash, "demo-key"); err != nil {
 		t.Fatalf("apikey upsert: %v", err)
 	}
+	if err := orgR.ReplaceAPIKeyScopes(ctx, apiHash, []string{
+		"egress:write",
+		"gateway:run",
+		"audit:read",
+	}); err != nil {
+		t.Fatalf("apikey scopes: %v", err)
+	}
 
 	_, err = toolSvc.Create(ctx, orgID, tool.CreateRequest{
 		Name:        "transfer",
@@ -180,6 +187,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 	egressReq := httptest.NewRequest(http.MethodPost, "/v1/tools/transfer/egress-rules", bytes.NewReader(egressBody))
 	egressReq.Header.Set("Content-Type", "application/json")
 	egressReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	egressReq.Header.Set("X-NEXUS-SCOPES", "egress:write")
 	egressRR := httptest.NewRecorder()
 	app.Router.ServeHTTP(egressRR, egressReq)
 	if egressRR.Code != http.StatusNoContent {
@@ -192,6 +200,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/run", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+		req.Header.Set("X-NEXUS-SCOPES", "gateway:run")
 		rr := httptest.NewRecorder()
 		app.Router.ServeHTTP(rr, req)
 		return rr
@@ -226,6 +235,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 
 	auditReq := httptest.NewRequest(http.MethodGet, "/v1/audit?tool_name=transfer&limit=5", nil)
 	auditReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	auditReq.Header.Set("X-NEXUS-SCOPES", "audit:read")
 	rr := httptest.NewRecorder()
 	app.Router.ServeHTTP(rr, auditReq)
 	if rr.Code != http.StatusOK {
@@ -261,6 +271,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 
 	exportReq := httptest.NewRequest(http.MethodGet, "/v1/audit/export?format=jsonl&tool_name=transfer&limit=5", nil)
 	exportReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	exportReq.Header.Set("X-NEXUS-SCOPES", "audit:read")
 	exportRR := httptest.NewRecorder()
 	app.Router.ServeHTTP(exportRR, exportReq)
 	if exportRR.Code != http.StatusOK {

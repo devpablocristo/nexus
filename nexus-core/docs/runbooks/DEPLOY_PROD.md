@@ -83,6 +83,6 @@ make jwt-e2e
 ## Rollback
 
 1. Volver imagen previa de `nexus-core`.
-2. Si migration incompatible, aplicar `make migrate-down` segun plan.
+2. Si migration rompe el esquema esperado, aplicar `make migrate-down` segun plan.
 3. Restaurar backup DB si corresponde.
 

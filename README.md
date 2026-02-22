@@ -10,7 +10,7 @@ Nexus is an **agent-operated execution control plane** split into three root pro
 
 - Product backend name: **Nexus Core**.
 - `gateway` remains an internal runtime component inside `nexus-core`.
-- Backward compatibility is preserved for existing REST/MCP endpoints and auth headers.
+- Existing REST/MCP endpoints and auth headers remain stable.
 
 ## Monorepo Layout
 

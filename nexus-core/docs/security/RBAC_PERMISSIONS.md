@@ -26,21 +26,14 @@ Nexus usa permisos por `scope` con acciones `read/write/admin` por recurso.
 - API key: scopes salen de `org_api_key_scopes` y se intersectan con `X-NEXUS-SCOPES`.
 - JWT: scopes salen de claim configurable (`NEXUS_JWT_SCOPES_CLAIM`) y se intersectan con `X-NEXUS-SCOPES`.
 
-## Compat legacy y deprecacion
+## Modo de autorizacion
 
-- Flag: `NEXUS_AUTH_LEGACY_SCOPE_FALLBACK`.
-- `true` (default actual): si request no trae scopes efectivos, se permite por compatibilidad legacy (excepto restricciones adicionales de endpoint).
-- `false` (modo estricto): scopes obligatorios; requests sin scopes reciben `403`.
-
-## Plan de deprecacion (decidido)
-
-- 2026-03-31: anunciar deprecacion de fallback legacy en release notes.
-- 2026-06-30: entornos nuevos por defecto con `NEXUS_AUTH_LEGACY_SCOPE_FALLBACK=false`.
-- 2026-09-30: remover fallback legacy (breaking change mayor).
+- Scopes obligatorios para requests no admin/secops.
+- Requests sin scopes efectivos reciben `403`.
 
 ## Implementacion en repo (referencias)
 
-- Modelo de decisión y fallback: `internal/shared/authz/http_permissions.go`
+- Modelo de decisión: `internal/shared/authz/http_permissions.go`
 - Scope constants: `internal/shared/authz/scopes.go`
 - Tool RBAC: `internal/tool/handler.go`
 - Policy RBAC: `internal/policy/handler.go`

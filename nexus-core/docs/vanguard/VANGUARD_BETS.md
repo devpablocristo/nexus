@@ -94,7 +94,7 @@ DoD:
 - Semana 2: endpoint + tests parity MCP/REST/A2A
 - Semana 3: authz scopes `a2a:read`, `a2a:call`
 - Semana 4: docs + demo + observabilidad
-- Semana 5-6: compat testing con SDKs/clientes
+- Semana 5-6: pruebas de interoperabilidad con SDKs/clientes
 
 DoD:
 - tests de paridad de enforcement (MCP vs A2A)
@@ -111,6 +111,6 @@ DoD:
 ### E) Operación
 
 - Alertas por error rate A2A.
-- Runbook de compat de versión de envelope A2A.
+- Runbook de versionado de envelope A2A.
 - Coste/performance: parse/mapping overhead mínimo; medir p95.
 

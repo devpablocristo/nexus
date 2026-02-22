@@ -48,5 +48,5 @@ go test ./internal/audit -run TestAuditExport
 ## Rollback policy
 
 - Si cualquier gate falla => release bloqueado.
-- Si falla post-deploy => rollback a imagen previa + evaluación DB compatibility.
+- Si falla post-deploy => rollback a imagen previa + evaluación de esquema DB.
 - Ejecutar runbook de incidentes si impacto cliente (`docs/runbooks/INCIDENTS_P1_P2.md`).

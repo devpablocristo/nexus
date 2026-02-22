@@ -7,12 +7,10 @@
 - AI operations service: `nexus-operator`.
 - Supervision UI: `nexus-tower`.
 
-## Compatibility Kept
+## Stable Compatibility
 
 - Existing REST/MCP endpoint paths are unchanged.
 - Existing auth headers remain (`X-NEXUS-GATEWAY-KEY`, etc.).
-- Legacy binary alias `/app/nexus-gateway` remains inside core container.
-- Docker network alias `nexus-gateway` remains available for legacy integrations.
 
 ## Explicit Non-Renames (for safety)
 

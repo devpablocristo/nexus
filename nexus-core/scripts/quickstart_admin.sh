@@ -12,11 +12,6 @@ if ! grep -q '^NEXUS_DISABLE_SSRF_PROTECTION=' .env; then
 else
   sed -i 's/^NEXUS_DISABLE_SSRF_PROTECTION=.*/NEXUS_DISABLE_SSRF_PROTECTION=true/' .env
 fi
-if ! grep -q '^NEXUS_AUTH_LEGACY_SCOPE_FALLBACK=' .env; then
-  echo 'NEXUS_AUTH_LEGACY_SCOPE_FALLBACK=false' >> .env
-else
-  sed -i 's/^NEXUS_AUTH_LEGACY_SCOPE_FALLBACK=.*/NEXUS_AUTH_LEGACY_SCOPE_FALLBACK=false/' .env
-fi
 
 echo "[1/5] Starting stack"
 docker compose up --build -d

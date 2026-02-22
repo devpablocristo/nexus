@@ -9,7 +9,7 @@
 
 ## 2) Authorization (least privilege)
 
-- RBAC por scopes por endpoint con compat legacy controlada por flag.
+- RBAC estricto por scopes por endpoint.
 - Referencias:
   - `docs/security/RBAC_PERMISSIONS.md`
   - `internal/shared/authz/http_permissions.go`

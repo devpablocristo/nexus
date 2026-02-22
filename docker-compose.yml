@@ -50,9 +50,7 @@ services:
       timeout: 3s
       retries: 30
     networks:
-      default:
-        aliases:
-          - nexus-gateway
+      default: {}
 
   mock-tools:
     build:

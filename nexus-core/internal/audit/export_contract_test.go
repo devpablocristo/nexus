@@ -161,6 +161,7 @@ func buildAuditExportRouter(orgID uuid.UUID) *gin.Engine {
 	v1 := r.Group("/v1")
 	v1.Use(func(c *gin.Context) {
 		c.Set(string(types.CtxKeyOrgID), orgID)
+		c.Set(string(types.CtxKeyRole), "admin")
 		c.Next()
 	})
 	h.Register(v1)

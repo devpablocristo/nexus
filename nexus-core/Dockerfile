@@ -18,8 +18,6 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates wget
 RUN addgroup -g 1000 app && adduser -D -u 1000 -G app app
 COPY --from=builder /out/nexus-core /app/nexus-core
-# backward-compatible alias for legacy scripts that still call nexus-gateway binary name.
-COPY --from=builder /out/nexus-core /app/nexus-gateway
 COPY --from=builder /out/mock-tools /app/mock-tools
 COPY --from=builder /out/migrate /app/migrate
 COPY --from=builder /out/cleanup-idempotency /app/cleanup-idempotency
