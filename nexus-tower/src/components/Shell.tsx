@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 
 const navItems = [
   { to: '/', label: 'Overview' },
+  { to: '/acuario', label: 'Acuario' },
   { to: '/timeline', label: 'Timeline' },
   { to: '/policies', label: 'Policies' },
   { to: '/ask-agent', label: 'Ask Agent' },

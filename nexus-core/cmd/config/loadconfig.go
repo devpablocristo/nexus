@@ -107,6 +107,9 @@ func Load() (Config, error) {
 	cfg.Service.TimeoutBudgetMaxMS = tbMax
 
 	cfg.Service.DisableSSRFProtection = mustBoolDefault("NEXUS_DISABLE_SSRF_PROTECTION", false)
+	cfg.Service.EgressAllowlist = mustStrDefault("NEXUS_EGRESS_ALLOWLIST", "")
+	cfg.Service.WorldSimBaseURL = mustStrDefault("NEXUS_WORLDSIM_BASE_URL", "http://world-sim:8087")
+	cfg.Service.WorldSimInternalKey = mustStrDefault("NEXUS_WORLDSIM_INTERNAL_KEY", "")
 	cfg.Service.CORSAllowedOrigins = mustStrDefault("NEXUS_CORS_ALLOWED_ORIGINS", "")
 	cfg.Service.CORSAllowedMethods = mustStrDefault("NEXUS_CORS_ALLOWED_METHODS", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 	cfg.Service.CORSAllowedHeaders = mustStrDefault("NEXUS_CORS_ALLOWED_HEADERS", "Authorization,Content-Type,X-NEXUS-GATEWAY-KEY,X-NEXUS-SCOPES,X-NEXUS-ACTOR,Idempotency-Key,X-Timeout-Ms")

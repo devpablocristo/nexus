@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 
 import { Shell } from '../components/Shell';
+import { AcuarioPage } from '../features/acuario/AcuarioPage';
 import { AskAgentPage } from '../features/ask-agent/AskAgentPage';
 import { ExportsPage } from '../features/exports/ExportsPage';
 import { OverviewPage } from '../features/overview/OverviewPage';
@@ -12,6 +13,7 @@ export function App() {
     <Shell>
       <Routes>
         <Route path="/" element={<OverviewPage />} />
+        <Route path="/acuario" element={<AcuarioPage />} />
         <Route path="/timeline" element={<TimelinePage />} />
         <Route path="/policies" element={<PoliciesPage />} />
         <Route path="/ask-agent" element={<AskAgentPage />} />

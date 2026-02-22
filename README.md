@@ -31,7 +31,9 @@ Nexus is an **agent-operated execution control plane** split into three root pro
 cp .env.example .env
 make up
 make migrate-up
+make migrate-worldsim
 make seed
+make qa-worldsim
 ```
 
 `make seed` prints:
@@ -53,7 +55,11 @@ Set `VITE_NEXUS_API_KEY` in `.env` if you want Tower to query authenticated endp
 
 - `make up` / `make down`
 - `make migrate-up`
+- `make migrate-worldsim`
 - `make seed`
+- `bash scripts/seed_worldsim_demo.sh`
+- `make demo-doorjam`
+- `make replay RUN_ID=<run-id>`
 - `make qa`
 - `make e2e`
 - `make jwt-e2e`

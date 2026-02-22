@@ -3,11 +3,12 @@ SHELL := /bin/bash
 CORE_DIR := nexus-core
 OPERATOR_DIR := nexus-operator
 TOWER_DIR := nexus-tower
+WORLDSIM_DIR := world-sim
 CORE_SERVICE := nexus-core
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test operator-test tower-test qa e2e jwt-e2e quickstart-admin \
-	core-dev operator-dev tower-dev
+	core-dev operator-dev tower-dev qa-worldsim migrate-worldsim demo-doorjam replay
 
 up:
 	docker compose up -d
@@ -29,6 +30,10 @@ migrate-up:
 
 migrate-down:
 	docker compose exec -T $(CORE_SERVICE) /app/migrate -cmd down -steps 1
+
+migrate-worldsim:
+	@docker compose up -d --wait postgres
+	docker compose exec -T postgres psql -U postgres -d nexus < world-sim/migrations/0001_worldsim.up.sql
 
 cleanup-idempotency:
 	docker compose exec -T $(CORE_SERVICE) /app/cleanup-idempotency
@@ -59,6 +64,19 @@ qa:
 		pip install -q -e '.[dev]' && \
 		pytest -q
 	cd $(TOWER_DIR) && npm install && npm run qa
+
+qa-worldsim:
+	cd $(WORLDSIM_DIR) && GOCACHE=/tmp/go-build GOMODCACHE=/home/pablo/go/pkg/mod GOPROXY=off GOSUMDB=off go test ./...
+	cd $(CORE_DIR) && GOCACHE=/tmp/go-build go test ./internal/world ./internal/gateway ./pkg/utils -run 'TestHandler_|TestServiceListRuns_|TestRun_SSRFAllowlist_|TestRun_WorldSimInternalHeaders|TestRun_NonWorldSimDoesNotGetInternalKey|TestValidateEgressURLWithAllowlist'
+
+demo-doorjam:
+	$(MAKE) migrate-worldsim
+	bash scripts/seed_worldsim_demo.sh
+	python scripts/demo_doorjam.py
+
+replay:
+	@if [ -z "$(RUN_ID)" ]; then echo "RUN_ID is required. Usage: make replay RUN_ID=<run-id>"; exit 1; fi
+	python scripts/replay_worldsim.py --run-id "$(RUN_ID)"
 
 e2e:
 	cd $(CORE_DIR) && bash scripts/e2e.sh

@@ -1,4 +1,16 @@
-import type { ActionItem, AssistantResponse, EventItem, IncidentItem, PolicyProposalItem } from './types';
+import type {
+  ActionItem,
+  AssistantResponse,
+  AuditEventItem,
+  EventItem,
+  IncidentItem,
+  PolicyProposalItem,
+  WorldEventsResponse,
+  WorldReplayResponse,
+  WorldRunCreateResponse,
+  WorldRunsResponse,
+  WorldStateResponse,
+} from './types';
 
 const baseUrl = import.meta.env.VITE_NEXUS_CORE_URL || 'http://localhost:8080';
 const apiKey = import.meta.env.VITE_NEXUS_API_KEY || '';
@@ -28,6 +40,15 @@ export async function getEvents(cursor = 0, limit = 100): Promise<{ items: Event
   return call(`/v1/events?cursor=${cursor}&limit=${limit}`);
 }
 
+export async function getAuditEvents(toolName?: string, limit = 200): Promise<{ items: AuditEventItem[] }> {
+  const params = new URLSearchParams();
+  if (toolName) {
+    params.set('tool_name', toolName);
+  }
+  params.set('limit', String(limit));
+  return call(`/v1/audit?${params.toString()}`);
+}
+
 export async function getActions(): Promise<{ items: ActionItem[] }> {
   return call('/v1/actions?limit=100');
 }
@@ -54,6 +75,44 @@ export async function shadowProposal(id: string): Promise<PolicyProposalItem> {
 
 export async function queryAssistant(query: string): Promise<AssistantResponse> {
   return call('/v1/assistant/query', { method: 'POST', body: JSON.stringify({ query }) });
+}
+
+export async function getWorldRuns(limit = 100, cursor = ''): Promise<WorldRunsResponse> {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  if (cursor.trim() !== '') {
+    params.set('cursor', cursor);
+  }
+  return call(`/v1/world/runs?${params.toString()}`);
+}
+
+export async function getWorldState(runId: string, stepId?: number): Promise<WorldStateResponse> {
+  const params = new URLSearchParams();
+  params.set('run_id', runId);
+  if (typeof stepId === 'number') {
+    params.set('step_id', String(stepId));
+  }
+  return call(`/v1/world/state?${params.toString()}`);
+}
+
+export async function getWorldEvents(runId: string, fromSeq = 0, limit = 200): Promise<WorldEventsResponse> {
+  const params = new URLSearchParams();
+  params.set('run_id', runId);
+  params.set('from_seq', String(fromSeq));
+  params.set('limit', String(limit));
+  return call(`/v1/world/events?${params.toString()}`);
+}
+
+export async function createWorldRun(seed?: number, agentCount = 50): Promise<WorldRunCreateResponse> {
+  const body: Record<string, unknown> = { agent_count: agentCount };
+  if (typeof seed === 'number') {
+    body.seed = seed;
+  }
+  return call('/v1/world/run/create', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function replayWorldRun(runId: string): Promise<WorldReplayResponse> {
+  return call('/v1/world/replay', { method: 'POST', body: JSON.stringify({ run_id: runId }) });
 }
 
 export async function operatorTick(): Promise<{ status: string }> {

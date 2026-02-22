@@ -65,9 +65,26 @@ jobs:
       - name: Build (verify production build)
         run: npm run build
 
+  world-sim:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: world-sim
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Docker build (verify only)
+        run: docker build -t world-sim:ci .
+
   docker-build:
     runs-on: ubuntu-latest
-    needs: [nexus-core, nexus-operator, nexus-tower]
+    needs: [nexus-core, nexus-operator, nexus-tower, world-sim]
     steps:
       - uses: actions/checkout@v4
       - name: Create .env from example

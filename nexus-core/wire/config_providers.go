@@ -12,15 +12,18 @@ func ProvideServiceConfig(cfg config.Config) config.ServiceConfig       { return
 
 func ProvideGatewayConfig(cfg config.ServiceConfig) gateway.Config {
 	return gateway.Config{
-		DefaultRateLimitPerMinute: cfg.RateLimitDefaultPerMin,
-		MaxBytesInputDefault:      262144,
-		MaxBytesContextDefault:    65536,
-		IdempotencyTTLHours:       cfg.IdempotencyTTLHours,
-		TimeoutBudgetDefaultMS:    cfg.TimeoutBudgetDefaultMS,
-		TimeoutBudgetMinMS:        cfg.TimeoutBudgetMinMS,
+		DefaultRateLimitPerMinute:   cfg.RateLimitDefaultPerMin,
+		MaxBytesInputDefault:        262144,
+		MaxBytesContextDefault:      65536,
+		IdempotencyTTLHours:         cfg.IdempotencyTTLHours,
+		TimeoutBudgetDefaultMS:      cfg.TimeoutBudgetDefaultMS,
+		TimeoutBudgetMinMS:          cfg.TimeoutBudgetMinMS,
 		TimeoutBudgetMaxMS:          cfg.TimeoutBudgetMaxMS,
 		HTTPRetries:                 1,
 		IdempotencyStalenessSeconds: 120,
 		DisableSSRFProtection:       cfg.DisableSSRFProtection,
+		EgressAllowlist:             cfg.EgressAllowlist,
+		WorldSimBaseURL:             cfg.WorldSimBaseURL,
+		WorldSimInternalKey:         cfg.WorldSimInternalKey,
 	}
 }

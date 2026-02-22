@@ -41,6 +41,7 @@ describe('App', () => {
     renderApp('/');
 
     expect(screen.getByRole('link', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Acuario' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Timeline' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Policies' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ask Agent' })).toBeInTheDocument();
@@ -70,6 +71,16 @@ describe('App', () => {
     await user.click(screen.getByRole('link', { name: 'Timeline' }));
 
     expect(screen.getByText('Operational Timeline')).toBeInTheDocument();
+  });
+
+  it('shows AcuarioPage when navigating to /acuario', async () => {
+    mockFetchSuccess();
+    renderApp('/');
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('link', { name: 'Acuario' }));
+
+    expect(screen.getByText('Acuario 3D')).toBeInTheDocument();
   });
 
   it('shows PoliciesPage when navigating to /policies', async () => {

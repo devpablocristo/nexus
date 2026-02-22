@@ -2,6 +2,7 @@ package wire
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -25,6 +26,7 @@ import (
 	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
 	"nexus-core/internal/tool"
+	"nexus-core/internal/world"
 	ginmw "nexus-core/pkg/http/middlewares/gin"
 	ginserver "nexus-core/pkg/http/servers/gin"
 )
@@ -103,6 +105,12 @@ func NewRouter(
 	oidcGroup := r.Group("/v1")
 	oidcH.Register(oidcGroup)
 
+	worldH := world.NewHandler(world.NewService(world.Config{
+		BaseURL:     cfg.WorldSimBaseURL,
+		InternalKey: cfg.WorldSimInternalKey,
+		Timeout:     6 * time.Second,
+	}))
+
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
 	toolH.Register(v1)
@@ -117,6 +125,7 @@ func NewRouter(
 	gwH.Register(v1)
 	secretH.Register(v1)
 	egressH.Register(v1)
+	worldH.Register(v1)
 
 	mcpGroup := r.Group("")
 	mcpGroup.Use(authMw)

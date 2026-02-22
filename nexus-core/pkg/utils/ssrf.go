@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,6 +14,12 @@ import (
 // ValidateEgressURL performs a pre-flight check that a URL is safe for outbound HTTP calls.
 // This is a best-effort pre-check; the real defense is SafeTransport's DialContext.
 func ValidateEgressURL(rawURL string) error {
+	return ValidateEgressURLWithAllowlist(rawURL, "")
+}
+
+// ValidateEgressURLWithAllowlist performs the same SSRF checks as ValidateEgressURL,
+// but allows exact host:port entries listed in allowlistCSV (comma-separated).
+func ValidateEgressURLWithAllowlist(rawURL string, allowlistCSV string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
@@ -24,6 +31,13 @@ func ValidateEgressURL(rawURL string) error {
 	host := u.Hostname()
 	if host == "" {
 		return fmt.Errorf("empty hostname")
+	}
+	port := u.Port()
+	if port == "" {
+		port = defaultPortForScheme(scheme)
+	}
+	if isHostPortAllowlisted(host, port, allowlistCSV) {
+		return nil
 	}
 
 	// If host is already an IP literal, validate directly.
@@ -51,12 +65,21 @@ func ValidateEgressURL(rawURL string) error {
 // IPs at connection time, blocking SSRF via DNS rebinding. It also disables proxy
 // support to prevent proxy-based SSRF.
 func SafeTransport() *http.Transport {
+	return SafeTransportWithAllowlist("")
+}
+
+// SafeTransportWithAllowlist returns an http.Transport with SSRF protections
+// and explicit allowlist support for exact host:port entries.
+func SafeTransportWithAllowlist(allowlistCSV string) *http.Transport {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, fmt.Errorf("ssrf: invalid addr %s: %w", addr, err)
+			}
+			if isHostPortAllowlisted(host, port, allowlistCSV) {
+				return dialer.DialContext(ctx, network, addr)
 			}
 
 			// Resolve and validate every IP before dialing.
@@ -81,7 +104,7 @@ func SafeTransport() *http.Transport {
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:  10 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 }
@@ -121,4 +144,43 @@ func validateIP(ip net.IP) error {
 		return fmt.Errorf("metadata endpoint %s not allowed", ip)
 	}
 	return nil
+}
+
+func isHostPortAllowlisted(host, port, allowlistCSV string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	port = strings.TrimSpace(port)
+	if host == "" || port == "" {
+		return false
+	}
+	if strings.Contains(host, "*") || strings.Contains(port, "*") {
+		return false
+	}
+	if _, err := strconv.Atoi(port); err != nil {
+		return false
+	}
+	for _, raw := range strings.Split(allowlistCSV, ",") {
+		entry := strings.TrimSpace(strings.ToLower(raw))
+		if entry == "" || strings.Contains(entry, "*") {
+			continue
+		}
+		eHost, ePort, err := net.SplitHostPort(entry)
+		if err != nil {
+			continue
+		}
+		if eHost == host && ePort == port {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultPortForScheme(scheme string) string {
+	switch strings.ToLower(scheme) {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	default:
+		return ""
+	}
 }

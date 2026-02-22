@@ -10,6 +10,8 @@
       "type": "string",
       "enum": [
         "tool.call.completed",
+        "tool.denied",
+        "tool.rate_limited",
         "action.applied",
         "action.rolled_back",
         "action.expired",

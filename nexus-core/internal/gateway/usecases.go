@@ -96,25 +96,53 @@ type Config struct {
 	TimeoutBudgetMaxMS          int
 	HTTPRetries                 int
 	DisableSSRFProtection       bool
+	EgressAllowlist             string
+	WorldSimBaseURL             string
+	WorldSimInternalKey         string
+}
+
+// runState agrupa el estado compartido del pipeline Run entre las funciones auxiliares.
+type runState struct {
+	start                 time.Time
+	requestID             string
+	budget                *gwdomain.TimeoutBudget
+	input                 map[string]any
+	contextMap            map[string]any
+	tool                  tooldomain.Tool
+	isWrite               bool
+	idemMeta              gwdomain.IdempotencyMeta
+	idempotencyKey        string
+	requestFingerprint    string
+	createdIdempotencyRow bool
+	dlpSummary            map[string]any
+	matchReason           string
+	policyID              *uuid.UUID
+	limits                parsedLimits
+	runtimeOverrides      RuntimeActionOverrides
+	headers               map[string]string
+	remainingBeforeExec   int
+	latency               int64
+	result                any
+	execErr               *types.HTTPError
 }
 
 type service struct {
-	toolRepo    ToolRepoPort
-	policyRepo  PolicyRepoPort
-	auditRepo   AuditRepoPort
-	secretRepo  SecretRepoPort
-	egress      EgressPort
-	limiter     RateLimiterPort
-	executor    HTTPExecutorPort
-	idempotency IdempotencyPort
+	toolRepo        ToolRepoPort
+	policyRepo      PolicyRepoPort
+	auditRepo       AuditRepoPort
+	secretRepo      SecretRepoPort
+	egress          EgressPort
+	limiter         RateLimiterPort
+	executor        HTTPExecutorPort
+	idempotency     IdempotencyPort
 	tenantCaps      TenantLimitsPort
 	actionOverrides ActionOverridesPort
 	metrics         RunMetricsPort
-	cache       *jsonschema.CompilerCache
-	evaluator   *policy.Evaluator
-	dlp         *dlp.Detector
-	cfg         Config
-	log         zerolog.Logger
+	cache           *jsonschema.CompilerCache
+	evaluator       *policy.Evaluator
+	dlp             *dlp.Detector
+	cfg             Config
+	log             zerolog.Logger
 }
 
 func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo AuditRepoPort, secretRepo SecretRepoPort, egress EgressPort, limiter RateLimiterPort, executor HTTPExecutorPort, idempotency IdempotencyPort, tenantCaps TenantLimitsPort, actionOverrides ActionOverridesPort, metrics RunMetricsPort, cache *jsonschema.CompilerCache, evaluator *policy.Evaluator, detector *dlp.Detector, cfg Config, log zerolog.Logger) Service {
@@ -122,26 +150,27 @@ func NewService(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo Audi
 		log.Warn().Msg("SSRF protection is DISABLED — this must only be used in test/dev environments")
 	}
 	return &service{
-		toolRepo:    toolRepo,
-		policyRepo:  policyRepo,
-		auditRepo:   auditRepo,
-		secretRepo:  secretRepo,
-		egress:      egress,
-		limiter:     limiter,
-		executor:    executor,
-		idempotency: idempotency,
+		toolRepo:        toolRepo,
+		policyRepo:      policyRepo,
+		auditRepo:       auditRepo,
+		secretRepo:      secretRepo,
+		egress:          egress,
+		limiter:         limiter,
+		executor:        executor,
+		idempotency:     idempotency,
 		tenantCaps:      tenantCaps,
 		actionOverrides: actionOverrides,
 		metrics:         metrics,
-		cache:       cache,
-		evaluator:   evaluator,
-		dlp:         detector,
-		cfg:         cfg,
-		log:         log,
+		cache:           cache,
+		evaluator:       evaluator,
+		dlp:             detector,
+		cfg:             cfg,
+		log:             log,
 	}
 }
 
 func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error) {
+	// 1. Inicialización
 	start := time.Now()
 	requestID := req.RequestID
 	if requestID == "" {
@@ -159,6 +188,7 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 		contextMap = map[string]any{}
 	}
 
+	// 2. Resolución de tool
 	tool, err := s.toolRepo.GetByName(ctx, orgID, req.ToolName)
 	if err != nil {
 		var he types.HTTPError
@@ -197,617 +227,579 @@ func (s *service) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequ
 			Msg("tool_lookup_failed")
 		return gwdomain.RunResponse{}, err
 	}
+
+	// 3. Idempotencia
 	isWrite := tool.ActionType == tooldomain.ActionWrite || (tool.ActionType == "" && strings.ToUpper(tool.Method) != "GET")
 	idemMeta := gwdomain.IdempotencyMeta{Present: req.IdempotencyKey != nil, Outcome: gwdomain.IdempotencySkippedNotWrite}
-	var idempotencyKey string
-	var requestFingerprint string
-	createdIdempotencyRow := false
-	if isWrite && req.IdempotencyKey != nil {
-		idempotencyKey = *req.IdempotencyKey
-		idemMeta.Outcome = gwdomain.IdempotencyNew
-		requestFingerprint, err = buildRequestFingerprint(req.ToolName, input, req.Actor, req.Role, req.Scopes)
-		if err != nil {
-			return gwdomain.RunResponse{}, err
-		}
-		existing, err := s.idempotency.Get(ctx, orgID, tool.Name, idempotencyKey)
-		if err != nil {
-			return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store read failed")
-		}
-		if existing != nil {
-			if existing.RequestFingerprint != requestFingerprint {
-				reason := "idempotency key used with different payload"
-				code := types.ErrCodeIdempotencyConflict
-				idemMeta.Outcome = gwdomain.IdempotencyConflict
-				return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
-			}
-			switch existing.Status {
-			case gwdomain.IdempotencyStatusCompleted:
-				idemMeta.Outcome = gwdomain.IdempotencyReplay
-				latency := time.Since(start).Milliseconds()
-				var result any
-				var status gwdomain.RunStatus = gwdomain.RunStatusSuccess
-				var decision gwdomain.Decision = gwdomain.DecisionAllow
-				var reason *string
-				var errCode *string
-				var errMsg *string
-				if existing.ResponseRedacted != nil {
-					result = existing.ResponseRedacted["result"]
-					if v, ok := existing.ResponseRedacted["status"].(string); ok && v != "" {
-						status = gwdomain.RunStatus(v)
-					}
-					if v, ok := existing.ResponseRedacted["decision"].(string); ok && v != "" {
-						decision = gwdomain.Decision(v)
-					}
-					if v, ok := existing.ResponseRedacted["reason"].(string); ok && v != "" {
-						reason = &v
-					}
-					if errObj, ok := existing.ResponseRedacted["error"].(map[string]any); ok {
-						if v, ok := errObj["code"].(string); ok && v != "" {
-							errCode = &v
-						}
-						if v, ok := errObj["message"].(string); ok && v != "" {
-							errMsg = &v
-						}
-					}
-				}
-				_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
-					OrgID:              orgID,
-					ToolID:             tool.ID,
-					ToolName:           tool.Name,
-					RequestID:          requestID,
-					Actor:              req.Actor,
-					ActorRole:          req.Role,
-					ActorScopes:        req.Scopes,
-					InputRedacted:      utils.Redact(input),
-					ContextRedacted:    utils.Redact(contextMap),
-					DLPSummary:         map[string]any{},
-					Decision:           auditdomain.Decision(decision),
-					Reason:             reason,
-					Status:             auditdomain.Status(status),
-					OutputRedacted:     utils.Redact(result),
-					ErrorCode:          errCode,
-					ErrorMessage:       errMsg,
-					LatencyMS:          int(latency),
-					IdempotencyPresent: idemMeta.Present,
-					IdempotencyOutcome: string(idemMeta.Outcome),
-					TimeoutMS:          intPtr(req.TimeoutMS),
-				})
-				s.observeRun(ctx, tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
-				httpStatus := http.StatusOK
-				if status == gwdomain.RunStatusError {
-					httpStatus = http.StatusBadGateway
-				}
-				if status == gwdomain.RunStatusBlocked {
-					httpStatus = http.StatusForbidden
-				}
-				return gwdomain.RunResponse{
-					RequestID:   requestID,
-					Decision:    decision,
-					ToolName:    tool.Name,
-					Status:      status,
-					Reason:      reason,
-					Result:      result,
-					ErrorCode:   errCode,
-					ErrorMsg:    errMsg,
-					LatencyMS:   latency,
-					HTTPStatus:  httpStatus,
-					Idempotency: idemMeta,
-				}, nil
-			case gwdomain.IdempotencyStatusInProgress:
-				// IMPORTANT: Stale detection enables re-execution when a previous request
-				// crashed mid-flight. For write tools, this may duplicate side-effects if
-				// the upstream actually completed but the gateway died before recording it.
-				// Mitigation: upstream services for write tools SHOULD accept their own
-				// idempotency keys to guarantee end-to-end exactly-once semantics.
-				staleness := time.Duration(max(1, s.cfg.IdempotencyStalenessSeconds)) * time.Second
-				if !existing.CreatedAt.IsZero() && time.Since(existing.CreatedAt) > staleness {
-					_ = s.idempotency.MarkFailed(ctx, orgID, tool.Name, idempotencyKey, ptr(types.ErrCodeTimeout), map[string]any{
-						"status": "error", "decision": "allow", "reason": "stale in-progress record expired",
-					})
-					idemMeta.Outcome = gwdomain.IdempotencyNew
-					inserted, createErr := s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
-						OrgID:              orgID,
-						ToolName:           tool.Name,
-						IdempotencyKey:     idempotencyKey,
-						RequestFingerprint: requestFingerprint,
-						Status:             gwdomain.IdempotencyStatusInProgress,
-						ExpiresAt:          time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
-					})
-					if createErr != nil {
-						return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
-					}
-					if !inserted {
-						return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed after stale cleanup")
-					}
-					createdIdempotencyRow = true
-				} else {
-					idemMeta.Outcome = gwdomain.IdempotencyInProgress
-					reason := "idempotency request in progress"
-					code := types.ErrCodeIdempotencyProgress
-					return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
-				}
-			case gwdomain.IdempotencyStatusFailed:
-				idemMeta.Outcome = gwdomain.IdempotencyReplay
-				latency := time.Since(start).Milliseconds()
-				code := types.ErrCodeInternal
-				msg := "previous failed idempotent request"
-				httpStatus := http.StatusBadGateway
-				status := gwdomain.RunStatusError
-				decision := gwdomain.DecisionAllow
-				var reason *string
-				if existing.ErrorCode != nil && *existing.ErrorCode != "" {
-					code = *existing.ErrorCode
-				}
-				if existing.ResponseRedacted != nil {
-					if v, ok := existing.ResponseRedacted["status"].(string); ok && v != "" {
-						status = gwdomain.RunStatus(v)
-					}
-					if v, ok := existing.ResponseRedacted["decision"].(string); ok && v != "" {
-						decision = gwdomain.Decision(v)
-					}
-					if v, ok := existing.ResponseRedacted["http_status"].(float64); ok && int(v) > 0 {
-						httpStatus = int(v)
-					}
-					if errObj, ok := existing.ResponseRedacted["error"].(map[string]any); ok {
-						if v, ok := errObj["code"].(string); ok && v != "" {
-							code = v
-						}
-						if v, ok := errObj["message"].(string); ok && v != "" {
-							msg = v
-						}
-					}
-					if v, ok := existing.ResponseRedacted["reason"].(string); ok && v != "" {
-						reason = &v
-					}
-				}
-				errCode := code
-				errMsg := msg
-				_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
-					OrgID:              orgID,
-					ToolID:             tool.ID,
-					ToolName:           tool.Name,
-					RequestID:          requestID,
-					Actor:              req.Actor,
-					ActorRole:          req.Role,
-					ActorScopes:        req.Scopes,
-					InputRedacted:      utils.Redact(input),
-					ContextRedacted:    utils.Redact(contextMap),
-					DLPSummary:         map[string]any{},
-					Decision:           auditdomain.Decision(decision),
-					Reason:             reason,
-					Status:             auditdomain.Status(status),
-					ErrorCode:          &errCode,
-					ErrorMessage:       &errMsg,
-					LatencyMS:          int(latency),
-					IdempotencyPresent: idemMeta.Present,
-					IdempotencyOutcome: string(idemMeta.Outcome),
-					TimeoutMS:          intPtr(req.TimeoutMS),
-				})
-				s.observeRun(ctx, tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
-				return gwdomain.RunResponse{
-					RequestID:   requestID,
-					Decision:    decision,
-					ToolName:    tool.Name,
-					Status:      status,
-					Reason:      reason,
-					ErrorCode:   &errCode,
-					ErrorMsg:    &errMsg,
-					LatencyMS:   latency,
-					HTTPStatus:  httpStatus,
-					Idempotency: idemMeta,
-				}, nil
-			}
-		} else {
-			inserted, err := s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
-				OrgID:              orgID,
-				ToolName:           tool.Name,
-				IdempotencyKey:     idempotencyKey,
-				RequestFingerprint: requestFingerprint,
-				Status:             gwdomain.IdempotencyStatusInProgress,
-				ExpiresAt:          time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
-			})
-			if err != nil {
-				return gwdomain.RunResponse{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
-			}
-			if !inserted {
-				// ON CONFLICT DO NOTHING: another request won the race
-				idemMeta.Outcome = gwdomain.IdempotencyInProgress
-				reason := "idempotency request in progress"
-				code := types.ErrCodeIdempotencyProgress
-				return s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, reason, code, http.StatusConflict, start, input, contextMap, idemMeta, req.TimeoutMS, nil, nil), nil
-			}
-			createdIdempotencyRow = true
-		}
+	st := &runState{
+		start: start, requestID: requestID, budget: budget, input: input, contextMap: contextMap,
+		tool: tool, isWrite: isWrite, idemMeta: idemMeta,
 	}
-	if !tool.Enabled {
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "tool disabled", types.ErrCodePolicyDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-		return resp, nil
-	}
-	if tool.Kind != tooldomain.ToolKindHTTP {
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "unsupported tool kind", types.ErrCodeValidation, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-		return resp, nil
+	if resp, err := s.runResolveIdempotency(ctx, orgID, req, st); err != nil {
+		return gwdomain.RunResponse{}, err
+	} else if resp != nil {
+		return *resp, nil
 	}
 
+	// 4-7. Validación tool, contexto, DLP, schema entrada
+	if resp, err := s.runValidateAndPrepare(ctx, orgID, req, st); err != nil {
+		return gwdomain.RunResponse{}, err
+	} else if resp != nil {
+		return *resp, nil
+	}
+	// 8-9. Políticas y decisión allow/deny
+	if resp, err := s.runPoliciesAndDecision(ctx, orgID, req, st); err != nil {
+		return gwdomain.RunResponse{}, err
+	} else if resp != nil {
+		return *resp, nil
+	}
+	// 10-14. Action overrides, rate limits, URL/egress, secretos
+	if resp, err := s.runOverridesRateLimitsEgressSecrets(ctx, orgID, req, st); err != nil {
+		return gwdomain.RunResponse{}, err
+	} else if resp != nil {
+		return *resp, nil
+	}
+	// 15-19. Timeout, ejecución HTTP, schema salida, auditoría, respuesta
+	return s.runExecuteAndFinish(ctx, orgID, req, st)
+}
+
+// runResolveIdempotency implementa:
+//  3. Idempotencia
+func (s *service) runResolveIdempotency(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
+	if !st.isWrite || req.IdempotencyKey == nil {
+		return nil, nil
+	}
+	st.idempotencyKey = *req.IdempotencyKey
+	st.idemMeta.Outcome = gwdomain.IdempotencyNew
+	var err error
+	st.requestFingerprint, err = buildRequestFingerprint(req.ToolName, st.input, req.Actor, req.Role, req.Scopes)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := s.idempotency.Get(ctx, orgID, st.tool.Name, st.idempotencyKey)
+	if err != nil {
+		return nil, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store read failed")
+	}
+	if existing != nil {
+		if existing.RequestFingerprint != st.requestFingerprint {
+			reason := "idempotency key used with different payload"
+			code := types.ErrCodeIdempotencyConflict
+			st.idemMeta.Outcome = gwdomain.IdempotencyConflict
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, reason, code, http.StatusConflict, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, nil, nil)
+			return &resp, nil
+		}
+		switch existing.Status {
+		case gwdomain.IdempotencyStatusCompleted:
+			st.idemMeta.Outcome = gwdomain.IdempotencyReplay
+			latency := time.Since(st.start).Milliseconds()
+			var result any
+			var status gwdomain.RunStatus = gwdomain.RunStatusSuccess
+			var decision gwdomain.Decision = gwdomain.DecisionAllow
+			var reason *string
+			var errCode *string
+			var errMsg *string
+			if existing.ResponseRedacted != nil {
+				result = existing.ResponseRedacted["result"]
+				if v, ok := existing.ResponseRedacted["status"].(string); ok && v != "" {
+					status = gwdomain.RunStatus(v)
+				}
+				if v, ok := existing.ResponseRedacted["decision"].(string); ok && v != "" {
+					decision = gwdomain.Decision(v)
+				}
+				if v, ok := existing.ResponseRedacted["reason"].(string); ok && v != "" {
+					reason = &v
+				}
+				if errObj, ok := existing.ResponseRedacted["error"].(map[string]any); ok {
+					if v, ok := errObj["code"].(string); ok && v != "" {
+						errCode = &v
+					}
+					if v, ok := errObj["message"].(string); ok && v != "" {
+						errMsg = &v
+					}
+				}
+			}
+			_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
+				OrgID: orgID, ToolID: st.tool.ID, ToolName: st.tool.Name, RequestID: st.requestID,
+				Actor: req.Actor, ActorRole: req.Role, ActorScopes: req.Scopes,
+				InputRedacted: utils.Redact(st.input), ContextRedacted: utils.Redact(st.contextMap),
+				DLPSummary: map[string]any{}, Decision: auditdomain.Decision(decision), Reason: reason,
+				Status: auditdomain.Status(status), OutputRedacted: utils.Redact(result),
+				ErrorCode: errCode, ErrorMessage: errMsg, LatencyMS: int(latency),
+				IdempotencyPresent: st.idemMeta.Present, IdempotencyOutcome: string(st.idemMeta.Outcome),
+				TimeoutMS: intPtr(req.TimeoutMS),
+			})
+			s.observeRun(ctx, st.tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
+			httpStatus := http.StatusOK
+			if status == gwdomain.RunStatusError {
+				httpStatus = http.StatusBadGateway
+			}
+			if status == gwdomain.RunStatusBlocked {
+				httpStatus = http.StatusForbidden
+			}
+			resp := gwdomain.RunResponse{
+				RequestID: st.requestID, Decision: decision, ToolName: st.tool.Name, Status: status,
+				Reason: reason, Result: result, ErrorCode: errCode, ErrorMsg: errMsg,
+				LatencyMS: latency, HTTPStatus: httpStatus, Idempotency: st.idemMeta,
+			}
+			return &resp, nil
+		case gwdomain.IdempotencyStatusInProgress:
+			staleness := time.Duration(max(1, s.cfg.IdempotencyStalenessSeconds)) * time.Second
+			if !existing.CreatedAt.IsZero() && time.Since(existing.CreatedAt) > staleness {
+				_ = s.idempotency.MarkFailed(ctx, orgID, st.tool.Name, st.idempotencyKey, ptr(types.ErrCodeTimeout), map[string]any{
+					"status": "error", "decision": "allow", "reason": "stale in-progress record expired",
+				})
+				st.idemMeta.Outcome = gwdomain.IdempotencyNew
+				inserted, createErr := s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
+					OrgID: orgID, ToolName: st.tool.Name, IdempotencyKey: st.idempotencyKey,
+					RequestFingerprint: st.requestFingerprint, Status: gwdomain.IdempotencyStatusInProgress,
+					ExpiresAt: time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
+				})
+				if createErr != nil {
+					return nil, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
+				}
+				if !inserted {
+					return nil, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed after stale cleanup")
+				}
+				st.createdIdempotencyRow = true
+			} else {
+				st.idemMeta.Outcome = gwdomain.IdempotencyInProgress
+				reason := "idempotency request in progress"
+				code := types.ErrCodeIdempotencyProgress
+				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, reason, code, http.StatusConflict, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, nil, nil)
+				return &resp, nil
+			}
+		case gwdomain.IdempotencyStatusFailed:
+			st.idemMeta.Outcome = gwdomain.IdempotencyReplay
+			latency := time.Since(st.start).Milliseconds()
+			code := types.ErrCodeInternal
+			msg := "previous failed idempotent request"
+			httpStatus := http.StatusBadGateway
+			status := gwdomain.RunStatusError
+			decision := gwdomain.DecisionAllow
+			var reason *string
+			if existing.ErrorCode != nil && *existing.ErrorCode != "" {
+				code = *existing.ErrorCode
+			}
+			if existing.ResponseRedacted != nil {
+				if v, ok := existing.ResponseRedacted["status"].(string); ok && v != "" {
+					status = gwdomain.RunStatus(v)
+				}
+				if v, ok := existing.ResponseRedacted["decision"].(string); ok && v != "" {
+					decision = gwdomain.Decision(v)
+				}
+				if v, ok := existing.ResponseRedacted["http_status"].(float64); ok && int(v) > 0 {
+					httpStatus = int(v)
+				}
+				if errObj, ok := existing.ResponseRedacted["error"].(map[string]any); ok {
+					if v, ok := errObj["code"].(string); ok && v != "" {
+						code = v
+					}
+					if v, ok := errObj["message"].(string); ok && v != "" {
+						msg = v
+					}
+				}
+				if v, ok := existing.ResponseRedacted["reason"].(string); ok && v != "" {
+					reason = &v
+				}
+			}
+			errCode := code
+			errMsg := msg
+			_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
+				OrgID: orgID, ToolID: st.tool.ID, ToolName: st.tool.Name, RequestID: st.requestID,
+				Actor: req.Actor, ActorRole: req.Role, ActorScopes: req.Scopes,
+				InputRedacted: utils.Redact(st.input), ContextRedacted: utils.Redact(st.contextMap),
+				DLPSummary: map[string]any{}, Decision: auditdomain.Decision(decision), Reason: reason,
+				Status: auditdomain.Status(status), ErrorCode: &errCode, ErrorMessage: &errMsg,
+				LatencyMS: int(latency), IdempotencyPresent: st.idemMeta.Present, IdempotencyOutcome: string(st.idemMeta.Outcome),
+				TimeoutMS: intPtr(req.TimeoutMS),
+			})
+			s.observeRun(ctx, st.tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
+			resp := gwdomain.RunResponse{
+				RequestID: st.requestID, Decision: decision, ToolName: st.tool.Name, Status: status,
+				Reason: reason, ErrorCode: &errCode, ErrorMsg: &errMsg, LatencyMS: latency,
+				HTTPStatus: httpStatus, Idempotency: st.idemMeta,
+			}
+			return &resp, nil
+		}
+	} else {
+		inserted, err := s.idempotency.CreateInProgress(ctx, gwdomain.IdempotencyRecord{
+			OrgID: orgID, ToolName: st.tool.Name, IdempotencyKey: st.idempotencyKey,
+			RequestFingerprint: st.requestFingerprint, Status: gwdomain.IdempotencyStatusInProgress,
+			ExpiresAt: time.Now().UTC().Add(time.Duration(max(1, s.cfg.IdempotencyTTLHours)) * time.Hour),
+		})
+		if err != nil {
+			return nil, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeIdempotencyStore, "idempotency store write failed")
+		}
+		if !inserted {
+			st.idemMeta.Outcome = gwdomain.IdempotencyInProgress
+			reason := "idempotency request in progress"
+			code := types.ErrCodeIdempotencyProgress
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, reason, code, http.StatusConflict, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, nil, nil)
+			return &resp, nil
+		}
+		st.createdIdempotencyRow = true
+	}
+	return nil, nil
+}
+
+// runValidateAndPrepare implementa:
+//  4. Validación tool (enabled, kind)
+//  5. Contexto para políticas (actor, role, scopes, auth_method)
+//  6. DLP
+//  7. Validación schema de entrada
+func (s *service) runValidateAndPrepare(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
+	// 4. Validación tool (enabled, kind)
+	if !st.tool.Enabled {
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, "tool disabled", types.ErrCodePolicyDenied, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+		return &resp, nil
+	}
+	if st.tool.Kind != tooldomain.ToolKindHTTP {
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, "unsupported tool kind", types.ErrCodeValidation, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+		return &resp, nil
+	}
+	// 5. Contexto para políticas (actor, role, scopes, auth_method)
 	if req.Actor != nil && *req.Actor != "" {
-		contextMap["actor"] = *req.Actor
+		st.contextMap["actor"] = *req.Actor
 	}
 	if req.Role != nil && *req.Role != "" {
-		contextMap["role"] = *req.Role
+		st.contextMap["role"] = *req.Role
 	}
 	if len(req.Scopes) > 0 {
 		arr := make([]any, 0, len(req.Scopes))
 		for _, scope := range req.Scopes {
 			arr = append(arr, scope)
 		}
-		contextMap["scopes"] = arr
+		st.contextMap["scopes"] = arr
 	}
 	if req.AuthMethod != "" {
-		contextMap["auth_method"] = req.AuthMethod
+		st.contextMap["auth_method"] = req.AuthMethod
 	}
-	dlpSummary := s.dlp.Summarize(input, contextMap)
-	contextMap["dlp"] = dlpSummary
-	budget.Consume("dlp", time.Since(start))
+	// 6. DLP
+	st.dlpSummary = s.dlp.Summarize(st.input, st.contextMap)
+	st.contextMap["dlp"] = st.dlpSummary
+	st.budget.Consume("dlp", time.Since(st.start))
 
-	// Input schema validation.
+	// 7. Validación schema de entrada
 	schemaStart := time.Now()
-	inSchema, err := s.cache.Compile(ctx, tool.ID.String()+":in", tool.InputSchemaJSON)
+	inSchema, err := s.cache.Compile(ctx, st.tool.ID.String()+":in", st.tool.InputSchemaJSON)
 	if err != nil {
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "tool input schema invalid", types.ErrCodeSchemaInvalid, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-		return resp, nil
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, "tool input schema invalid", types.ErrCodeSchemaInvalid, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+		return &resp, nil
 	}
-	if err := jsonschema.Validate(inSchema, input); err != nil {
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "input does not match schema", types.ErrCodeValidation, http.StatusBadRequest, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-		return resp, nil
+	if err := jsonschema.Validate(inSchema, st.input); err != nil {
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, "input does not match schema", types.ErrCodeValidation, http.StatusBadRequest, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+		return &resp, nil
 	}
-	budget.Consume("schema_validation", time.Since(schemaStart))
+	st.budget.Consume("schema_validation", time.Since(schemaStart))
+	return nil, nil
+}
 
-	policies, err := s.policyRepo.ListByToolID(ctx, orgID, tool.ID)
+// runPoliciesAndDecision implementa:
+//  8. Políticas y decisión allow/deny (firstMatch, límites input/context)
+//  9. Aplicar decisión deny
+func (s *service) runPoliciesAndDecision(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
+	// 8. Políticas y decisión allow/deny (firstMatch, límites input/context)
+	policies, err := s.policyRepo.ListByToolID(ctx, orgID, st.tool.ID)
 	if err != nil {
-		return gwdomain.RunResponse{}, err
+		return nil, err
 	}
-
-	match, matchReason, limits, err := s.firstMatch(policies, input, contextMap, tool)
+	match, matchReason, limits, err := s.firstMatch(policies, st.input, st.contextMap, st.tool)
 	if err != nil {
-		return gwdomain.RunResponse{}, err
+		return nil, err
 	}
-	if isWrite && req.IdempotencyKey == nil && limits.requireIdempotency() {
-		idemMeta.Outcome = gwdomain.IdempotencyMissingRequired
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, nil, "idempotency key required by policy", types.ErrCodeIdempotencyRequired, http.StatusBadRequest, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		return resp, nil
+	st.matchReason = matchReason
+	st.limits = limits
+	if st.isWrite && req.IdempotencyKey == nil && limits.requireIdempotency() {
+		st.idemMeta.Outcome = gwdomain.IdempotencyMissingRequired
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, nil, "idempotency key required by policy", types.ErrCodeIdempotencyRequired, http.StatusBadRequest, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		return &resp, nil
 	}
-
 	decision := gwdomain.DecisionAllow
 	var policyID *uuid.UUID
 	if match != nil {
 		id := match.ID
 		policyID = &id
+		st.policyID = &id
 		if match.Effect == policydomain.EffectDeny {
 			decision = gwdomain.DecisionDeny
 		}
 	} else {
-		if tool.ActionType == tooldomain.ActionWrite {
+		st.policyID = nil
+		if st.tool.ActionType == tooldomain.ActionWrite {
 			decision = gwdomain.DecisionDeny
-			matchReason = "default deny for write tool"
+			st.matchReason = "default deny for write tool"
 		} else {
-			matchReason = "default allow for read tool"
+			st.matchReason = "default allow for read tool"
 		}
 	}
-
-	// Enforce max_bytes_input/context.
 	if decision == gwdomain.DecisionAllow {
 		if maxIn := limits.maxBytesInput(s.cfg.MaxBytesInputDefault); maxIn > 0 {
-			n, err := utils.JSONSize(input)
+			n, err := utils.JSONSize(st.input)
 			if err != nil {
-				return gwdomain.RunResponse{}, err
+				return nil, err
 			}
 			if n > maxIn {
-				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "input too large", types.ErrCodePolicyDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-				s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-				return resp, nil
+				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, policyID, "input too large", types.ErrCodePolicyDenied, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+				s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+				return &resp, nil
 			}
 		}
 		if maxCtx := limits.maxBytesContext(s.cfg.MaxBytesContextDefault); maxCtx > 0 {
-			n, err := utils.JSONSize(contextMap)
+			n, err := utils.JSONSize(st.contextMap)
 			if err != nil {
-				return gwdomain.RunResponse{}, err
+				return nil, err
 			}
 			if n > maxCtx {
-				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "context too large", types.ErrCodePolicyDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-				s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-				return resp, nil
+				resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, policyID, "context too large", types.ErrCodePolicyDenied, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+				s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+				return &resp, nil
 			}
 		}
 	}
-
+	// 9. Aplicar decisión deny
 	if decision == gwdomain.DecisionDeny {
-		reason := matchReason
+		reason := st.matchReason
 		code := types.ErrCodePolicyDenied
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, reason, code, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-		return resp, nil
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, reason, code, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+		return &resp, nil
 	}
+	return nil, nil
+}
 
-
-	// Runtime action overrides (deterministic control-plane actions).
-	runtimeOverrides := RuntimeActionOverrides{}
+// runOverridesRateLimitsEgressSecrets implementa:
+// 10. Action overrides
+// 11. Rate limit tenant
+// 12. Rate limit por tool
+// 13. URL y egress (SSRF, allowlist)
+// 14. Secretos (headers/bearer)
+func (s *service) runOverridesRateLimitsEgressSecrets(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
+	// 10. Action overrides
+	var err error
+	st.runtimeOverrides = RuntimeActionOverrides{}
 	if s.actionOverrides != nil {
-		runtimeOverrides, err = s.actionOverrides.ResolveRuntimeOverrides(ctx, orgID, tool.Name)
+		st.runtimeOverrides, err = s.actionOverrides.ResolveRuntimeOverrides(ctx, orgID, st.tool.Name)
 		if err != nil {
-			return gwdomain.RunResponse{}, err
+			return nil, err
 		}
-		if runtimeOverrides.Deny {
-			reason := runtimeOverrides.DenyReason
+		if st.runtimeOverrides.Deny {
+			reason := st.runtimeOverrides.DenyReason
 			if strings.TrimSpace(reason) == "" {
 				reason = "blocked by active action override"
 			}
-			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, reason, types.ErrCodePolicyDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-			return resp, nil
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, reason, types.ErrCodePolicyDenied, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+			s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+			return &resp, nil
 		}
 	}
-
-	// Tenant-level hard limit (plan cap)
+	// 11. Rate limit tenant
 	tenantRunRPM := 0
 	if s.tenantCaps != nil {
 		tenantRunRPM, err = s.tenantCaps.GetRunRPM(ctx, orgID)
 		if err != nil {
-			return gwdomain.RunResponse{}, err
+			return nil, err
 		}
 	}
-	if runtimeOverrides.TenantRPMOverride != nil && (*runtimeOverrides.TenantRPMOverride > 0) {
-		if tenantRunRPM <= 0 || *runtimeOverrides.TenantRPMOverride < tenantRunRPM {
-			tenantRunRPM = *runtimeOverrides.TenantRPMOverride
+	if st.runtimeOverrides.TenantRPMOverride != nil && (*st.runtimeOverrides.TenantRPMOverride > 0) {
+		if tenantRunRPM <= 0 || *st.runtimeOverrides.TenantRPMOverride < tenantRunRPM {
+			tenantRunRPM = *st.runtimeOverrides.TenantRPMOverride
 		}
 	}
 	if tenantRunRPM > 0 {
 		tenantKey := orgID.String() + ":tenant"
 		if !s.limiter.Allow(tenantKey, tenantRunRPM) {
-			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "tenant run rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-			return resp, nil
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "tenant run rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+			s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+			return &resp, nil
 		}
 	}
-
-	// Rate limit
-	perMin := limits.rateLimitPerMinute(s.cfg.DefaultRateLimitPerMinute)
-	if runtimeOverrides.ToolRPMOverride != nil && (*runtimeOverrides.ToolRPMOverride > 0) {
-		if perMin <= 0 || *runtimeOverrides.ToolRPMOverride < perMin {
-			perMin = *runtimeOverrides.ToolRPMOverride
+	// 12. Rate limit por tool
+	perMin := st.limits.rateLimitPerMinute(s.cfg.DefaultRateLimitPerMinute)
+	if st.runtimeOverrides.ToolRPMOverride != nil && (*st.runtimeOverrides.ToolRPMOverride > 0) {
+		if perMin <= 0 || *st.runtimeOverrides.ToolRPMOverride < perMin {
+			perMin = *st.runtimeOverrides.ToolRPMOverride
 		}
 	}
 	if perMin > 0 {
-		key := orgID.String() + ":" + tool.Name
+		key := orgID.String() + ":" + st.tool.Name
 		if !s.limiter.Allow(key, perMin) {
-			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-			return resp, nil
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+			s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+			return &resp, nil
 		}
 	}
-
-	u, parseErr := url.Parse(tool.URL)
+	// 13. URL y egress (SSRF, allowlist)
+	u, parseErr := url.Parse(st.tool.URL)
 	if parseErr != nil || u.Hostname() == "" {
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "invalid tool url", types.ErrCodeValidation, http.StatusBadRequest, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-		return resp, nil
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "invalid tool url", types.ErrCodeValidation, http.StatusBadRequest, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+		return &resp, nil
 	}
-
 	if !s.cfg.DisableSSRFProtection {
-		if err := utils.ValidateEgressURL(tool.URL); err != nil {
-			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "ssrf blocked: "+err.Error(), types.ErrCodeEgressDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-			return resp, nil
+		if err := utils.ValidateEgressURLWithAllowlist(st.tool.URL, s.cfg.EgressAllowlist); err != nil {
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "ssrf blocked: "+err.Error(), types.ErrCodeEgressDenied, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+			s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+			return &resp, nil
 		}
 	}
-	allowed, err := s.egress.IsHostAllowed(ctx, orgID, tool.ID, strings.ToLower(u.Hostname()))
+	allowed, err := s.egress.IsHostAllowed(ctx, orgID, st.tool.ID, strings.ToLower(u.Hostname()))
 	if err != nil {
-		return gwdomain.RunResponse{}, err
+		return nil, err
 	}
 	if !allowed {
-		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, requestID, tool.Name, tool.ID, policyID, "egress host denied", types.ErrCodeEgressDenied, http.StatusForbidden, start, input, contextMap, idemMeta, req.TimeoutMS, intPtr(budget.RemainingMS()), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-		return resp, nil
+		resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "egress host denied", types.ErrCodeEgressDenied, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+		return &resp, nil
 	}
-
-	headers := map[string]string{}
-	secrets, err := s.secretRepo.ListForTool(ctx, orgID, tool.ID)
+	// 14. Secretos (headers/bearer)
+	st.headers = map[string]string{}
+	secrets, err := s.secretRepo.ListForTool(ctx, orgID, st.tool.ID)
 	if err != nil {
-		return gwdomain.RunResponse{}, err
+		return nil, err
 	}
 	for _, secret := range secrets {
 		if !secret.Enabled {
 			continue
 		}
 		if strings.EqualFold(secret.SecretType, "header") && secret.KeyName != "" {
-			headers[secret.KeyName] = secret.PlaintextValue
+			st.headers[secret.KeyName] = secret.PlaintextValue
 		}
 		if strings.EqualFold(secret.SecretType, "bearer") {
-			headers["Authorization"] = "Bearer " + secret.PlaintextValue
+			st.headers["Authorization"] = "Bearer " + secret.PlaintextValue
 		}
 	}
+	// Propagate canonical request_id to upstream providers for end-to-end traceability.
+	st.headers["X-Nexus-Request-Id"] = st.requestID
+	// Send Core->WorldSim shared secret only when target is the configured WorldSim provider.
+	if strings.TrimSpace(s.cfg.WorldSimInternalKey) != "" && s.isWorldSimToolURL(st.tool.URL) {
+		st.headers["X-WorldSim-Internal-Key"] = s.cfg.WorldSimInternalKey
+	}
+	return nil, nil
+}
 
-	remainingBeforeExec := budget.RemainingMS()
-	if remainingBeforeExec <= 0 {
+// runExecuteAndFinish implementa:
+// 15. Timeout budget antes de ejecutar
+// 16. Ejecución HTTP al upstream
+// 17. Validación schema de salida (best-effort)
+// 18. Manejo error de ejecución
+// 19. Éxito: auditoría, idempotency completed, respuesta
+func (s *service) runExecuteAndFinish(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (gwdomain.RunResponse, error) {
+	// 15. Timeout budget antes de ejecutar
+	st.remainingBeforeExec = st.budget.RemainingMS()
+	if st.remainingBeforeExec <= 0 {
 		code := types.ErrCodeTimeoutBudget
 		reason := "timeout budget exhausted before execute"
-		resp := s.errorRun(ctx, orgID, req, tool, requestID, policyID, matchReason, reason, &code, &reason, http.StatusRequestTimeout, start, input, contextMap, dlpSummary, idemMeta, req.TimeoutMS, intPtr(0), budget.StageDurationsMS())
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
+		resp := s.errorRun(ctx, orgID, req, st.tool, st.requestID, st.policyID, st.matchReason, reason, &code, &reason, http.StatusRequestTimeout, st.start, st.input, st.contextMap, st.dlpSummary, st.idemMeta, req.TimeoutMS, intPtr(0), st.budget.StageDurationsMS())
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
 		return resp, nil
 	}
-	execTimeoutMS := remainingBeforeExec
+	execTimeoutMS := st.remainingBeforeExec
 	execCtx, cancelExec := context.WithTimeout(ctx, time.Duration(execTimeoutMS)*time.Millisecond)
 	execStart := time.Now()
 	maxRetries := s.cfg.HTTPRetries
-	if isWrite {
+	if st.isWrite {
 		maxRetries = 0
 	}
-	result, _, he := s.executor.Execute(execCtx, tool.Method, tool.URL, input, headers, maxRetries)
+	// 16. Ejecución HTTP al upstream
+	st.result, _, st.execErr = s.executor.Execute(execCtx, st.tool.Method, st.tool.URL, st.input, st.headers, maxRetries)
 	cancelExec()
-	budget.Consume("execute_http", time.Since(execStart))
-	latency := time.Since(start).Milliseconds()
+	st.budget.Consume("execute_http", time.Since(execStart))
+	st.latency = time.Since(st.start).Milliseconds()
 
-	// Output schema validation (best-effort).
-	if he == nil && len(tool.OutputSchemaJSON) > 0 {
-		outSchema, err := s.cache.Compile(ctx, tool.ID.String()+":out", tool.OutputSchemaJSON)
-		if err != nil || jsonschema.Validate(outSchema, result) != nil {
+	// 17. Validación schema de salida (best-effort)
+	if st.execErr == nil && len(st.tool.OutputSchemaJSON) > 0 {
+		outSchema, err := s.cache.Compile(ctx, st.tool.ID.String()+":out", st.tool.OutputSchemaJSON)
+		if err != nil || jsonschema.Validate(outSchema, st.result) != nil {
 			code := types.ErrCodeOutputSchemaInvalid
 			msg := "tool output does not match schema"
 			_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
-				OrgID:                      orgID,
-				ToolID:                     tool.ID,
-				ToolName:                   tool.Name,
-				RequestID:                  requestID,
-				Actor:                      req.Actor,
-				ActorRole:                  req.Role,
-				ActorScopes:                req.Scopes,
-				InputRedacted:              utils.Redact(input),
-				ContextRedacted:            utils.Redact(contextMap),
-				DLPSummary:                 dlpSummary,
-				Decision:                   auditdomain.DecisionAllow,
-				PolicyID:                   policyID,
-				Reason:                     strPtr(matchReason),
-				Status:                     auditdomain.StatusError,
-				OutputRedacted:             utils.Redact(result),
-				ErrorCode:                  &code,
-				ErrorMessage:               &msg,
-				LatencyMS:                  int(latency),
-				IdempotencyPresent:         idemMeta.Present,
-				IdempotencyOutcome:         string(idemMeta.Outcome),
-				TimeoutMS:                  intPtr(req.TimeoutMS),
-				BudgetRemainingMSAtExecute: intPtr(remainingBeforeExec),
-				StageDurationsMS:           budget.StageDurationsMS(),
+				OrgID: orgID, ToolID: st.tool.ID, ToolName: st.tool.Name, RequestID: st.requestID,
+				Actor: req.Actor, ActorRole: req.Role, ActorScopes: req.Scopes,
+				InputRedacted: utils.Redact(st.input), ContextRedacted: utils.Redact(st.contextMap),
+				DLPSummary: st.dlpSummary, Decision: auditdomain.DecisionAllow, PolicyID: st.policyID,
+				Reason: strPtr(st.matchReason), Status: auditdomain.StatusError, OutputRedacted: utils.Redact(st.result),
+				ErrorCode: &code, ErrorMessage: &msg, LatencyMS: int(st.latency),
+				IdempotencyPresent: st.idemMeta.Present, IdempotencyOutcome: string(st.idemMeta.Outcome),
+				TimeoutMS: intPtr(req.TimeoutMS), BudgetRemainingMSAtExecute: intPtr(st.remainingBeforeExec),
+				StageDurationsMS: st.budget.StageDurationsMS(),
 			})
 			resp := gwdomain.RunResponse{Decision: gwdomain.DecisionAllow, Status: gwdomain.RunStatusError, ErrorCode: &code, ErrorMsg: &msg, HTTPStatus: http.StatusBadGateway}
-			s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &resp)
-			s.observeRun(ctx, tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(latency)*time.Millisecond)
+			s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+			s.observeRun(ctx, st.tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(st.latency)*time.Millisecond)
 			return gwdomain.RunResponse{
-				RequestID:   requestID,
-				Decision:    gwdomain.DecisionAllow,
-				ToolName:    tool.Name,
-				Status:      gwdomain.RunStatusError,
-				ErrorCode:   &code,
-				ErrorMsg:    &msg,
-				LatencyMS:   latency,
-				HTTPStatus:  http.StatusBadGateway,
-				Idempotency: idemMeta,
+				RequestID: st.requestID, Decision: gwdomain.DecisionAllow, ToolName: st.tool.Name,
+				Status: gwdomain.RunStatusError, ErrorCode: &code, ErrorMsg: &msg, LatencyMS: st.latency,
+				HTTPStatus: http.StatusBadGateway, Idempotency: st.idemMeta,
 			}, nil
 		}
 	}
-
-	if he != nil {
-		code := he.Code
-		if he.Code == types.ErrCodeTimeout && budget.RemainingMS() <= 0 {
+	// 18. Manejo error de ejecución
+	if st.execErr != nil {
+		code := st.execErr.Code
+		if st.execErr.Code == types.ErrCodeTimeout && st.budget.RemainingMS() <= 0 {
 			code = types.ErrCodeTimeoutBudget
 		}
-		msg := he.Message
+		msg := st.execErr.Message
 		s.log.Error().
-			Str("request_id", requestID).
-			Str("org_id", orgID.String()).
-			Str("tool_name", tool.Name).
-			Str("decision", "allow").
-			Str("status", "error").
-			Str("error_code", code).
+			Str("request_id", st.requestID).Str("org_id", orgID.String()).Str("tool_name", st.tool.Name).
+			Str("decision", "allow").Str("status", "error").Str("error_code", code).
 			Msg("run_error")
 		_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
-			OrgID:                      orgID,
-			ToolID:                     tool.ID,
-			ToolName:                   tool.Name,
-			RequestID:                  requestID,
-			Actor:                      req.Actor,
-			ActorRole:                  req.Role,
-			ActorScopes:                req.Scopes,
-			InputRedacted:              utils.Redact(input),
-			ContextRedacted:            utils.Redact(contextMap),
-			DLPSummary:                 dlpSummary,
-			Decision:                   auditdomain.DecisionAllow,
-			PolicyID:                   policyID,
-			Reason:                     strPtr(matchReason),
-			Status:                     auditdomain.StatusError,
-			OutputRedacted:             nil,
-			ErrorCode:                  &code,
-			ErrorMessage:               &msg,
-			LatencyMS:                  int(latency),
-			IdempotencyPresent:         idemMeta.Present,
-			IdempotencyOutcome:         string(idemMeta.Outcome),
-			TimeoutMS:                  intPtr(req.TimeoutMS),
-			BudgetRemainingMSAtExecute: intPtr(remainingBeforeExec),
-			StageDurationsMS:           budget.StageDurationsMS(),
+			OrgID: orgID, ToolID: st.tool.ID, ToolName: st.tool.Name, RequestID: st.requestID,
+			Actor: req.Actor, ActorRole: req.Role, ActorScopes: req.Scopes,
+			InputRedacted: utils.Redact(st.input), ContextRedacted: utils.Redact(st.contextMap),
+			DLPSummary: st.dlpSummary, Decision: auditdomain.DecisionAllow, PolicyID: st.policyID,
+			Reason: strPtr(st.matchReason), Status: auditdomain.StatusError, OutputRedacted: nil,
+			ErrorCode: &code, ErrorMessage: &msg, LatencyMS: int(st.latency),
+			IdempotencyPresent: st.idemMeta.Present, IdempotencyOutcome: string(st.idemMeta.Outcome),
+			TimeoutMS: intPtr(req.TimeoutMS), BudgetRemainingMSAtExecute: intPtr(st.remainingBeforeExec),
+			StageDurationsMS: st.budget.StageDurationsMS(),
 		})
 		status := http.StatusBadGateway
-		if he.Code == types.ErrCodeInvalidGETInput || he.Code == types.ErrCodeValidation {
+		if st.execErr.Code == types.ErrCodeInvalidGETInput || st.execErr.Code == types.ErrCodeValidation {
 			status = http.StatusBadRequest
 		}
 		if code == types.ErrCodeTimeoutBudget {
 			status = http.StatusRequestTimeout
 		}
 		respForIdem := gwdomain.RunResponse{Decision: gwdomain.DecisionAllow, Status: gwdomain.RunStatusError, ErrorCode: &code, ErrorMsg: &msg, HTTPStatus: status}
-		s.failIdempotencyIfNeeded(ctx, createdIdempotencyRow, orgID, tool.Name, idempotencyKey, &respForIdem)
-		s.observeRun(ctx, tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(latency)*time.Millisecond)
+		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &respForIdem)
+		s.observeRun(ctx, st.tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(st.latency)*time.Millisecond)
 		return gwdomain.RunResponse{
-			RequestID:   requestID,
-			Decision:    gwdomain.DecisionAllow,
-			ToolName:    tool.Name,
-			Status:      gwdomain.RunStatusError,
-			ErrorCode:   &code,
-			ErrorMsg:    &msg,
-			LatencyMS:   latency,
-			HTTPStatus:  status,
-			Idempotency: idemMeta,
+			RequestID: st.requestID, Decision: gwdomain.DecisionAllow, ToolName: st.tool.Name,
+			Status: gwdomain.RunStatusError, ErrorCode: &code, ErrorMsg: &msg, LatencyMS: st.latency,
+			HTTPStatus: status, Idempotency: st.idemMeta,
 		}, nil
 	}
-
+	// 19. Éxito: auditoría, idempotency completed, respuesta
 	_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
-		OrgID:                      orgID,
-		ToolID:                     tool.ID,
-		ToolName:                   tool.Name,
-		RequestID:                  requestID,
-		Actor:                      req.Actor,
-		ActorRole:                  req.Role,
-		ActorScopes:                req.Scopes,
-		InputRedacted:              utils.Redact(input),
-		ContextRedacted:            utils.Redact(contextMap),
-		DLPSummary:                 dlpSummary,
-		Decision:                   auditdomain.DecisionAllow,
-		PolicyID:                   policyID,
-		Reason:                     strPtr(matchReason),
-		Status:                     auditdomain.StatusSuccess,
-		OutputRedacted:             utils.Redact(result),
-		LatencyMS:                  int(latency),
-		IdempotencyPresent:         idemMeta.Present,
-		IdempotencyOutcome:         string(idemMeta.Outcome),
-		TimeoutMS:                  intPtr(req.TimeoutMS),
-		BudgetRemainingMSAtExecute: intPtr(remainingBeforeExec),
-		StageDurationsMS:           budget.StageDurationsMS(),
+		OrgID: orgID, ToolID: st.tool.ID, ToolName: st.tool.Name, RequestID: st.requestID,
+		Actor: req.Actor, ActorRole: req.Role, ActorScopes: req.Scopes,
+		InputRedacted: utils.Redact(st.input), ContextRedacted: utils.Redact(st.contextMap),
+		DLPSummary: st.dlpSummary, Decision: auditdomain.DecisionAllow, PolicyID: st.policyID,
+		Reason: strPtr(st.matchReason), Status: auditdomain.StatusSuccess, OutputRedacted: utils.Redact(st.result),
+		LatencyMS: int(st.latency), IdempotencyPresent: st.idemMeta.Present, IdempotencyOutcome: string(st.idemMeta.Outcome),
+		TimeoutMS: intPtr(req.TimeoutMS), BudgetRemainingMSAtExecute: intPtr(st.remainingBeforeExec),
+		StageDurationsMS: st.budget.StageDurationsMS(),
 	})
-	if createdIdempotencyRow {
-		_ = s.idempotency.MarkCompleted(ctx, orgID, tool.Name, idempotencyKey, map[string]any{
-			"decision": string(gwdomain.DecisionAllow),
-			"status":   string(gwdomain.RunStatusSuccess),
-			"result":   utils.Redact(result),
+	if st.createdIdempotencyRow {
+		_ = s.idempotency.MarkCompleted(ctx, orgID, st.tool.Name, st.idempotencyKey, map[string]any{
+			"decision": string(gwdomain.DecisionAllow), "status": string(gwdomain.RunStatusSuccess), "result": utils.Redact(st.result),
 		})
 	}
-
 	s.log.Info().
-		Str("request_id", requestID).
-		Str("org_id", orgID.String()).
-		Str("tool_name", tool.Name).
-		Str("decision", "allow").
-		Str("status", "success").
-		Int64("latency_ms", latency).
+		Str("request_id", st.requestID).Str("org_id", orgID.String()).Str("tool_name", st.tool.Name).
+		Str("decision", "allow").Str("status", "success").Int64("latency_ms", st.latency).
 		Msg("run_success")
-	s.observeRun(ctx, tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusSuccess), time.Duration(latency)*time.Millisecond)
+	s.observeRun(ctx, st.tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusSuccess), time.Duration(st.latency)*time.Millisecond)
 	return gwdomain.RunResponse{
-		RequestID:   requestID,
-		Decision:    gwdomain.DecisionAllow,
-		ToolName:    tool.Name,
-		Status:      gwdomain.RunStatusSuccess,
-		Result:      result,
-		LatencyMS:   latency,
-		HTTPStatus:  http.StatusOK,
-		Idempotency: idemMeta,
+		RequestID: st.requestID, Decision: gwdomain.DecisionAllow, ToolName: st.tool.Name,
+		Status: gwdomain.RunStatusSuccess, Result: st.result, LatencyMS: st.latency,
+		HTTPStatus: http.StatusOK, Idempotency: st.idemMeta,
 	}, nil
 }
 
@@ -1286,4 +1278,36 @@ func (s *service) errorRun(ctx context.Context, orgID uuid.UUID, req gwdomain.Ru
 		HTTPStatus:  httpStatus,
 		Idempotency: idem,
 	}
+}
+
+func (s *service) isWorldSimToolURL(rawToolURL string) bool {
+	toolHostPort, ok := normalizedHostPort(rawToolURL)
+	if !ok {
+		return false
+	}
+	worldHostPort, ok := normalizedHostPort(s.cfg.WorldSimBaseURL)
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(toolHostPort, worldHostPort)
+}
+
+func normalizedHostPort(rawURL string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Hostname() == "" {
+		return "", false
+	}
+	host := strings.ToLower(u.Hostname())
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		default:
+			return "", false
+		}
+	}
+	return host + ":" + port, true
 }

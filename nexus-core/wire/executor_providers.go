@@ -35,7 +35,7 @@ func NewHTTPExecutor(cfg config.ServiceConfig) *exechttp.Executor {
 		Retries:          1,
 	}
 	if !cfg.DisableSSRFProtection {
-		opts.Transport = utils.SafeTransport()
+		opts.Transport = utils.SafeTransportWithAllowlist(cfg.EgressAllowlist)
 		opts.CheckRedirect = utils.NoFollowRedirectPolicy
 	}
 

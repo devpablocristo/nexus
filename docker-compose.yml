@@ -1,5 +1,6 @@
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:16
     environment:
       POSTGRES_PASSWORD: postgres
@@ -16,6 +17,7 @@ services:
       retries: 30
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     ports:
       - "${NEXUS_REDIS_PORT}:6379"
@@ -26,6 +28,7 @@ services:
       retries: 30
 
   nexus-core:
+    restart: unless-stopped
     build:
       context: ./nexus-core
       dockerfile: Dockerfile
@@ -36,10 +39,15 @@ services:
       NEXUS_REDIS_URL: "${NEXUS_REDIS_URL}"
       NEXUS_OPERATOR_URL: "${NEXUS_OPERATOR_URL}"
       NEXUS_OPERATOR_INTERNAL_KEY: "${NEXUS_OPERATOR_INTERNAL_KEY}"
+      NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081,world-sim:8087}"
+      NEXUS_WORLDSIM_BASE_URL: "${NEXUS_WORLDSIM_BASE_URL:-http://world-sim:8087}"
+      NEXUS_WORLDSIM_INTERNAL_KEY: "${NEXUS_WORLDSIM_INTERNAL_KEY:-worldsim-internal-key}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      world-sim:
         condition: service_healthy
     ports:
       - "${NEXUS_HTTP_PORT}:8080"
@@ -52,7 +60,30 @@ services:
     networks:
       default: {}
 
+  world-sim:
+    restart: unless-stopped
+    build:
+      context: ./world-sim
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      WORLDSIM_PORT: "8087"
+      WORLDSIM_DATABASE_URL: "${WORLDSIM_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/nexus?sslmode=disable}"
+      NEXUS_WORLDSIM_INTERNAL_KEY: "${NEXUS_WORLDSIM_INTERNAL_KEY:-worldsim-internal-key}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8087"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   mock-tools:
+    restart: unless-stopped
     build:
       context: ./nexus-core
       dockerfile: Dockerfile
@@ -69,6 +100,7 @@ services:
       retries: 30
 
   ollama:
+    restart: unless-stopped
     image: ollama/ollama:latest
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
@@ -83,6 +115,7 @@ services:
       - ollama
 
   nexus-operator:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: nexus-operator/Dockerfile
@@ -110,6 +143,7 @@ services:
       retries: 30
 
   nexus-tower:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: nexus-tower/Dockerfile
@@ -133,6 +167,7 @@ services:
       retries: 10
 
   prometheus:
+    restart: unless-stopped
     image: prom/prometheus:v2.54.1
     volumes:
       - ./nexus-core/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -143,6 +178,7 @@ services:
         condition: service_started
 
   grafana:
+    restart: unless-stopped
     image: grafana/grafana:11.2.0
     environment:
       GF_SECURITY_ADMIN_USER: admin
