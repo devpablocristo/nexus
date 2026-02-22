@@ -27,6 +27,9 @@ type ServiceConfig struct {
 	TimeoutBudgetMinMS     int
 	TimeoutBudgetMaxMS     int
 	DisableSSRFProtection  bool
+	CORSAllowedOrigins     string
+	CORSAllowedMethods     string
+	CORSAllowedHeaders     string
 
 	// OIDC/SSO configuration
 	OIDCEnabled      bool

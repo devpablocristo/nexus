@@ -11,18 +11,18 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"nexus-core/cmd/config"
 	"nexus-core/internal/a2a"
-	"nexus-core/internal/assistant"
-	"nexus-core/internal/identity"
-	"nexus-core/internal/policyproposal"
-	"nexus-core/internal/incidents"
-	"nexus-core/internal/events"
 	"nexus-core/internal/actions"
 	"nexus-core/internal/admin"
+	"nexus-core/internal/assistant"
 	"nexus-core/internal/audit"
 	"nexus-core/internal/egress"
+	"nexus-core/internal/events"
 	"nexus-core/internal/gateway"
+	"nexus-core/internal/identity"
+	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
 	"nexus-core/internal/policy"
+	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
 	"nexus-core/internal/tool"
 	ginmw "nexus-core/pkg/http/middlewares/gin"
@@ -51,7 +51,14 @@ func NewRouter(
 	a2aH *a2a.Handler,
 	oidcH *identity.OIDCHandler,
 ) *gin.Engine {
-	r := ginserver.NewEngine(ginserver.EngineOptions{}, ginmw.RequestID(), ginmw.Recovery(l), ginmw.BodyLimit(httpCfg.MaxBodyBytes), ginmw.LoggerMiddleware(l))
+	r := ginserver.NewEngine(
+		ginserver.EngineOptions{},
+		ginmw.RequestID(),
+		ginmw.Recovery(l),
+		ginmw.CORS(cfg.CORSAllowedOrigins, cfg.CORSAllowedMethods, cfg.CORSAllowedHeaders),
+		ginmw.BodyLimit(httpCfg.MaxBodyBytes),
+		ginmw.LoggerMiddleware(l),
+	)
 	if cfg.OTelEnabled {
 		r.Use(otelgin.Middleware(cfg.OTelServiceName))
 	}

@@ -21,12 +21,8 @@ for i in {1..60}; do
   sleep 1
 done
 
-API_KEY="$(
-python3 - <<'PY'
-import secrets
-print(secrets.token_hex(32))
-PY
-)"
+# Fixed key for local dev — must match VITE_NEXUS_API_KEY in .env
+API_KEY="nexus-local-dev-key-do-not-use-in-production"
 
 API_KEY_HASH="$(
 API_KEY="$API_KEY" python3 - <<'PY'
