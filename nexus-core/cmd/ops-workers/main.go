@@ -10,6 +10,7 @@ import (
 
 	"gorm.io/gorm/logger"
 
+	"gorm.io/gorm"
 	"nexus-core/cmd/config"
 	"nexus-core/internal/agents/comms"
 	"nexus-core/internal/agents/coordinator"
@@ -28,7 +29,6 @@ import (
 	opstenant "nexus-core/internal/ops/tenant"
 	gormdb "nexus-core/pkg/databases/sql/gorm"
 	"nexus-core/pkg/validations/jsonschema"
-	"gorm.io/gorm"
 )
 
 func main() {
@@ -70,6 +70,8 @@ func main() {
 		Provider:      cfg.Service.LLMProvider,
 		Model:         cfg.Service.LLMModel,
 		OllamaBaseURL: cfg.Service.LLMOllamaBaseURL,
+		CloudBaseURL:  cfg.Service.LLMCloudBaseURL,
+		CloudAPIKey:   cfg.Service.LLMCloudAPIKey,
 	}, jsonschema.NewCompilerCache())
 
 	legacyEventsSvc := events.NewService(events.NewRepository(db))

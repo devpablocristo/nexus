@@ -33,6 +33,8 @@ type ServiceConfig struct {
 	LLMProvider            string
 	LLMModel               string
 	LLMOllamaBaseURL       string
+	LLMCloudBaseURL        string
+	LLMCloudAPIKey         string
 	CORSAllowedOrigins     string
 	CORSAllowedMethods     string
 	CORSAllowedHeaders     string

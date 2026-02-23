@@ -113,6 +113,8 @@ func Load() (Config, error) {
 	cfg.Service.LLMProvider = mustStrDefault("NEXUS_LLM_PROVIDER", "mock")
 	cfg.Service.LLMModel = mustStrDefault("NEXUS_LLM_MODEL", "mock-default")
 	cfg.Service.LLMOllamaBaseURL = mustStrDefault("NEXUS_OLLAMA_BASE_URL", "http://localhost:11434")
+	cfg.Service.LLMCloudBaseURL = mustStrDefault("NEXUS_LLM_CLOUD_BASE_URL", "https://api.openai.com/v1")
+	cfg.Service.LLMCloudAPIKey = mustStrDefault("NEXUS_LLM_CLOUD_API_KEY", "")
 	cfg.Service.CORSAllowedOrigins = mustStrDefault("NEXUS_CORS_ALLOWED_ORIGINS", "")
 	cfg.Service.CORSAllowedMethods = mustStrDefault("NEXUS_CORS_ALLOWED_METHODS", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 	cfg.Service.CORSAllowedHeaders = mustStrDefault("NEXUS_CORS_ALLOWED_HEADERS", "Authorization,Content-Type,X-NEXUS-GATEWAY-KEY,X-NEXUS-SCOPES,X-NEXUS-ACTOR,Idempotency-Key,X-Timeout-Ms")

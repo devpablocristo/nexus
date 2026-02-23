@@ -12,9 +12,9 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"nexus-core/cmd/config"
 	"nexus-core/internal/a2a"
-	"nexus-core/internal/agents/executive_qa"
 	"nexus-core/internal/actions"
 	"nexus-core/internal/admin"
+	"nexus-core/internal/agents/executive_qa"
 	"nexus-core/internal/assistant"
 	"nexus-core/internal/audit"
 	"nexus-core/internal/egress"
@@ -143,6 +143,8 @@ func NewRouter(
 		Provider:      cfg.LLMProvider,
 		Model:         cfg.LLMModel,
 		OllamaBaseURL: cfg.LLMOllamaBaseURL,
+		CloudBaseURL:  cfg.LLMCloudBaseURL,
+		CloudAPIKey:   cfg.LLMCloudAPIKey,
 	}, jsonschema.NewCompilerCache())
 	execQAH := executive_qa.NewHandler(executive_qa.NewService(llmClient, opsActionEngine))
 
