@@ -30,6 +30,9 @@ type ServiceConfig struct {
 	EgressAllowlist        string
 	SimEngineBaseURL       string
 	SimEngineInternalKey   string
+	LLMProvider            string
+	LLMModel               string
+	LLMOllamaBaseURL       string
 	CORSAllowedOrigins     string
 	CORSAllowedMethods     string
 	CORSAllowedHeaders     string

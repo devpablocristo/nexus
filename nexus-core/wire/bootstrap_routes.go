@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"nexus-core/cmd/config"
 	"nexus-core/internal/a2a"
+	"nexus-core/internal/agents/executive_qa"
 	"nexus-core/internal/actions"
 	"nexus-core/internal/admin"
 	"nexus-core/internal/assistant"
@@ -23,7 +24,10 @@ import (
 	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
 	"nexus-core/internal/ops/actionengine"
+	opscomms "nexus-core/internal/ops/comms"
+	opsdiagnosis "nexus-core/internal/ops/diagnosis"
 	opseventstore "nexus-core/internal/ops/eventstore"
+	opsllm "nexus-core/internal/ops/llm"
 	opstenant "nexus-core/internal/ops/tenant"
 	"nexus-core/internal/policy"
 	"nexus-core/internal/policyproposal"
@@ -122,13 +126,25 @@ func NewRouter(
 	opsEmitter := opseventstore.NewEmitter(opsEventSvc)
 	opsTenantSvc := opstenant.NewService(opstenant.NewRepository(db))
 	opsActionSvc := actionengine.NewService(actionengine.NewRepository(db))
-	opsActionH := actionengine.NewHandler(actionengine.NewEngine(
+	opsActionEngine := actionengine.NewEngine(
 		opsActionSvc,
 		opsEmitter,
 		opsTenantSvc,
 		actionengine.EngineConfig{},
 		jsonschema.NewCompilerCache(),
-	))
+	)
+	opsActionH := actionengine.NewHandler(opsActionEngine)
+
+	opsDiagSvc := opsdiagnosis.NewService(opsdiagnosis.NewRepository(db))
+	opsCommsSvc := opscomms.NewService(opscomms.NewRepository(db))
+	_ = opsDiagSvc
+	_ = opsCommsSvc
+	llmClient := opsllm.NewClient(opsllm.Config{
+		Provider:      cfg.LLMProvider,
+		Model:         cfg.LLMModel,
+		OllamaBaseURL: cfg.LLMOllamaBaseURL,
+	}, jsonschema.NewCompilerCache())
+	execQAH := executive_qa.NewHandler(executive_qa.NewService(llmClient, opsActionEngine))
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
@@ -139,6 +155,7 @@ func NewRouter(
 	eventsH.Register(v1)
 	actionsH.Register(v1)
 	opsActionH.Register(v1)
+	execQAH.Register(v1)
 	incidentsH.Register(v1)
 	proposalH.Register(v1)
 	assistantH.Register(v1)
