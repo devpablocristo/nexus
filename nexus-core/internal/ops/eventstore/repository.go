@@ -69,6 +69,29 @@ func (r *Repository) ListAfterSequence(ctx context.Context, orgID uuid.UUID, aft
 	return out, nil
 }
 
+func (r *Repository) ListGlobalAfterSequence(ctx context.Context, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	var rows []models.Event
+	err := r.db.WithContext(ctx).
+		Where("sequence > ?", afterSequence).
+		Order("sequence ASC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]opsdomain.StoredEvent, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toDomainEvent(row))
+	}
+	return out, nil
+}
+
 func (r *Repository) GetConsumerOffset(ctx context.Context, consumerGroup string) (int64, error) {
 	var row models.ConsumerOffset
 	err := r.db.WithContext(ctx).Where("consumer_group = ?", consumerGroup).Take(&row).Error

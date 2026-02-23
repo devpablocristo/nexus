@@ -10,6 +10,7 @@ import (
 type RepositoryPort interface {
 	Append(ctx context.Context, event opsdomain.Envelope, schemaValid bool, validationError *string) (opsdomain.StoredEvent, error)
 	ListAfterSequence(ctx context.Context, orgID uuid.UUID, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error)
+	ListGlobalAfterSequence(ctx context.Context, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error)
 	GetConsumerOffset(ctx context.Context, consumerGroup string) (int64, error)
 	UpsertConsumerOffset(ctx context.Context, consumerGroup string, sequence int64) error
 	UpsertContract(ctx context.Context, in opsdomain.EventContract) error
@@ -24,6 +25,7 @@ type ValidatorPort interface {
 type Service interface {
 	Append(ctx context.Context, event opsdomain.Envelope) (opsdomain.StoredEvent, error)
 	ListAfterSequence(ctx context.Context, orgID uuid.UUID, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error)
+	ListGlobalAfterSequence(ctx context.Context, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error)
 	GetConsumerOffset(ctx context.Context, consumerGroup string) (int64, error)
 	Ack(ctx context.Context, consumerGroup string, sequence int64) error
 	UpsertContract(ctx context.Context, in opsdomain.EventContract) error
@@ -64,6 +66,10 @@ func (s *service) Append(ctx context.Context, event opsdomain.Envelope) (opsdoma
 
 func (s *service) ListAfterSequence(ctx context.Context, orgID uuid.UUID, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error) {
 	return s.repo.ListAfterSequence(ctx, orgID, afterSequence, limit)
+}
+
+func (s *service) ListGlobalAfterSequence(ctx context.Context, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error) {
+	return s.repo.ListGlobalAfterSequence(ctx, afterSequence, limit)
 }
 
 func (s *service) GetConsumerOffset(ctx context.Context, consumerGroup string) (int64, error) {
