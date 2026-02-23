@@ -34,7 +34,7 @@ def _engine(request: Request) -> OperatorEngine:
     return cast(OperatorEngine, request.app.state.engine)
 
 
-def verify_operator_key(
+async def verify_operator_key(
     request: Request,
     x_operator_key: str | None = Header(default=None, alias='X-Operator-Key'),
 ) -> None:

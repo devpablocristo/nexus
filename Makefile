@@ -53,10 +53,12 @@ operator-test:
 	cd $(OPERATOR_DIR) && \
 		if [ ! -d .venv ]; then python3 -m venv .venv; fi && \
 		. .venv/bin/activate && \
-		if ! pip install -q -e '.[dev]'; then \
-			echo "operator-test: dependencies unavailable; skipping (set NEXUS_QA_STRICT=1 to fail)"; \
-			if [ "$${NEXUS_QA_STRICT:-0}" = "1" ]; then exit 1; fi; \
-			exit 0; \
+		if ! python -c "import importlib.util,sys;mods=['fastapi','httpx','pydantic','pytest'];sys.exit(0 if all(importlib.util.find_spec(m) for m in mods) else 1)"; then \
+			if ! pip install -q -e '.[dev]'; then \
+				echo "operator-test: dependencies unavailable; skipping (set NEXUS_QA_STRICT=1 to fail)"; \
+				if [ "$${NEXUS_QA_STRICT:-0}" = "1" ]; then exit 1; fi; \
+				exit 0; \
+			fi; \
 		fi && \
 		pytest -q
 

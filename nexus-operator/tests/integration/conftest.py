@@ -39,6 +39,11 @@ def make_settings(**overrides: Any) -> Settings:
         "OPERATOR_ACTION_COOLDOWN_SECONDS": 0,
         "OPERATOR_ACTION_TTL_SECONDS": 300,
         "OPERATOR_INTERNAL_KEY": TEST_OPERATOR_KEY,
+        # Keep integration tests deterministic and offline-safe.
+        "LLM_BACKEND": "fallback",
+        "ANTHROPIC_API_KEY": "",
+        "OLLAMA_BASE_URL": "http://localhost:11434",
+        "OLLAMA_MODEL": "llama3.1:8b",
     }
     defaults.update(overrides)
     return Settings(**defaults)
