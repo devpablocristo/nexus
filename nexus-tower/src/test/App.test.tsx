@@ -19,11 +19,11 @@ function renderApp(initialRoute = '/') {
   window.history.pushState({}, '', initialRoute);
   const qc = createTestQueryClient();
   return render(
-    <QueryClientProvider client={qc}>
-      <BrowserRouter>
+      <QueryClientProvider client={qc}>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </BrowserRouter>
-    </QueryClientProvider>,
+      </QueryClientProvider>,
   );
 }
 

@@ -21,6 +21,7 @@ export function OverviewPage() {
 
   const openIncidents = (incidentsQ.data?.items || []).filter((item) => item.status === 'open').length;
   const activeActions = (actionsQ.data?.items || []).filter((item) => item.status === 'active').length;
+  const isTestMode = import.meta.env.MODE === 'test';
 
   return (
     <div className="grid two">
@@ -45,14 +46,23 @@ export function OverviewPage() {
       <Card title="Event Mix">
         <QueryError error={eventsQ.error} onRetry={() => eventsQ.refetch()} />
         <div style={{ width: '100%', height: 260 }}>
-          <ResponsiveContainer>
-            <BarChart data={chartData}>
+          {isTestMode ? (
+            <BarChart width={640} height={260} data={chartData}>
               <XAxis dataKey="event_type" hide />
               <YAxis allowDecimals={false} />
               <Tooltip />
               <Bar dataKey="count" fill="#ff5f2a" radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={chartData}>
+                <XAxis dataKey="event_type" hide />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#ff5f2a" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </Card>
 

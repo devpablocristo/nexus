@@ -17,7 +17,7 @@ function renderPage() {
   const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <OverviewPage />
       </BrowserRouter>
     </QueryClientProvider>,
@@ -81,9 +81,12 @@ describe('OverviewPage', () => {
     mockFetchResponses();
     renderPage();
 
-    // Wait for the events count to appear (3 events)
+    const eventsLabel = screen.getByText('Events');
+    const eventsBlock = eventsLabel.closest('div')!;
+
+    // Wait for the events count to appear (3 events) in its stat block
     await waitFor(() => {
-      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(within(eventsBlock).getByText('3')).toBeInTheDocument();
     });
 
     // Stat labels

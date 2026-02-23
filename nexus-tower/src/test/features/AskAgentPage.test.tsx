@@ -19,7 +19,7 @@ function renderPage() {
   const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AskAgentPage />
       </BrowserRouter>
     </QueryClientProvider>,
