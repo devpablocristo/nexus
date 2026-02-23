@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/events/quota_exceeded_v1.json",
+  "title": "quota.exceeded payload v1",
+  "type": "object",
+  "required": ["tool_name", "bucket", "limit"],
+  "properties": {
+    "tool_name": { "type": "string", "minLength": 1 },
+    "bucket": { "type": "string", "minLength": 1 },
+    "limit": { "type": "integer", "minimum": 1 },
+    "current": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": true
+}

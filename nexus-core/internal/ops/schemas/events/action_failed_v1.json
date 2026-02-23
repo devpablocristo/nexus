@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/events/action_failed_v1.json",
+  "title": "action.failed payload v1",
+  "type": "object",
+  "required": ["proposal_id", "action_type", "error_code", "reason"],
+  "properties": {
+    "proposal_id": { "type": "string", "format": "uuid" },
+    "action_type": { "type": "string", "minLength": 1 },
+    "error_code": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string", "minLength": 1 },
+    "retryable": { "type": "boolean" }
+  },
+  "additionalProperties": true
+}

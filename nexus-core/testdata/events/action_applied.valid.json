@@ -1,0 +1,21 @@
+{
+  "id": "f4a7349f-72e6-4f8a-95cf-5f27f5e1f6a2",
+  "event_type": "action.applied",
+  "version": 1,
+  "occurred_at": "2026-02-23T10:02:00Z",
+  "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54",
+  "correlation": {
+    "request_id": "req-1003",
+    "incident_id": "f503f46f-c137-4165-b9ca-999d0d6f328f",
+    "action_id": "82f62307-4127-41fa-a1d1-b38031e3a465"
+  },
+  "actor": {"actor_id": "mitigation", "actor_type": "agent"},
+  "source": "agents.mitigation",
+  "payload": {
+    "proposal_id": "5791f5df-0fda-4119-8fe9-643d7c983a5d",
+    "action_id": "82f62307-4127-41fa-a1d1-b38031e3a465",
+    "action_type": "set_rate_limit",
+    "scope": {"level": "tool", "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54", "tool_id": "world.move"},
+    "ttl_seconds": 600
+  }
+}

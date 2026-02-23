@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/llm/diagnosis_report.json",
+  "title": "DiagnosisReport",
+  "type": "object",
+  "required": ["summary_30s", "root_cause", "confidence", "hypotheses", "recommended_actions", "missing_info"],
+  "properties": {
+    "summary_30s": { "type": "string", "minLength": 1 },
+    "root_cause": { "type": "string", "minLength": 1 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "confidence", "evidence_refs"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "recommended_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action_type", "scope", "params"],
+        "properties": {
+          "action_type": {
+            "type": "string",
+            "enum": [
+              "set_safe_mode",
+              "pause_tool",
+              "quarantine_tenant",
+              "set_rate_limit",
+              "rollback_last_mitigation",
+              "export_audit"
+            ]
+          },
+          "scope": { "type": "object" },
+          "ttl_seconds": { "type": "integer", "minimum": 1 },
+          "params": { "type": "object" },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "missing_info": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "root_cause": { "const": "unknown" }
+        }
+      },
+      "then": {
+        "properties": {
+          "confidence": { "const": 0 }
+        },
+        "required": ["missing_info"]
+      },
+      "else": {
+        "required": ["evidence_refs"],
+        "properties": {
+          "evidence_refs": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/llm/communication_plan.json",
+  "title": "CommunicationPlan",
+  "type": "object",
+  "required": ["incident_id", "summary", "root_cause_claim", "audiences", "drafts"],
+  "properties": {
+    "incident_id": { "type": "string", "format": "uuid" },
+    "summary": { "type": "string", "minLength": 1 },
+    "root_cause_claim": {
+      "type": "object",
+      "required": ["value", "confidence"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "audiences": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "channel"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "channel": { "type": "string", "enum": ["internal", "external", "status_page"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "drafts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["audience", "subject", "body", "approval_required"],
+        "properties": {
+          "audience": { "type": "string", "minLength": 1 },
+          "subject": { "type": "string", "minLength": 1 },
+          "body": { "type": "string", "minLength": 1 },
+          "approval_required": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "root_cause_claim": {
+            "properties": {
+              "confidence": { "exclusiveMaximum": 0.7 }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "root_cause_claim": {
+            "properties": {
+              "value": { "const": "unknown" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

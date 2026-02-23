@@ -1,0 +1,21 @@
+{
+  "incident_id": "f503f46f-c137-4165-b9ca-999d0d6f328f",
+  "summary": "Se detecto degradacion en world.move y se aplico mitigacion temporal.",
+  "root_cause_claim": {
+    "value": "rate_limit_bucket_saturated",
+    "confidence": 0.8
+  },
+  "evidence_refs": ["audit:req-1001", "metrics:world.move:p95"],
+  "audiences": [
+    {"name": "oncall", "channel": "internal"},
+    {"name": "customers", "channel": "external"}
+  ],
+  "drafts": [
+    {
+      "audience": "oncall",
+      "subject": "Incident update",
+      "body": "Aplicada mitigacion con TTL de 10 minutos.",
+      "approval_required": false
+    }
+  ]
+}
