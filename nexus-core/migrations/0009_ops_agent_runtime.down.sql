@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS ops_sentry_baselines;
+DROP TABLE IF EXISTS ops_incident_fingerprints;
+DROP TABLE IF EXISTS ops_comms_drafts;
+DROP TABLE IF EXISTS ops_diagnosis_reports;
+DROP TABLE IF EXISTS ops_action_approvals;
+DROP TABLE IF EXISTS ops_action_executions;
+DROP TABLE IF EXISTS ops_action_proposals;
+DROP TABLE IF EXISTS ops_action_catalog;
+DROP TABLE IF EXISTS ops_knowledge_docs;
+DROP TABLE IF EXISTS ops_incident_settings;
+DROP TABLE IF EXISTS ops_tenant_contacts;
+DROP TABLE IF EXISTS ops_tenant_registry;
+DROP TABLE IF EXISTS ops_consumer_offsets;
+DROP TABLE IF EXISTS ops_event_contracts;
+DROP TABLE IF EXISTS ops_event_store;
