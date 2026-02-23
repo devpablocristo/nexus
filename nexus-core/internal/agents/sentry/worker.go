@@ -3,6 +3,7 @@ package sentry
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -48,6 +49,7 @@ type Config struct {
 	ErrorThreshold   float64
 	MinSamples       int64
 	SignalToolMetric string
+	P95LatencyMS     float64
 }
 
 type Worker struct {
@@ -70,6 +72,9 @@ func NewWorker(state StateRepository, incidents IncidentPort, emitter EventEmitt
 	if strings.TrimSpace(cfg.SignalToolMetric) == "" {
 		cfg.SignalToolMetric = "error_rate"
 	}
+	if cfg.P95LatencyMS <= 0 {
+		cfg.P95LatencyMS = 2000
+	}
 	return &Worker{
 		state:     state,
 		incidents: incidents,
@@ -88,22 +93,18 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	default:
 		return nil
 	}
-	if event.Envelope.EventType != "tool_call.finished" {
+
+	toolName := resolveToolName(event.Envelope.Payload)
+	if toolName == "" {
+		toolName = "unknown_tool"
+	}
+	metric, signal, sample, forceAnomaly, observedOverride, thresholdOverride := w.measurementFor(event)
+	if metric == "" {
 		return nil
 	}
 
 	orgID := event.Envelope.OrgID
-	toolName := strings.TrimSpace(asString(event.Envelope.Payload["tool_name"]))
-	if toolName == "" {
-		return nil
-	}
-	status := strings.ToLower(strings.TrimSpace(asString(event.Envelope.Payload["status"])))
-	sample := 0.0
-	if status != "success" {
-		sample = 1
-	}
-
-	baseline, err := w.state.GetBaseline(ctx, orgID, toolName, w.cfg.SignalToolMetric)
+	baseline, err := w.state.GetBaseline(ctx, orgID, toolName, metric)
 	if err != nil {
 		return err
 	}
@@ -114,25 +115,40 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	}
 	baseline.OrgID = orgID
 	baseline.ToolName = toolName
-	baseline.Metric = w.cfg.SignalToolMetric
+	baseline.Metric = metric
 	baseline.SampleCount++
 	if err := w.state.UpsertBaseline(ctx, baseline); err != nil {
 		return err
 	}
 
-	if baseline.SampleCount < w.cfg.MinSamples || baseline.EWMA < w.cfg.ErrorThreshold || sample == 0 {
+	if sample == 0 {
+		return nil
+	}
+	threshold := w.cfg.ErrorThreshold
+	if thresholdOverride > 0 {
+		threshold = thresholdOverride
+	}
+	observed := baseline.EWMA
+	if observedOverride > 0 {
+		observed = observedOverride
+	}
+	minSamples := w.cfg.MinSamples
+	if event.Envelope.EventType != "tool_call.finished" {
+		minSamples = 1
+	}
+	if !forceAnomaly && (baseline.SampleCount < minSamples || baseline.EWMA < threshold) {
 		return nil
 	}
 
-	fingerprint := fmt.Sprintf("fp:%s:%s:%s", orgID.String(), toolName, w.cfg.SignalToolMetric)
+	fingerprint := fmt.Sprintf("fp:%s:%s:%s", orgID.String(), toolName, signal)
 	_ = w.emit(ctx, orgID, "anomaly.detected", map[string]any{
-		"fingerprint":      fingerprint,
-		"signal":           "error_rate_spike",
-		"tool_name":        toolName,
-		"observed_value":   baseline.EWMA,
-		"threshold_value":  w.cfg.ErrorThreshold,
-		"window_size":      baseline.SampleCount,
-		"evidence_refs":    []string{"event_store:" + fmt.Sprintf("%d", event.Sequence)},
+		"fingerprint":     fingerprint,
+		"signal":          signal,
+		"tool_name":       toolName,
+		"observed_value":  roundFloat(observed, 4),
+		"threshold_value": roundFloat(threshold, 4),
+		"window_size":     baseline.SampleCount,
+		"evidence_refs":   []string{"event_store:" + fmt.Sprintf("%d", event.Sequence)},
 	})
 
 	fpState, err := w.state.GetFingerprint(ctx, orgID, fingerprint)
@@ -169,15 +185,82 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 		return err
 	}
 	_ = w.emit(ctx, orgID, "incident.opened", map[string]any{
-		"incident_id":  inc.ID.String(),
-		"severity":     string(inc.Severity),
-		"state":        "OPEN",
-		"title":        inc.Title,
-		"summary":      inc.Summary,
-		"fingerprint":  fingerprint,
-		"opened_at":    time.Now().UTC().Format(time.RFC3339),
+		"incident_id": inc.ID.String(),
+		"severity":    string(inc.Severity),
+		"state":       "OPEN",
+		"title":       inc.Title,
+		"summary":     inc.Summary,
+		"fingerprint": fingerprint,
+		"opened_at":   time.Now().UTC().Format(time.RFC3339),
 	})
 	return nil
+}
+
+func (w *Worker) measurementFor(event opsdomain.StoredEvent) (metric, signal string, sample float64, forceAnomaly bool, observedOverride, thresholdOverride float64) {
+	switch event.Envelope.EventType {
+	case "tool_call.finished":
+		status := strings.ToLower(strings.TrimSpace(asString(event.Envelope.Payload["status"])))
+		sample = 0
+		if status != "success" {
+			sample = 1
+		}
+		return w.cfg.SignalToolMetric, "error_rate_spike", sample, false, 0, 0
+	case "policy.denied":
+		return "policy_denied_rate", "policy_denied_spike", 1, false, 0, 0
+	case "quota.exceeded":
+		return "quota_exceeded_rate", "quota_exceeded_spike", 1, false, 0, 0
+	case "tool_degraded":
+		degradationType := strings.ToLower(strings.TrimSpace(asString(event.Envelope.Payload["degradation_type"])))
+		if strings.Contains(degradationType, "p95") || strings.Contains(degradationType, "latency") {
+			p95 := asFloat(event.Envelope.Payload["p95_latency_ms"])
+			if p95 <= 0 {
+				p95 = asFloat(event.Envelope.Payload["p95_ms"])
+			}
+			if p95 <= 0 {
+				p95 = w.cfg.P95LatencyMS
+			}
+			return "p95_latency_ms", "p95_latency_spike", 1, true, p95, w.cfg.P95LatencyMS
+		}
+		return "degraded_rate", "tool_degraded", 1, true, 1, 1
+	default:
+		return "", "", 0, false, 0, 0
+	}
+}
+
+func resolveToolName(payload map[string]any) string {
+	if payload == nil {
+		return ""
+	}
+	if tool := strings.TrimSpace(asString(payload["tool_name"])); tool != "" {
+		return tool
+	}
+	if tool := strings.TrimSpace(asString(payload["tool_id"])); tool != "" {
+		return tool
+	}
+	return ""
+}
+
+func asFloat(v any) float64 {
+	switch t := v.(type) {
+	case float64:
+		return t
+	case float32:
+		return float64(t)
+	case int:
+		return float64(t)
+	case int64:
+		return float64(t)
+	default:
+		return 0
+	}
+}
+
+func roundFloat(v float64, decimals int) float64 {
+	if decimals <= 0 {
+		return math.Round(v)
+	}
+	pow := math.Pow(10, float64(decimals))
+	return math.Round(v*pow) / pow
 }
 
 func (w *Worker) emit(ctx context.Context, orgID uuid.UUID, eventType string, payload map[string]any) error {

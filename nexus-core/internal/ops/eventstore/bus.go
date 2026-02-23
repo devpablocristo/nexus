@@ -12,6 +12,7 @@ type EventHandler func(ctx context.Context, event opsdomain.StoredEvent) error
 type ConsumerConfig struct {
 	BatchSize    int
 	PollInterval time.Duration
+	OnIdle       func(ctx context.Context) error
 }
 
 type Consumer struct {
@@ -19,6 +20,7 @@ type Consumer struct {
 	consumerGroup string
 	batchSize     int
 	pollInterval  time.Duration
+	onIdle        func(ctx context.Context) error
 }
 
 func NewConsumer(service Service, consumerGroup string, cfg ConsumerConfig) *Consumer {
@@ -35,6 +37,7 @@ func NewConsumer(service Service, consumerGroup string, cfg ConsumerConfig) *Con
 		consumerGroup: consumerGroup,
 		batchSize:     batch,
 		pollInterval:  poll,
+		onIdle:        cfg.OnIdle,
 	}
 }
 
@@ -56,6 +59,11 @@ func (c *Consumer) Run(ctx context.Context, handler EventHandler) error {
 			return err
 		}
 		if len(items) == 0 {
+			if c.onIdle != nil {
+				if err := c.onIdle(ctx); err != nil {
+					return err
+				}
+			}
 			select {
 			case <-ctx.Done():
 				return nil

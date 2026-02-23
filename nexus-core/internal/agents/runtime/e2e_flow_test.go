@@ -13,6 +13,8 @@ import (
 	"nexus-core/internal/agents/mitigation"
 	"nexus-core/internal/agents/recovery"
 	"nexus-core/internal/agents/sentry"
+	"nexus-core/internal/incidents"
+	incidentdomain "nexus-core/internal/incidents/usecases/domain"
 	opsaction "nexus-core/internal/ops/actionengine"
 	actiondomain "nexus-core/internal/ops/actionengine/usecases/domain"
 	commsdomain "nexus-core/internal/ops/comms/usecases/domain"
@@ -20,8 +22,6 @@ import (
 	opseventstore "nexus-core/internal/ops/eventstore"
 	opsdomain "nexus-core/internal/ops/eventstore/usecases/domain"
 	"nexus-core/internal/ops/llm"
-	incidentdomain "nexus-core/internal/incidents/usecases/domain"
-	"nexus-core/internal/incidents"
 )
 
 func TestAgentFlowE2E_MockLLM(t *testing.T) {
@@ -42,7 +42,7 @@ func TestAgentFlowE2E_MockLLM(t *testing.T) {
 	commsWorker := comms.NewWorker(llmFlowStub{}, commsSvc, emitter)
 	engine := &engineFlowStub{emitter: emitter}
 	mitigationWorker := mitigation.NewWorker(engine)
-	recoveryWorker := recovery.NewWorker(emitter, recovery.Config{RequiredSuccesses: 1})
+	recoveryWorker := recovery.NewWorker(emitter, recovery.Config{RequiredSuccesses: 1, MonitoringWindow: time.Nanosecond})
 	coordWorker := coordinator.NewWorker(emitter)
 
 	workers := []interface {
@@ -67,7 +67,7 @@ func TestAgentFlowE2E_MockLLM(t *testing.T) {
 			Correlation: opsdomain.Correlation{
 				RequestID: ptr("req-initial"),
 			},
-			Actor: opsdomain.Actor{ActorType: "system"},
+			Actor:  opsdomain.Actor{ActorType: "system"},
 			Source: "gateway.run",
 			Payload: map[string]any{
 				"tool_name": "world.move",
@@ -167,8 +167,8 @@ func (e *queueEmitter) drain() []opsdomain.StoredEvent {
 }
 
 type sentryStateMem struct {
-	mu          sync.Mutex
-	baselines   map[string]sentry.Baseline
+	mu           sync.Mutex
+	baselines    map[string]sentry.Baseline
 	fingerprints map[string]sentry.FingerprintState
 }
 
@@ -260,8 +260,8 @@ type llmFlowStub struct{}
 
 func (llmFlowStub) Generate(context.Context, llm.Request) (map[string]any, error) {
 	return map[string]any{
-		"answer":         "mock answer",
-		"evidence_refs":  []any{"incident:latest"},
+		"answer":        "mock answer",
+		"evidence_refs": []any{"incident:latest"},
 	}, nil
 }
 
@@ -315,9 +315,9 @@ func (llmFlowStub) GenerateStrict(_ context.Context, req llm.Request, schemaFile
 }
 
 type engineFlowStub struct {
-	emitter     *queueEmitter
-	dryRunCalls int
-	applyCalls  int
+	emitter          *queueEmitter
+	dryRunCalls      int
+	applyCalls       int
 	proposalIncident map[string]string
 }
 
@@ -359,7 +359,7 @@ func (e *engineFlowStub) Apply(ctx context.Context, orgID uuid.UUID, actor *stri
 			Correlation: opsdomain.Correlation{
 				IncidentID: &incidentID,
 			},
-			Actor: opsdomain.Actor{ActorID: actor, ActorType: "agent"},
+			Actor:  opsdomain.Actor{ActorID: actor, ActorType: "agent"},
 			Source: "engine.stub",
 			Payload: map[string]any{
 				"incident_id": incidentID,
@@ -374,7 +374,7 @@ func (e *engineFlowStub) Apply(ctx context.Context, orgID uuid.UUID, actor *stri
 			Correlation: opsdomain.Correlation{
 				IncidentID: &incidentID,
 			},
-			Actor: opsdomain.Actor{ActorType: "system"},
+			Actor:  opsdomain.Actor{ActorType: "system"},
 			Source: "engine.stub",
 			Payload: map[string]any{
 				"incident_id": incidentID,

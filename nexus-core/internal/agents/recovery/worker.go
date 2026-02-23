@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	opseventstore "nexus-core/internal/ops/eventstore"
@@ -16,13 +17,27 @@ type EventEmitter interface {
 
 type Config struct {
 	RequiredSuccesses int
+	MonitoringWindow  time.Duration
+	Now               func() time.Time
+}
+
+type mitigationTrack struct {
+	OrgID              uuid.UUID
+	IncidentID         string
+	ActionID           string
+	ActionType         string
+	SuccessCount       int
+	MonitoringDeadline time.Time
+	TTLDeadline        *time.Time
 }
 
 type Worker struct {
 	emitter           EventEmitter
 	requiredSuccesses int
+	monitoringWindow  time.Duration
+	now               func() time.Time
 	mu                sync.Mutex
-	successByIncident map[string]int
+	tracks            map[string]mitigationTrack
 }
 
 func NewWorker(emitter EventEmitter, cfg Config) *Worker {
@@ -30,10 +45,20 @@ func NewWorker(emitter EventEmitter, cfg Config) *Worker {
 	if required <= 0 {
 		required = 3
 	}
+	monitoringWindow := cfg.MonitoringWindow
+	if monitoringWindow <= 0 {
+		monitoringWindow = 5 * time.Minute
+	}
+	nowFn := cfg.Now
+	if nowFn == nil {
+		nowFn = func() time.Time { return time.Now().UTC() }
+	}
 	return &Worker{
 		emitter:           emitter,
 		requiredSuccesses: required,
-		successByIncident: map[string]int{},
+		monitoringWindow:  monitoringWindow,
+		now:               nowFn,
+		tracks:            map[string]mitigationTrack{},
 	}
 }
 
@@ -46,43 +71,121 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	if incidentID == "" {
 		return nil
 	}
+	eventTime := w.eventTime(event)
+
+	// Evaluate time-based states first for every incoming event.
+	if err := w.evaluateIncident(ctx, incidentID, event.Envelope.OrgID, eventTime); err != nil {
+		return err
+	}
+
 	switch event.Envelope.EventType {
 	case "action.applied":
+		track := mitigationTrack{
+			OrgID:              event.Envelope.OrgID,
+			IncidentID:         incidentID,
+			ActionID:           strings.TrimSpace(asString(event.Envelope.Payload["action_id"])),
+			ActionType:         strings.TrimSpace(asString(event.Envelope.Payload["action_type"])),
+			SuccessCount:       0,
+			MonitoringDeadline: eventTime.Add(w.monitoringWindow),
+		}
+		ttlSeconds := asInt(event.Envelope.Payload["ttl_seconds"])
+		if ttlSeconds > 0 {
+			deadline := eventTime.Add(time.Duration(ttlSeconds) * time.Second)
+			track.TTLDeadline = &deadline
+		}
 		w.mu.Lock()
-		w.successByIncident[incidentID] = 0
+		w.tracks[incidentID] = track
 		w.mu.Unlock()
 		return w.emitState(ctx, event.Envelope.OrgID, incidentID, "MITIGATING", "MONITORING", "post_apply_monitoring")
 	case "tool_call.finished":
 		status := strings.ToLower(strings.TrimSpace(asString(event.Envelope.Payload["status"])))
 		w.mu.Lock()
-		count, tracked := w.successByIncident[incidentID]
+		track, tracked := w.tracks[incidentID]
 		w.mu.Unlock()
 		if !tracked {
 			return nil
 		}
 		if status == "success" {
-			count++
 			w.mu.Lock()
-			w.successByIncident[incidentID] = count
+			track.SuccessCount++
+			w.tracks[incidentID] = track
 			w.mu.Unlock()
-			if count >= w.requiredSuccesses {
-				w.mu.Lock()
-				delete(w.successByIncident, incidentID)
-				w.mu.Unlock()
-				return w.emitState(ctx, event.Envelope.OrgID, incidentID, "MONITORING", "RESOLVED", "stable_after_mitigation")
-			}
-			return nil
+			return w.evaluateIncident(ctx, incidentID, event.Envelope.OrgID, eventTime)
 		}
 		w.mu.Lock()
-		delete(w.successByIncident, incidentID)
+		delete(w.tracks, incidentID)
 		w.mu.Unlock()
-		if err := w.emitActionRollback(ctx, event.Envelope.OrgID, incidentID); err != nil {
+		if err := w.emitActionRollback(ctx, event.Envelope.OrgID, incidentID, track.ActionID, track.ActionType, "post_mitigation_regression"); err != nil {
 			return err
 		}
 		return w.emitState(ctx, event.Envelope.OrgID, incidentID, "MONITORING", "OPEN", "regressed_after_mitigation")
 	default:
 		return nil
 	}
+}
+
+func (w *Worker) OnIdle(ctx context.Context) error {
+	now := w.now()
+	w.mu.Lock()
+	keys := make([]string, 0, len(w.tracks))
+	for incidentID := range w.tracks {
+		keys = append(keys, incidentID)
+	}
+	w.mu.Unlock()
+	for _, incidentID := range keys {
+		w.mu.Lock()
+		track, ok := w.tracks[incidentID]
+		w.mu.Unlock()
+		if !ok {
+			continue
+		}
+		if err := w.evaluateIncident(ctx, incidentID, track.OrgID, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *Worker) IdleInterval() time.Duration {
+	return 1 * time.Second
+}
+
+func (w *Worker) evaluateIncident(ctx context.Context, incidentID string, orgID uuid.UUID, at time.Time) error {
+	w.mu.Lock()
+	track, ok := w.tracks[incidentID]
+	w.mu.Unlock()
+	if !ok {
+		return nil
+	}
+
+	if track.TTLDeadline != nil && !at.Before(*track.TTLDeadline) {
+		w.mu.Lock()
+		delete(w.tracks, incidentID)
+		w.mu.Unlock()
+		if err := w.emitActionRollback(ctx, orgID, incidentID, track.ActionID, track.ActionType, "ttl_expired"); err != nil {
+			return err
+		}
+		return w.emitState(ctx, orgID, incidentID, "MONITORING", "OPEN", "ttl_expired_auto_rollback")
+	}
+
+	if !at.Before(track.MonitoringDeadline) && track.SuccessCount >= w.requiredSuccesses {
+		w.mu.Lock()
+		delete(w.tracks, incidentID)
+		w.mu.Unlock()
+		return w.emitState(ctx, orgID, incidentID, "MONITORING", "RESOLVED", "stable_after_mitigation_window")
+	}
+
+	return nil
+}
+
+func (w *Worker) eventTime(event opsdomain.StoredEvent) time.Time {
+	if !event.Envelope.OccurredAt.IsZero() {
+		return event.Envelope.OccurredAt.UTC()
+	}
+	if !event.CreatedAt.IsZero() {
+		return event.CreatedAt.UTC()
+	}
+	return w.now()
 }
 
 func (w *Worker) emitState(ctx context.Context, orgID uuid.UUID, incidentID, fromState, toState, reason string) error {
@@ -113,12 +216,25 @@ func (w *Worker) emitState(ctx context.Context, orgID uuid.UUID, incidentID, fro
 	return err
 }
 
-func (w *Worker) emitActionRollback(ctx context.Context, orgID uuid.UUID, incidentID string) error {
+func (w *Worker) emitActionRollback(ctx context.Context, orgID uuid.UUID, incidentID, actionID, actionType, reason string) error {
 	if w.emitter == nil {
 		return nil
 	}
 	incID := incidentID
 	actorID := "agents.recovery"
+	if strings.TrimSpace(reason) == "" {
+		reason = "manual_or_automatic_rollback"
+	}
+	payload := map[string]any{
+		"incident_id": incidentID,
+		"reason":      reason,
+	}
+	if strings.TrimSpace(actionID) != "" {
+		payload["action_id"] = actionID
+	}
+	if strings.TrimSpace(actionType) != "" {
+		payload["action_type"] = actionType
+	}
 	_, err := w.emitter.Emit(ctx, opseventstore.EmitInput{
 		EventType: "action.rolled_back",
 		Version:   1,
@@ -130,11 +246,8 @@ func (w *Worker) emitActionRollback(ctx context.Context, orgID uuid.UUID, incide
 			ActorID:   &actorID,
 			ActorType: "agent",
 		},
-		Source: "agents.recovery",
-		Payload: map[string]any{
-			"incident_id": incidentID,
-			"reason":      "post_mitigation_regression",
-		},
+		Source:  "agents.recovery",
+		Payload: payload,
 	})
 	return err
 }
@@ -152,4 +265,17 @@ func resolveIncidentID(event opsdomain.StoredEvent) string {
 func asString(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+func asInt(v any) int {
+	switch t := v.(type) {
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	default:
+		return 0
+	}
 }

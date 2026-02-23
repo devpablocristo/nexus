@@ -53,15 +53,82 @@ func TestSentryWorker_EmitsAnomalyAndIncident(t *testing.T) {
 	}
 }
 
+func TestSentryWorker_ConsumesPolicyQuotaAndDegradedSignals(t *testing.T) {
+	t.Parallel()
+
+	orgID := uuid.MustParse("996e9e43-7bab-4e68-a831-0a766befbf54")
+	state := newMemState()
+	inc := &incidentStub{}
+	emitter := &emitStub{}
+	w := NewWorker(state, inc, emitter, Config{
+		Alpha:          1.0,
+		ErrorThreshold: 0.5,
+		MinSamples:     5,
+		P95LatencyMS:   1200,
+	})
+
+	cases := []opsdomain.StoredEvent{
+		{
+			Sequence: 21,
+			Envelope: opsdomain.Envelope{
+				OrgID:      orgID,
+				EventType:  "policy.denied",
+				OccurredAt: time.Now().UTC(),
+				Payload: map[string]any{
+					"tool_name": "world.move",
+					"policy_id": "policy.low_rate",
+				},
+			},
+		},
+		{
+			Sequence: 22,
+			Envelope: opsdomain.Envelope{
+				OrgID:      orgID,
+				EventType:  "quota.exceeded",
+				OccurredAt: time.Now().UTC(),
+				Payload: map[string]any{
+					"tool_name": "world.move",
+					"bucket":    "org:world.move",
+				},
+			},
+		},
+		{
+			Sequence: 23,
+			Envelope: opsdomain.Envelope{
+				OrgID:      orgID,
+				EventType:  "tool_degraded",
+				OccurredAt: time.Now().UTC(),
+				Payload: map[string]any{
+					"tool_name":        "world.move",
+					"degradation_type": "p95_latency",
+					"p95_latency_ms":   1800,
+				},
+			},
+		},
+	}
+	for _, ev := range cases {
+		if err := w.Handle(context.Background(), ev); err != nil {
+			t.Fatalf("handle failed for %s: %v", ev.Envelope.EventType, err)
+		}
+	}
+
+	if inc.calls == 0 {
+		t.Fatalf("expected at least one incident creation")
+	}
+	if !emitter.hasType("anomaly.detected") {
+		t.Fatalf("expected anomaly.detected emission")
+	}
+}
+
 type memState struct {
-	mu          sync.Mutex
-	baselines   map[string]Baseline
+	mu           sync.Mutex
+	baselines    map[string]Baseline
 	fingerprints map[string]FingerprintState
 }
 
 func newMemState() *memState {
 	return &memState{
-		baselines:   map[string]Baseline{},
+		baselines:    map[string]Baseline{},
 		fingerprints: map[string]FingerprintState{},
 	}
 }

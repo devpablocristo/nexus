@@ -13,16 +13,38 @@ type Worker interface {
 	Handle(ctx context.Context, event opsdomain.StoredEvent) error
 }
 
+type IdleWorker interface {
+	OnIdle(ctx context.Context) error
+	IdleInterval() time.Duration
+}
+
 type Runner struct {
 	consumer *opseventstore.Consumer
 	worker   Worker
 }
 
 func NewRunner(eventService opseventstore.Service, worker Worker, batchSize int, pollInterval time.Duration) *Runner {
+	onIdle := func(context.Context) error { return nil }
+	if iw, ok := worker.(IdleWorker); ok {
+		lastTick := time.Time{}
+		onIdle = func(ctx context.Context) error {
+			now := time.Now().UTC()
+			interval := iw.IdleInterval()
+			if interval <= 0 {
+				interval = 1 * time.Second
+			}
+			if !lastTick.IsZero() && now.Sub(lastTick) < interval {
+				return nil
+			}
+			lastTick = now
+			return iw.OnIdle(ctx)
+		}
+	}
 	return &Runner{
 		consumer: opseventstore.NewConsumer(eventService, worker.ConsumerGroup(), opseventstore.ConsumerConfig{
 			BatchSize:    batchSize,
 			PollInterval: pollInterval,
+			OnIdle:       onIdle,
 		}),
 		worker: worker,
 	}
