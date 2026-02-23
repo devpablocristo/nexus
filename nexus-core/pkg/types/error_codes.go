@@ -22,6 +22,7 @@ const (
 	ErrCodeIdempotencyConflict = "IDEMPOTENCY_KEY_CONFLICT"
 	ErrCodeIdempotencyProgress = "IDEMPOTENCY_IN_PROGRESS"
 	ErrCodeIdempotencyStore    = "IDEMPOTENCY_STORE_ERROR"
+	ErrCodeApprovalRequired    = "APPROVAL_REQUIRED"
 	ErrCodeTimeoutBudget       = "TIMEOUT_BUDGET_EXCEEDED"
 	ErrCodeExportFormatInvalid = "EXPORT_FORMAT_INVALID"
 	ErrCodeExportRangeInvalid  = "EXPORT_RANGE_INVALID"

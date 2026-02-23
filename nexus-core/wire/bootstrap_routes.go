@@ -22,6 +22,9 @@ import (
 	"nexus-core/internal/identity"
 	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
+	"nexus-core/internal/ops/actionengine"
+	opseventstore "nexus-core/internal/ops/eventstore"
+	opstenant "nexus-core/internal/ops/tenant"
 	"nexus-core/internal/policy"
 	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
@@ -29,6 +32,7 @@ import (
 	"nexus-core/internal/world"
 	ginmw "nexus-core/pkg/http/middlewares/gin"
 	ginserver "nexus-core/pkg/http/servers/gin"
+	"nexus-core/pkg/validations/jsonschema"
 )
 
 func NewRouter(
@@ -110,6 +114,21 @@ func NewRouter(
 		InternalKey: cfg.SimEngineInternalKey,
 		Timeout:     6 * time.Second,
 	}))
+	opsEventRepo := opseventstore.NewRepository(db)
+	opsEventSvc := opseventstore.NewService(
+		opsEventRepo,
+		opseventstore.NewSchemaValidator(jsonschema.NewCompilerCache(), ""),
+	)
+	opsEmitter := opseventstore.NewEmitter(opsEventSvc)
+	opsTenantSvc := opstenant.NewService(opstenant.NewRepository(db))
+	opsActionSvc := actionengine.NewService(actionengine.NewRepository(db))
+	opsActionH := actionengine.NewHandler(actionengine.NewEngine(
+		opsActionSvc,
+		opsEmitter,
+		opsTenantSvc,
+		actionengine.EngineConfig{},
+		jsonschema.NewCompilerCache(),
+	))
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
@@ -119,6 +138,7 @@ func NewRouter(
 	adminH.Register(v1)
 	eventsH.Register(v1)
 	actionsH.Register(v1)
+	opsActionH.Register(v1)
 	incidentsH.Register(v1)
 	proposalH.Register(v1)
 	assistantH.Register(v1)
