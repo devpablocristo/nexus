@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { Card } from '../../components/Card';
@@ -10,6 +10,7 @@ import {
   getWorldRuns,
   getWorldState,
   replayWorldRun,
+  streamWorldEvents,
 } from '../../lib/api';
 import type { AuditEventItem, WorldAgentState, WorldEventItem, WorldState } from '../../lib/types';
 
@@ -439,7 +440,7 @@ function drawWorld(
   }
 }
 
-export function AcuarioPage() {
+export function ViewerPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const compareCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [selectedRun, setSelectedRun] = useState('');
@@ -447,10 +448,13 @@ export function AcuarioPage() {
   const [selectedAgent, setSelectedAgent] = useState('');
   const [events, setEvents] = useState<WorldEventItem[]>([]);
   const [fromSeq, setFromSeq] = useState(0);
+  const fromSeqRef = useRef(0);
   const [compareEvents, setCompareEvents] = useState<WorldEventItem[]>([]);
   const [compareFromSeq, setCompareFromSeq] = useState(0);
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'incidents' | 'movement' | 'system'>('incidents');
   const [replayMode, setReplayMode] = useState(false);
+  const [worldFeedMode, setWorldFeedMode] = useState<'stream' | 'poll'>('stream');
+  const [liveFeedStatus, setLiveFeedStatus] = useState<'idle' | 'connecting' | 'live' | 'poll'>('idle');
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(2);
   const [scrubStep, setScrubStep] = useState(0);
@@ -464,10 +468,10 @@ export function AcuarioPage() {
 
   const runsQ = useQuery({ queryKey: ['world-runs'], queryFn: () => getWorldRuns(150), refetchInterval: 5000 });
   const worldEventsQ = useQuery({
-    queryKey: ['world-events', selectedRun, fromSeq],
+    queryKey: ['world-events', selectedRun, fromSeq, worldFeedMode],
     queryFn: () => getWorldEvents(selectedRun, fromSeq, 200),
-    enabled: selectedRun !== '',
-    refetchInterval: replayMode ? false : 1200,
+    enabled: selectedRun !== '' && worldFeedMode === 'poll' && !replayMode,
+    refetchInterval: replayMode ? false : worldFeedMode === 'poll' ? 1200 : false,
   });
   const compareWorldEventsQ = useQuery({
     queryKey: ['world-events-compare', compareRun, compareFromSeq],
@@ -521,6 +525,33 @@ export function AcuarioPage() {
   });
 
   useEffect(() => {
+    fromSeqRef.current = fromSeq;
+  }, [fromSeq]);
+
+  const appendWorldEvents = useCallback((items: WorldEventItem[], nextSeqHint?: number) => {
+    if (items.length > 0) {
+      setEvents((prev) => {
+        const bySeq = new Map<number, WorldEventItem>();
+        for (const ev of prev) bySeq.set(ev.seq, ev);
+        for (const ev of items) bySeq.set(ev.seq, ev);
+        return Array.from(bySeq.values()).sort((a, b) => a.seq - b.seq).slice(-2500);
+      });
+    }
+    setFromSeq((prev) => {
+      let next = prev;
+      if (typeof nextSeqHint === 'number' && Number.isFinite(nextSeqHint) && nextSeqHint > next) {
+        next = nextSeqHint;
+      }
+      for (const ev of items) {
+        if (ev.seq + 1 > next) {
+          next = ev.seq + 1;
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
     const first = runsQ.data?.items?.[0]?.run_id || '';
     if (selectedRun === '' && first !== '') {
       setSelectedRun(first);
@@ -547,6 +578,8 @@ export function AcuarioPage() {
     setEvents([]);
     setFromSeq(0);
     setReplayMode(false);
+    setWorldFeedMode('stream');
+    setLiveFeedStatus('connecting');
     setIsPlaying(false);
     setScrubStep(0);
   }, [selectedRun]);
@@ -557,21 +590,51 @@ export function AcuarioPage() {
   }, [compareRun]);
 
   useEffect(() => {
-    const items = worldEventsQ.data?.items || [];
-    if (items.length === 0) {
+    if (selectedRun === '' || replayMode || worldFeedMode !== 'stream') {
       return;
     }
-    setEvents((prev) => {
-      const bySeq = new Map<number, WorldEventItem>();
-      for (const ev of prev) bySeq.set(ev.seq, ev);
-      for (const ev of items) bySeq.set(ev.seq, ev);
-      return Array.from(bySeq.values()).sort((a, b) => a.seq - b.seq).slice(-2500);
-    });
-    const next = worldEventsQ.data?.next_seq || fromSeq;
-    if (next > fromSeq) {
-      setFromSeq(next);
+    const controller = new AbortController();
+    let mounted = true;
+    setLiveFeedStatus('connecting');
+
+    void streamWorldEvents(selectedRun, fromSeqRef.current, {
+      signal: controller.signal,
+      onBatch: (batch) => {
+        if (!mounted) return;
+        setLiveFeedStatus('live');
+        appendWorldEvents(batch.items || [], batch.next_seq);
+      },
+      onPing: (nextSeq) => {
+        if (!mounted) return;
+        if (nextSeq > 0) {
+          setFromSeq((prev) => (nextSeq > prev ? nextSeq : prev));
+        }
+      },
+    })
+      .then(() => {
+        if (!mounted || controller.signal.aborted) return;
+        setLiveFeedStatus('poll');
+        setWorldFeedMode('poll');
+      })
+      .catch(() => {
+        if (!mounted || controller.signal.aborted) return;
+        setLiveFeedStatus('poll');
+        setWorldFeedMode('poll');
+      });
+
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [selectedRun, replayMode, worldFeedMode, appendWorldEvents]);
+
+  useEffect(() => {
+    const items = worldEventsQ.data?.items || [];
+    if (items.length === 0 && !worldEventsQ.data?.next_seq) {
+      return;
     }
-  }, [worldEventsQ.data, fromSeq]);
+    appendWorldEvents(items, worldEventsQ.data?.next_seq);
+  }, [worldEventsQ.data, appendWorldEvents]);
 
   useEffect(() => {
     const items = compareWorldEventsQ.data?.items || [];
@@ -691,9 +754,9 @@ export function AcuarioPage() {
   }, [compareRun, compareStateQ.data, selectedAgent, compareSignals, toggles]);
 
   return (
-    <div className="acuario-page">
-      <div className="acuario-grid">
-      <Card title="Acuario 3D">
+    <div className="viewer-page">
+      <div className="viewer-grid">
+      <Card title="Viewer 3D">
         <QueryError error={runsQ.error || worldEventsQ.error || stateQ.error || compareStateQ.error || auditQ.error || compareWorldEventsQ.error || compareAuditQ.error} onRetry={() => {
           void runsQ.refetch();
           void worldEventsQ.refetch();
@@ -704,7 +767,7 @@ export function AcuarioPage() {
           void auditQ.refetch();
         }} />
 
-        <div className="acuario-toolbar">
+        <div className="viewer-toolbar">
           <label>
             Run
             <select value={selectedRun} onChange={(e) => setSelectedRun(e.target.value)}>
@@ -735,15 +798,15 @@ export function AcuarioPage() {
           </button>
         </div>
 
-        <div className={`acuario-arena ${compareRun !== '' ? 'with-compare' : ''}`}>
-          <div className="acuario-canvas-wrap">
+        <div className={`viewer-arena ${compareRun !== '' ? 'with-compare' : ''}`}>
+          <div className="viewer-canvas-wrap">
             <p className="arena-label">Primary run</p>
-            <canvas ref={canvasRef} className="acuario-canvas" />
+            <canvas ref={canvasRef} className="viewer-canvas" />
           </div>
           {compareRun !== '' && (
-            <div className="acuario-canvas-wrap compare">
+            <div className="viewer-canvas-wrap compare">
               <p className="arena-label">Compare run</p>
-              <canvas ref={compareCanvasRef} className="acuario-canvas acuario-canvas-compare" />
+              <canvas ref={compareCanvasRef} className="viewer-canvas viewer-canvas-compare" />
               {compareIncident && (
                 <p className="muted compare-caption">
                   severity {compareIncident.severity.toUpperCase()} · jam {compareIncident.jamIndex} · throughput {compareIncident.throughput}
@@ -760,17 +823,20 @@ export function AcuarioPage() {
           <label><input type="checkbox" checked={toggles.loop} onChange={() => setToggles((t) => ({ ...t, loop: !t.loop }))} /> Loop</label>
           <label><input type="checkbox" checked={toggles.intention} onChange={() => setToggles((t) => ({ ...t, intention: !t.intention }))} /> Intention</label>
         </div>
-        <p className="muted acuario-hint">
+        <p className="muted viewer-hint">
           Movement: moved {incident.moved} · collided {incident.collided} · blocked {incident.blocked}
         </p>
-        <p className="muted acuario-hint">
+        <p className="muted viewer-hint">
+          Feed: {replayMode ? 'replay snapshot mode' : worldFeedMode === 'stream' ? (liveFeedStatus === 'live' ? 'live stream' : 'connecting...') : 'polling fallback'}
+        </p>
+        <p className="muted viewer-hint">
           Visual key: collision = orange ring (thick/bright when recent), loop = magenta, policy = red, rate = yellow.
         </p>
       </Card>
 
-      <section className="panel acuario-summary">
+      <section className="panel viewer-summary">
         <h2>Door Jam Snapshot</h2>
-        <div className="acuario-kpis">
+        <div className="viewer-kpis">
           <div className="kpi">
             <p>Agents</p>
             <strong>{agents.length}</strong>
@@ -796,7 +862,7 @@ export function AcuarioPage() {
             <strong>{incident.loops}</strong>
           </div>
         </div>
-        <div className="acuario-root-cause">
+        <div className="viewer-root-cause">
           <div>
             <p className="muted">Run Health</p>
             <p className={`severity severity-${incident.severity}`}>{incident.severity.toUpperCase()}</p>
@@ -810,7 +876,7 @@ export function AcuarioPage() {
             <p><strong>{incident.throughput}</strong> moves/step</p>
           </div>
         </div>
-        <div className="acuario-compare">
+        <div className="viewer-compare">
           <label>
             Compare with run
             <select value={compareRun} onChange={(e) => setCompareRun(e.target.value)}>

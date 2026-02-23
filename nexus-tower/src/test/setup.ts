@@ -11,7 +11,7 @@ afterEach(() => {
 // Mock global fetch
 vi.stubGlobal('fetch', vi.fn());
 
-// Silence ResizeObserver errors from recharts in jsdom
+// Silence ResizeObserver errors from recharts in DOM test environment
 class ResizeObserverStub {
   observe() {}
   unobserve() {}

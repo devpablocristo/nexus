@@ -98,3 +98,25 @@ func TestHandler_ListRunsWithReadScope(t *testing.T) {
 		t.Fatalf("expected 200 got %d", w.Code)
 	}
 }
+
+func TestHandler_StreamEventsRequiresRunID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(fakeWorldService{})
+	r := gin.New()
+	r.Use(ginmw.RequestID())
+	v1 := r.Group("/v1")
+	v1.Use(func(c *gin.Context) {
+		c.Set(string(types.CtxKeyOrgID), uuid.New())
+		c.Set(string(types.CtxKeyScopes), []string{"admin:console:read"})
+		c.Next()
+	})
+	h.Register(v1)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/world/events/stream", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing run_id, got %d", w.Code)
+	}
+}

@@ -63,7 +63,7 @@ def create_run(client: CoreClient, seed: int, agent_count: int) -> str:
 
 def resolve_org_id(client: CoreClient, run_id: str) -> str:
     for _ in range(8):
-        status, body = client.call("GET", "/v1/world/runs?limit=300")
+        status, body = client.call("GET", "/v1/world/runs?limit=200")
         data = require_status(status, body, 200, "list runs")
         for item in data.get("items", []):
             if str(item.get("run_id", "")) == run_id:
@@ -131,7 +131,7 @@ def run_moves(
 def fetch_world_events(client: CoreClient, run_id: str) -> list[dict[str, Any]]:
     all_items: list[dict[str, Any]] = []
     from_seq = 0
-    limit = 500
+    limit = 200
     while True:
         q = parse.urlencode({"run_id": run_id, "from_seq": from_seq, "limit": limit})
         status, body = client.call("GET", f"/v1/world/events?{q}")

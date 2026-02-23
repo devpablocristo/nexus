@@ -1,4 +1,4 @@
-# WorldSim Architecture (MVP)
+# Viewer Architecture (MVP)
 
 ## Scope
 
@@ -96,4 +96,4 @@ World events schema:
 - `nexus-core/internal/world/*` (proxy endpoints)
 - `nexus-core/internal/gateway/usecases.go` (header propagation + SSRF allowlist)
 - `nexus-core/pkg/utils/ssrf.go` (allowlist support)
-- `nexus-tower/src/features/acuario/AcuarioPage.tsx` (viewer + overlays)
+- `nexus-tower/src/features/viewer/ViewerPage.tsx` (viewer + overlays)

@@ -8,7 +8,7 @@ CORE_SERVICE := nexus-core
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test operator-test tower-test qa e2e jwt-e2e quickstart-admin \
-	core-dev operator-dev tower-dev qa-worldsim migrate-worldsim demo-doorjam replay
+	core-dev operator-dev tower-dev qa-worldsim migrate-worldsim demo-doorjam replay reset-nexus logs-tail
 
 up:
 	docker compose up -d
@@ -24,6 +24,9 @@ clean:
 
 logs:
 	docker compose logs -f
+
+logs-tail:
+	docker compose logs --tail=$${TAIL:-200}
 
 migrate-up:
 	docker compose exec -T $(CORE_SERVICE) /app/migrate -cmd up
@@ -77,6 +80,15 @@ demo-doorjam:
 replay:
 	@if [ -z "$(RUN_ID)" ]; then echo "RUN_ID is required. Usage: make replay RUN_ID=<run-id>"; exit 1; fi
 	python scripts/replay_worldsim.py --run-id "$(RUN_ID)"
+
+reset-nexus:
+	$(MAKE) clean
+	$(MAKE) build
+	$(MAKE) up
+	$(MAKE) migrate-up
+	$(MAKE) seed
+	$(MAKE) demo-doorjam
+	$(MAKE) logs-tail
 
 e2e:
 	cd $(CORE_DIR) && bash scripts/e2e.sh

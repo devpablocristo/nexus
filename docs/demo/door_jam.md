@@ -35,9 +35,9 @@ The demo script prints:
 make replay RUN_ID=<run_id>
 ```
 
-## Acuario view
+## Viewer
 
-Open Tower and navigate to `Acuario`:
+Open Tower and navigate to `Viewer`:
 
 - select run
 - enable replay mode + scrubber

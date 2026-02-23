@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 
 const navItems = [
   { to: '/', label: 'Overview' },
-  { to: '/acuario', label: 'Acuario' },
+  { to: '/viewer', label: 'Viewer' },
   { to: '/timeline', label: 'Timeline' },
   { to: '/policies', label: 'Policies' },
   { to: '/ask-agent', label: 'Ask Agent' },
@@ -11,7 +11,7 @@ const navItems = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const shellClass = location.pathname === '/acuario' ? 'shell shell-acuario' : 'shell';
+  const shellClass = 'shell';
   return (
     <div className={shellClass}>
       <header className="shell-header">
