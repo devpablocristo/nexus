@@ -52,7 +52,7 @@ func TestValidateEgressURL_AllowsPublicHTTPS(t *testing.T) {
 }
 
 func TestValidateEgressURLWithAllowlist_AllowsExactHostPort(t *testing.T) {
-	if err := ValidateEgressURLWithAllowlist("http://world-sim:8087/tools/world.observe", "world-sim:8087"); err != nil {
+	if err := ValidateEgressURLWithAllowlist("http://sim-engine:8087/tools/world.observe", "sim-engine:8087"); err != nil {
 		t.Fatalf("expected allowlisted host:port to pass, got: %v", err)
 	}
 }
@@ -64,7 +64,7 @@ func TestValidateEgressURLWithAllowlist_WildcardIsRejected(t *testing.T) {
 }
 
 func TestValidateEgressURLWithAllowlist_NonAllowlistedPrivateStillBlocked(t *testing.T) {
-	if err := ValidateEgressURLWithAllowlist("http://127.0.0.1/internal", "world-sim:8087"); err == nil {
+	if err := ValidateEgressURLWithAllowlist("http://127.0.0.1/internal", "sim-engine:8087"); err == nil {
 		t.Fatalf("expected non-allowlisted private destination to be blocked")
 	}
 }

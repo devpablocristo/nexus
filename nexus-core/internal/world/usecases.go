@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	internalKeyHeader = "X-WorldSim-Internal-Key"
+	internalKeyHeader = "X-Sim-Engine-Internal-Key"
 	requestIDHeader   = "X-Nexus-Request-Id"
 )
 
@@ -100,7 +100,7 @@ func (s *service) Replay(ctx context.Context, orgID uuid.UUID, requestID string,
 func (s *service) call(ctx context.Context, requestID, method, path string, query url.Values, payload map[string]any) (any, error) {
 	base := strings.TrimRight(strings.TrimSpace(s.cfg.BaseURL), "/")
 	if base == "" {
-		return nil, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "world-sim endpoint is not configured")
+		return nil, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "sim-engine endpoint is not configured")
 	}
 	fullURL := base + path
 	if query != nil && len(query) > 0 {
@@ -117,7 +117,7 @@ func (s *service) call(ctx context.Context, requestID, method, path string, quer
 	}
 	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
 	if err != nil {
-		return nil, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeInternal, "failed to build world-sim request")
+		return nil, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeInternal, "failed to build sim-engine request")
 	}
 	req.Header.Set("Accept", "application/json")
 	if payload != nil {
@@ -132,7 +132,7 @@ func (s *service) call(ctx context.Context, requestID, method, path string, quer
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "world-sim unavailable")
+		return nil, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "sim-engine unavailable")
 	}
 	defer resp.Body.Close()
 
@@ -145,13 +145,13 @@ func (s *service) call(ctx context.Context, requestID, method, path string, quer
 	}
 	var out any
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, types.NewHTTPError(http.StatusBadGateway, types.ErrCodeValidation, "world-sim returned invalid json")
+		return nil, types.NewHTTPError(http.StatusBadGateway, types.ErrCodeValidation, "sim-engine returned invalid json")
 	}
 	return out, nil
 }
 
 func mapUpstreamError(status int, raw []byte) error {
-	msg := "world-sim request failed"
+	msg := "sim-engine request failed"
 	code := types.ErrCodeNetworkError
 	httpStatus := http.StatusBadGateway
 

@@ -5,14 +5,13 @@ import { Card } from '../../components/Card';
 import { QueryError } from '../../components/QueryError';
 import {
   createWorldRun,
-  getAuditEvents,
   getWorldEvents,
   getWorldRuns,
   getWorldState,
   replayWorldRun,
   streamWorldEvents,
 } from '../../lib/api';
-import type { AuditEventItem, WorldAgentState, WorldEventItem, WorldState } from '../../lib/types';
+import type { WorldAgentState, WorldEventItem, WorldState } from '../../lib/types';
 
 type OverlayToggles = {
   policy: boolean;
@@ -108,7 +107,7 @@ function computeIncidentMetrics(worldEvents: WorldEventItem[], signals: AgentSig
   };
 }
 
-function computeTopImpactedAgents(worldEvents: WorldEventItem[], auditEvents: AuditEventItem[], runID: string): ImpactedAgent[] {
+function computeTopImpactedAgents(worldEvents: WorldEventItem[]): ImpactedAgent[] {
   const byAgent = new Map<string, ImpactedAgent>();
   const getOrCreate = (agentID: string) => {
     const key = agentID.trim();
@@ -128,18 +127,8 @@ function computeTopImpactedAgents(worldEvents: WorldEventItem[], auditEvents: Au
     const row = getOrCreate(agentID);
     if (t === 'agent.moved') row.moved += 1;
     if (t === 'agent.collided' || t === 'agent.blocked') row.collisions += 1;
-  }
-
-  for (const ev of auditEvents) {
-    const input = ev.input || {};
-    const inputRunID = String(input.run_id || '');
-    if (inputRunID !== runID) continue;
-    const agentID = String(input.agent_id || '').trim();
-    if (agentID === '') continue;
-    const row = getOrCreate(agentID);
-    const code = ev.error?.code || '';
-    if (ev.status === 'blocked' && code === 'POLICY_DENIED') row.denied += 1;
-    if (ev.status === 'blocked' && code === 'RATE_LIMITED') row.rateLimited += 1;
+    if (t === 'tool.denied') row.denied += 1;
+    if (t === 'tool.rate_limited') row.rateLimited += 1;
   }
 
   return Array.from(byAgent.values())
@@ -175,7 +164,7 @@ function toEventType(item: WorldEventItem): string {
   return item.tool_name;
 }
 
-function buildSignals(worldEvents: WorldEventItem[], auditEvents: AuditEventItem[], runID: string): AgentSignals {
+function buildSignals(worldEvents: WorldEventItem[]): AgentSignals {
   const policy = new Map<string, string>();
   const rate = new Map<string, string>();
   const collision = new Set<string>();
@@ -190,6 +179,29 @@ function buildSignals(worldEvents: WorldEventItem[], auditEvents: AuditEventItem
   for (const ev of worldEvents) {
     const eventType = toEventType(ev);
     const agentID = (ev.agent_id || '').trim();
+    if (eventType === 'tool.denied' && agentID !== '') {
+      const policyID = String(ev.payload?.policy_id || 'policy?').trim();
+      const targetTool = String(ev.payload?.tool_name || 'world.move').trim();
+      policy.set(agentID, `${policyID} · ${targetTool}`);
+      enforcementFeed.push({
+        key: `w-${ev.seq}-deny`,
+        at: ev.created_at,
+        label: 'tool.denied',
+        detail: `${agentID} ${policyID}`.trim(),
+      });
+    }
+    if (eventType === 'tool.rate_limited' && agentID !== '') {
+      const bucket = String(ev.payload?.bucket || 'org+tool');
+      const limit = Number(ev.payload?.limit || 0);
+      const suffix = limit > 0 ? ` (${bucket} ${limit}/min)` : ` (${bucket})`;
+      rate.set(agentID, `rate limited${suffix}`);
+      enforcementFeed.push({
+        key: `w-${ev.seq}-rl`,
+        at: ev.created_at,
+        label: 'tool.rate_limited',
+        detail: `${agentID} ${suffix}`.trim(),
+      });
+    }
     if (eventType === 'agent.collided' || eventType === 'agent.blocked') {
       if (agentID !== '') {
         collision.add(agentID);
@@ -228,34 +240,6 @@ function buildSignals(worldEvents: WorldEventItem[], auditEvents: AuditEventItem
     });
   }
 
-  for (const ev of auditEvents) {
-    const input = ev.input || {};
-    const inputRunID = String(input.run_id || '');
-    if (inputRunID !== runID) {
-      continue
-    }
-    const agentID = String(input.agent_id || '').trim();
-    const code = ev.error?.code || '';
-    if (ev.status === 'blocked' && code === 'POLICY_DENIED' && agentID !== '') {
-      policy.set(agentID, `${ev.policy_id || 'policy?'} · ${ev.tool_name}`);
-      enforcementFeed.push({
-        key: `a-${ev.request_id}-deny`,
-        at: ev.created_at,
-        label: 'tool.denied',
-        detail: `${agentID} ${ev.policy_id || ''}`.trim(),
-      });
-    }
-    if (ev.status === 'blocked' && code === 'RATE_LIMITED' && agentID !== '') {
-      rate.set(agentID, `org+tool limit · ${ev.tool_name}`);
-      enforcementFeed.push({
-        key: `a-${ev.request_id}-rl`,
-        at: ev.created_at,
-        label: 'tool.rate_limited',
-        detail: `${agentID} ${ev.tool_name}`,
-      });
-    }
-  }
-
   const heatmap = Array.from(heat.entries())
     .map(([cell, hits]) => ({ cell, hits }))
     .sort((a, b) => b.hits - a.hits)
@@ -265,6 +249,95 @@ function buildSignals(worldEvents: WorldEventItem[], auditEvents: AuditEventItem
   enforcementFeed.sort((a, b) => (a.at < b.at ? 1 : -1));
 
   return { policy, rate, collision, collisionSeq, loops, heatmap, worldFeed, enforcementFeed };
+}
+
+function drawMinimap(
+  canvas: HTMLCanvasElement,
+  worldState: WorldState | undefined,
+  selectedAgentID: string,
+  signals: AgentSignals,
+  toggles: OverlayToggles,
+) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  if (!worldState?.config) {
+    ctx.fillStyle = '#7b8cae';
+    ctx.font = "12px 'IBM Plex Sans'";
+    ctx.fillText('Minimap unavailable', 10, 20);
+    return;
+  }
+
+  const cfg = worldState.config;
+  const pad = 12;
+  const gridW = rect.width - pad * 2;
+  const gridH = rect.height - pad * 2;
+  const sx = gridW / Math.max(1, cfg.width);
+  const sy = gridH / Math.max(1, cfg.height);
+  const cell = Math.max(3, Math.min(sx, sy));
+  const usedW = cell * cfg.width;
+  const usedH = cell * cfg.height;
+  const ox = (rect.width - usedW) * 0.5;
+  const oy = (rect.height - usedH) * 0.5;
+
+  ctx.fillStyle = 'rgba(8,27,62,0.5)';
+  ctx.fillRect(ox, oy, usedW, usedH);
+  ctx.strokeStyle = 'rgba(151,178,229,0.2)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= cfg.width; x += 4) {
+    const px = ox + x * cell;
+    ctx.beginPath();
+    ctx.moveTo(px, oy);
+    ctx.lineTo(px, oy + usedH);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= cfg.height; y += 4) {
+    const py = oy + y * cell;
+    ctx.beginPath();
+    ctx.moveTo(ox, py);
+    ctx.lineTo(ox + usedW, py);
+    ctx.stroke();
+  }
+
+  const wallX = ox + cfg.door_x * cell;
+  ctx.strokeStyle = 'rgba(30,35,43,0.95)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(wallX, oy);
+  ctx.lineTo(wallX, oy + cfg.door_min_y * cell);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(wallX, oy + cfg.door_max_y * cell);
+  ctx.lineTo(wallX, oy + usedH);
+  ctx.stroke();
+
+  for (const ag of worldState.agents || []) {
+    let color = '#1ec9a6';
+    if (toggles.policy && signals.policy.has(ag.id)) color = '#ef4444';
+    else if (toggles.rate && signals.rate.has(ag.id)) color = '#f59e0b';
+    else if (toggles.collision && signals.collision.has(ag.id)) color = '#fb923c';
+    else if (toggles.loop && signals.loops.has(ag.id)) color = '#d100ff';
+
+    const px = ox + ag.x * cell;
+    const py = oy + ag.y * cell;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(2.4, cell * 0.34), 0, Math.PI * 2);
+    ctx.fill();
+    if (ag.id === selectedAgentID) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(px, py, Math.max(4, cell * 0.6), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
 }
 
 function drawWorld(
@@ -443,6 +516,7 @@ function drawWorld(
 export function ViewerPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const compareCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const miniMapRef = useRef<HTMLCanvasElement | null>(null);
   const [selectedRun, setSelectedRun] = useState('');
   const [compareRun, setCompareRun] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('');
@@ -478,18 +552,6 @@ export function ViewerPage() {
     queryFn: () => getWorldEvents(compareRun, compareFromSeq, 200),
     enabled: compareRun !== '',
     refetchInterval: 2000,
-  });
-  const auditQ = useQuery({
-    queryKey: ['world-audit', selectedRun],
-    queryFn: () => getAuditEvents('world.move', 200),
-    enabled: selectedRun !== '',
-    refetchInterval: 2000,
-  });
-  const compareAuditQ = useQuery({
-    queryKey: ['world-audit-compare', compareRun],
-    queryFn: () => getAuditEvents('world.move', 200),
-    enabled: compareRun !== '',
-    refetchInterval: 3500,
   });
   const stateQ = useQuery({
     queryKey: ['world-state', selectedRun, replayMode ? scrubStep : 'latest'],
@@ -702,12 +764,12 @@ export function ViewerPage() {
   }, [agents, selectedAgent]);
 
   const signals = useMemo(
-    () => buildSignals(events, auditQ.data?.items || [], selectedRun),
-    [events, auditQ.data, selectedRun],
+    () => buildSignals(events),
+    [events],
   );
   const compareSignals = useMemo(
-    () => (compareRun === '' ? emptySignals() : buildSignals(compareEvents, compareAuditQ.data?.items || [], compareRun)),
-    [compareRun, compareEvents, compareAuditQ.data],
+    () => (compareRun === '' ? emptySignals() : buildSignals(compareEvents)),
+    [compareRun, compareEvents],
   );
 
   const selectedAgentState = agents.find((a) => a.id === selectedAgent) || null;
@@ -719,8 +781,8 @@ export function ViewerPage() {
     return computeIncidentMetrics(compareEvents, compareSignals, compareMaxStep);
   }, [compareRun, compareEvents, compareSignals, compareMaxStep]);
   const topImpactedAgents = useMemo(
-    () => computeTopImpactedAgents(events, auditQ.data?.items || [], selectedRun),
-    [events, auditQ.data, selectedRun],
+    () => computeTopImpactedAgents(events),
+    [events],
   );
   const filteredWorldFeed = useMemo(() => {
     if (timelineFilter === 'all') return signals.worldFeed;
@@ -749,6 +811,11 @@ export function ViewerPage() {
   }, [worldState, selectedAgent, signals, toggles]);
 
   useEffect(() => {
+    if (!miniMapRef.current) return;
+    drawMinimap(miniMapRef.current, worldState, selectedAgent, signals, toggles);
+  }, [worldState, selectedAgent, signals, toggles]);
+
+  useEffect(() => {
     if (!compareCanvasRef.current || compareRun === '') return;
     drawWorld(compareCanvasRef.current, compareStateQ.data?.state, selectedAgent, compareSignals, toggles);
   }, [compareRun, compareStateQ.data, selectedAgent, compareSignals, toggles]);
@@ -757,14 +824,12 @@ export function ViewerPage() {
     <div className="viewer-page">
       <div className="viewer-grid">
       <Card title="Viewer 3D">
-        <QueryError error={runsQ.error || worldEventsQ.error || stateQ.error || compareStateQ.error || auditQ.error || compareWorldEventsQ.error || compareAuditQ.error} onRetry={() => {
+        <QueryError error={runsQ.error || worldEventsQ.error || stateQ.error || compareStateQ.error || compareWorldEventsQ.error} onRetry={() => {
           void runsQ.refetch();
           void worldEventsQ.refetch();
           void stateQ.refetch();
           void compareStateQ.refetch();
           void compareWorldEventsQ.refetch();
-          void compareAuditQ.refetch();
-          void auditQ.refetch();
         }} />
 
         <div className="viewer-toolbar">
@@ -814,6 +879,19 @@ export function ViewerPage() {
               )}
             </div>
           )}
+        </div>
+
+        <div className="viewer-minimap-row">
+          <div className="viewer-minimap-wrap">
+            <p className="arena-label">Minimap</p>
+            <canvas ref={miniMapRef} className="viewer-minimap" />
+          </div>
+          <div className="viewer-minimap-stats">
+            <p><strong>Agents</strong> {agents.length}</p>
+            <p><strong>Incidents</strong> {incident.collisions + incident.denied + incident.rateLimited}</p>
+            <p><strong>Latest step</strong> {stateQ.data?.step_id || 0}</p>
+            <p><strong>Throughput</strong> {incident.throughput} moves/step</p>
+          </div>
         </div>
 
         <div className="overlay-row">

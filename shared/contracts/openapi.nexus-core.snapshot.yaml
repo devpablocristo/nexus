@@ -792,7 +792,7 @@ paths:
     get:
       tags: [World]
       operationId: listWorldRuns
-      summary: List world simulation runs
+      summary: List viewer runs
       security:
         - NexusApiKey: []
         - BearerAuth: []
@@ -892,7 +892,7 @@ paths:
           schema:
             type: integer
             minimum: 1
-            maximum: 1000
+            maximum: 200
             default: 200
       responses:
         "200":
@@ -901,6 +901,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorldEventsResponse"
+        "403":
+          description: Missing admin:console:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/world/events/stream:
+    get:
+      tags: [World]
+      operationId: streamWorldEvents
+      summary: Stream dedicated world events (SSE)
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+        - name: run_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: from_seq
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 200
+      responses:
+        "200":
+          description: Server-Sent Events stream with world batches.
+          content:
+            text/event-stream:
+              schema:
+                type: string
         "403":
           description: Missing admin:console:read scope.
           content:

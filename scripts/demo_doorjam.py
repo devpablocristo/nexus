@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a reproducible Door Jam world-sim demo through nexus-core only."""
+"""Run a reproducible Door Jam sim-engine demo through nexus-core only."""
 
 from __future__ import annotations
 
@@ -32,18 +32,28 @@ class CoreClient:
     def call(self, method: str, path: str, payload: Any | None = None) -> tuple[int, dict[str, Any]]:
         body = None if payload is None else _json_dumps(payload)
         req = request.Request(self.base_url + path, data=body, method=method, headers=self.base_headers)
-        try:
-            with request.urlopen(req, timeout=self.timeout_s) as resp:
-                raw = resp.read()
-                data = json.loads(raw.decode("utf-8")) if raw else {}
-                return int(resp.status), data
-        except error.HTTPError as exc:
-            raw = exc.read()
+        last_exc: Exception | None = None
+        for attempt in range(5):
             try:
-                data = json.loads(raw.decode("utf-8")) if raw else {}
-            except Exception:
-                data = {"error": {"message": raw.decode("utf-8", errors="replace")}}
-            return int(exc.code), data
+                with request.urlopen(req, timeout=self.timeout_s) as resp:
+                    raw = resp.read()
+                    data = json.loads(raw.decode("utf-8")) if raw else {}
+                    return int(resp.status), data
+            except error.HTTPError as exc:
+                raw = exc.read()
+                try:
+                    data = json.loads(raw.decode("utf-8")) if raw else {}
+                except Exception:
+                    data = {"error": {"message": raw.decode("utf-8", errors="replace")}}
+                return int(exc.code), data
+            except Exception as exc:  # pragma: no cover - transient infra/network path
+                last_exc = exc
+                if attempt == 4:
+                    raise
+                time.sleep(0.2 * (attempt + 1))
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("unexpected call retry state")
 
 
 def require_status(status: int, body: dict[str, Any], expected: int, what: str) -> dict[str, Any]:
@@ -128,6 +138,63 @@ def run_moves(
     return counts
 
 
+def run_observe_burst(
+    client: CoreClient,
+    run_id: str,
+    org_id: str,
+    step_id: int,
+    agent_count: int,
+    calls: int,
+) -> dict[str, int]:
+    counts: dict[str, int] = {
+        "attempted_calls": 0,
+        "success_calls": 0,
+        "policy_denied": 0,
+        "rate_limited": 0,
+        "other_failures": 0,
+    }
+    if calls <= 0:
+        return counts
+    for idx in range(calls):
+        agent_id = f"agent-{(idx % max(1, agent_count)) + 1:03d}"
+        counts["attempted_calls"] += 1
+        status, body = client.call(
+            "POST",
+            "/v1/run",
+            {
+                "tool_name": "world.observe",
+                "input": {
+                    "org_id": org_id,
+                    "agent_id": agent_id,
+                    "run_id": run_id,
+                    "step_id": step_id,
+                },
+                "context": {"scenario": "door_jam_observe_burst"},
+            },
+        )
+        tool_status = str(body.get("status", ""))
+        if status == 200 and tool_status == "success":
+            counts["success_calls"] += 1
+            continue
+
+        err = body.get("error", {})
+        code = str(err.get("code", ""))
+        if code == "POLICY_DENIED":
+            counts["policy_denied"] += 1
+        elif code == "RATE_LIMITED":
+            counts["rate_limited"] += 1
+        else:
+            counts["other_failures"] += 1
+    return counts
+
+
+def merge_counts(base: dict[str, int], extra: dict[str, int]) -> dict[str, int]:
+    out = dict(base)
+    for key in ("attempted_calls", "success_calls", "policy_denied", "rate_limited", "other_failures"):
+        out[key] = int(out.get(key, 0)) + int(extra.get(key, 0))
+    return out
+
+
 def fetch_world_events(client: CoreClient, run_id: str) -> list[dict[str, Any]]:
     all_items: list[dict[str, Any]] = []
     from_seq = 0
@@ -208,29 +275,49 @@ def replay_run(client: CoreClient, run_id: str) -> dict[str, Any]:
     return require_status(status, body, 200, "replay run")
 
 
-def write_golden(baseline_events: list[dict[str, Any]], checksums: dict[str, Any]) -> None:
+def write_golden(baseline_events: list[dict[str, Any]], checksums: dict[str, Any], max_step: int) -> None:
     out_dir = Path("golden_runs/door_jam")
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    def sanitize(value: Any) -> Any:
+        if isinstance(value, dict):
+            out: dict[str, Any] = {}
+            for k, v in value.items():
+                if k == "run_id":
+                    out[k] = "RUN_BASELINE"
+                    continue
+                if k == "org_id":
+                    out[k] = "ORG_DEMO"
+                    continue
+                if k == "request_id":
+                    out[k] = "REQ"
+                    continue
+                if k == "policy_id" and v is not None:
+                    out[k] = "POLICY"
+                    continue
+                if k in ("timestamp", "created_at"):
+                    out[k] = "1970-01-01T00:00:00Z"
+                    continue
+                out[k] = sanitize(v)
+            return out
+        if isinstance(value, list):
+            return [sanitize(v) for v in value]
+        return value
+
     def normalize_event(item: dict[str, Any]) -> dict[str, Any]:
-        out = json.loads(json.dumps(item))
+        out = sanitize(json.loads(json.dumps(item)))
         out["id"] = int(out.get("seq", 0))
-        out["run_id"] = "RUN_BASELINE"
-        out["org_id"] = "ORG_DEMO"
-        out["request_id"] = "REQ"
-        out["created_at"] = "1970-01-01T00:00:00Z"
-        payload = out.get("payload", {})
-        if isinstance(payload, dict):
-            payload["run_id"] = "RUN_BASELINE"
-            payload["org_id"] = "ORG_DEMO"
-            payload["request_id"] = "REQ"
-            payload["timestamp"] = "1970-01-01T00:00:00Z"
-            out["payload"] = payload
         return out
 
     baseline_path = out_dir / "baseline.jsonl"
     with baseline_path.open("w", encoding="utf-8") as fh:
         for item in baseline_events:
+            try:
+                step_id = int(item.get("step_id", 0))
+            except Exception:
+                step_id = 0
+            if step_id > max_step:
+                continue
             fh.write(json.dumps(normalize_event(item), ensure_ascii=True, sort_keys=True))
             fh.write("\n")
 
@@ -241,7 +328,7 @@ def write_golden(baseline_events: list[dict[str, Any]], checksums: dict[str, Any
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Door Jam demo for world-sim through nexus-core.")
+    parser = argparse.ArgumentParser(description="Run Door Jam demo for sim-engine through nexus-core.")
     parser.add_argument("--core-url", default=os.getenv("NEXUS_CORE_URL", "http://localhost:8080"))
     parser.add_argument("--api-key", default=os.getenv("NEXUS_DEMO_API_KEY", "nexus-tower-local-key"))
     parser.add_argument(
@@ -271,6 +358,10 @@ def main() -> int:
 
     baseline_calls = run_moves(client, baseline_run, baseline_org, args.steps, args.agents, coordinated=False, gate_mod=args.coord_gate_mod)
     coord_calls = run_moves(client, coordinated_run, coordinated_org, args.steps, args.agents, coordinated=True, gate_mod=args.coord_gate_mod)
+    baseline_observe = run_observe_burst(client, baseline_run, baseline_org, args.steps + 1, args.agents, calls=140)
+    coord_observe = run_observe_burst(client, coordinated_run, coordinated_org, args.steps + 1, args.agents, calls=80)
+    baseline_calls = merge_counts(baseline_calls, baseline_observe)
+    coord_calls = merge_counts(coord_calls, coord_observe)
 
     baseline_events = fetch_world_events(client, baseline_run)
     coordinated_events = fetch_world_events(client, coordinated_run)
@@ -285,9 +376,6 @@ def main() -> int:
     replay_coord = replay_run(client, coordinated_run)
 
     checksums = {
-        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "baseline_run_id": baseline_run,
-        "coordinated_run_id": coordinated_run,
         "baseline": baseline_hashes,
         "coordinated": coordinated_hashes,
         "determinism_check": {
@@ -299,7 +387,7 @@ def main() -> int:
     }
 
     if not args.skip_golden:
-        write_golden(baseline_events, checksums)
+        write_golden(baseline_events, checksums, args.steps)
 
     summary = {
         "baseline": {
@@ -326,6 +414,9 @@ def main() -> int:
         return 2
     if coordinated_latest and str(replay_coord.get("state_hash", "")) and coordinated_latest != str(replay_coord.get("state_hash", "")):
         print("determinism mismatch for coordinated run", file=sys.stderr)
+        return 2
+    if baseline_calls.get("rate_limited", 0) == 0 and coord_calls.get("rate_limited", 0) == 0:
+        print("expected at least one rate_limited call in door jam demo", file=sys.stderr)
         return 2
 
     return 0

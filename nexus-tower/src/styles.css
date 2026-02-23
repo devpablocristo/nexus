@@ -476,6 +476,43 @@ textarea {
   height: 360px;
 }
 
+.viewer-minimap-row {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 10px;
+}
+
+.viewer-minimap-wrap {
+  border: 1px solid rgba(106, 130, 171, 0.3);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 34% 12%, rgba(95, 134, 199, 0.2), transparent 42%),
+    #101a2d;
+  overflow: hidden;
+}
+
+.viewer-minimap {
+  width: 100%;
+  height: 214px;
+  display: block;
+}
+
+.viewer-minimap-stats {
+  border: 1px dashed rgba(106, 130, 171, 0.34);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(15, 24, 42, 0.64);
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.viewer-minimap-stats p {
+  margin: 0;
+  font-size: 13px;
+}
+
 .compare-caption {
   margin: 0;
   padding: 0 10px 10px;
@@ -745,6 +782,9 @@ button:disabled {
     grid-template-columns: 1fr;
   }
   .viewer-arena.with-compare {
+    grid-template-columns: 1fr;
+  }
+  .viewer-minimap-row {
     grid-template-columns: 1fr;
   }
   .viewer-kpis {

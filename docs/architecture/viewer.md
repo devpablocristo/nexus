@@ -2,17 +2,18 @@
 
 ## Scope
 
-`world-sim/` is a deterministic headless provider integrated into the monorepo.  
+`sim-engine/` is a deterministic headless provider integrated into the monorepo.  
 All world actions execute via `nexus-core /v1/run` using normal HTTP tools:
 
 - `world.observe`
 - `world.move`
 
-Tower never calls `world-sim` directly. Tower reads world data from Core:
+Tower never calls `sim-engine` directly. Tower reads world data from Core:
 
 - `GET /v1/world/runs`
 - `GET /v1/world/state`
 - `GET /v1/world/events`
+- `GET /v1/world/events/stream`
 - `POST /v1/world/run/create`
 - `POST /v1/world/replay`
 
@@ -20,11 +21,14 @@ Tower never calls `world-sim` directly. Tower reads world data from Core:
 
 1. Tower/agents call Core.
 2. Core enforces authz, policy, SSRF/egress guard, rate limiting, audit.
-3. Core executes tool upstream call to `http://world-sim:8087/tools/*`.
+3. Core executes tool upstream call to `http://sim-engine:8087/tools/*`.
 4. Core adds internal headers:
    - `X-Nexus-Request-Id`
-   - `X-WorldSim-Internal-Key`
-5. `world-sim` validates `X-WorldSim-Internal-Key`.
+   - `X-Sim-Engine-Internal-Key`
+5. `sim-engine` validates `X-Sim-Engine-Internal-Key`.
+6. On `POLICY_DENIED` / `RATE_LIMITED`, Core emits world enforcement events to:
+   - `POST /admin/run/enforcement` (internal call, authenticated)
+   - event types: `tool.denied`, `tool.rate_limited`
 
 ## SSRF allowlist
 
@@ -36,7 +40,7 @@ Private destinations are blocked except explicit host:port entries from:
 MVP default:
 
 - `mock-tools:8081`
-- `world-sim:8087`
+- `sim-engine:8087`
 
 Wildcards are not accepted.
 
@@ -54,7 +58,7 @@ Determinism criterion:
 
 ## Persistence (Postgres)
 
-`world-sim` uses the same Postgres container as Core with dedicated tables:
+`sim-engine` uses the same Postgres container as Core with dedicated tables:
 
 - `world_runs`
 - `world_events` (append-only)
@@ -62,7 +66,7 @@ Determinism criterion:
 
 Migrations live in:
 
-- `world-sim/migrations/`
+- `sim-engine/migrations/`
 
 ## Contracts
 
@@ -76,8 +80,8 @@ Request (tool canon):
 
 Propagation:
 
-- Core -> world-sim `request_id` via `X-Nexus-Request-Id`
-- world-sim fallback: body `request_id` only when header missing
+- Core -> sim-engine `request_id` via `X-Nexus-Request-Id`
+- sim-engine fallback: body `request_id` only when header missing
 
 Response:
 
@@ -89,10 +93,11 @@ Response:
 World events schema:
 
 - `shared/contracts/world-events.schema.json`
+- Viewer overlays (policy/rate/collision/loop/intention) are computed from this feed only.
 
 ## Files changed (MVP)
 
-- `world-sim/*` (new service)
+- `sim-engine/*` (new service)
 - `nexus-core/internal/world/*` (proxy endpoints)
 - `nexus-core/internal/gateway/usecases.go` (header propagation + SSRF allowlist)
 - `nexus-core/pkg/utils/ssrf.go` (allowlist support)

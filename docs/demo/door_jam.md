@@ -15,9 +15,9 @@ Also show policy denies and rate-limits through Core.
 cp .env.example .env
 make up
 make migrate-up
-make migrate-worldsim
+make migrate-sim-engine
 make seed
-bash scripts/seed_worldsim_demo.sh
+bash scripts/seed_sim_engine_demo.sh
 make demo-doorjam
 ```
 
@@ -28,6 +28,11 @@ The demo script prints:
 - call outcomes (success, policy_denied, rate_limited)
 - event analysis (collisions/blocked, loops)
 - replay hashes
+
+Notes:
+
+- `world.move` drives congestion/collision behavior.
+- The script also runs an observe burst to guarantee `rate_limited` signals in the same runs.
 
 ## Replay
 
@@ -47,6 +52,7 @@ Open Tower and navigate to `Viewer`:
   - Collision/blocked
   - Loop detector (magenta)
   - Intention vs action arrows
+- live mode uses `GET /v1/world/events/stream` (fallback polling on `/v1/world/events`)
 
 ## Golden artifacts
 

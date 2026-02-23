@@ -23,7 +23,7 @@ func ProvideGatewayConfig(cfg config.ServiceConfig) gateway.Config {
 		IdempotencyStalenessSeconds: 120,
 		DisableSSRFProtection:       cfg.DisableSSRFProtection,
 		EgressAllowlist:             cfg.EgressAllowlist,
-		WorldSimBaseURL:             cfg.WorldSimBaseURL,
-		WorldSimInternalKey:         cfg.WorldSimInternalKey,
+		SimEngineBaseURL:            cfg.SimEngineBaseURL,
+		SimEngineInternalKey:        cfg.SimEngineInternalKey,
 	}
 }

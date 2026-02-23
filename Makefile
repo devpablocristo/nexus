@@ -3,24 +3,24 @@ SHELL := /bin/bash
 CORE_DIR := nexus-core
 OPERATOR_DIR := nexus-operator
 TOWER_DIR := nexus-tower
-WORLDSIM_DIR := world-sim
+SIM_ENGINE_DIR := sim-engine
 CORE_SERVICE := nexus-core
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test operator-test tower-test qa e2e jwt-e2e quickstart-admin \
-	core-dev operator-dev tower-dev qa-worldsim migrate-worldsim demo-doorjam replay reset-nexus logs-tail
+	core-dev operator-dev tower-dev qa-sim-engine migrate-sim-engine demo-doorjam replay reset-nexus logs-tail
 
 up:
-	docker compose up -d
+	docker compose up -d --remove-orphans
 
 build:
 	docker compose build
 
 down:
-	docker compose down
+	docker compose down --remove-orphans
 
 clean:
-	docker compose down -v
+	docker compose down -v --remove-orphans
 
 logs:
 	docker compose logs -f
@@ -34,9 +34,9 @@ migrate-up:
 migrate-down:
 	docker compose exec -T $(CORE_SERVICE) /app/migrate -cmd down -steps 1
 
-migrate-worldsim:
+migrate-sim-engine:
 	@docker compose up -d --wait postgres
-	docker compose exec -T postgres psql -U postgres -d nexus < world-sim/migrations/0001_worldsim.up.sql
+	docker compose exec -T postgres psql -U postgres -d nexus < sim-engine/migrations/0001_sim_engine.up.sql
 
 cleanup-idempotency:
 	docker compose exec -T $(CORE_SERVICE) /app/cleanup-idempotency
@@ -68,18 +68,18 @@ qa:
 		pytest -q
 	cd $(TOWER_DIR) && npm install && npm run qa
 
-qa-worldsim:
-	cd $(WORLDSIM_DIR) && GOCACHE=/tmp/go-build GOMODCACHE=/home/pablo/go/pkg/mod GOPROXY=off GOSUMDB=off go test ./...
-	cd $(CORE_DIR) && GOCACHE=/tmp/go-build go test ./internal/world ./internal/gateway ./pkg/utils -run 'TestHandler_|TestServiceListRuns_|TestRun_SSRFAllowlist_|TestRun_WorldSimInternalHeaders|TestRun_NonWorldSimDoesNotGetInternalKey|TestValidateEgressURLWithAllowlist'
+qa-sim-engine:
+	cd $(SIM_ENGINE_DIR) && GOCACHE=/tmp/go-build GOMODCACHE=/home/pablo/go/pkg/mod GOPROXY=off GOSUMDB=off go test ./...
+	cd $(CORE_DIR) && GOCACHE=/tmp/go-build go test ./internal/world ./internal/gateway ./pkg/utils -run 'TestHandler_|TestServiceListRuns_|TestRun_SSRFAllowlist_|TestRun_SimEngineInternalHeaders|TestRun_NonSimEngineDoesNotGetInternalKey|TestValidateEgressURLWithAllowlist|TestRun_WorldPolicyDenied_EmitsEnforcementEvent|TestRun_WorldRateLimited_EmitsEnforcementEvent'
 
 demo-doorjam:
-	$(MAKE) migrate-worldsim
-	bash scripts/seed_worldsim_demo.sh
+	$(MAKE) migrate-sim-engine
+	bash scripts/seed_sim_engine_demo.sh
 	python scripts/demo_doorjam.py
 
 replay:
 	@if [ -z "$(RUN_ID)" ]; then echo "RUN_ID is required. Usage: make replay RUN_ID=<run-id>"; exit 1; fi
-	python scripts/replay_worldsim.py --run-id "$(RUN_ID)"
+	python scripts/replay_sim_engine.py --run-id "$(RUN_ID)"
 
 reset-nexus:
 	$(MAKE) clean

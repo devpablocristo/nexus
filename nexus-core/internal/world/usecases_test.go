@@ -29,7 +29,7 @@ func TestServiceListRuns_PropagatesHeadersAndOrgID(t *testing.T) {
 
 	svc := &service{
 		cfg: Config{
-			BaseURL:     "http://world-sim:8087",
+			BaseURL:     "http://sim-engine:8087",
 			InternalKey: "internal-secret",
 			Timeout:     2 * time.Second,
 		},
@@ -67,7 +67,7 @@ func TestServiceListRuns_MapsUnauthorized(t *testing.T) {
 	orgID := uuid.New()
 	svc := &service{
 		cfg: Config{
-			BaseURL: "http://world-sim:8087",
+			BaseURL: "http://sim-engine:8087",
 			Timeout: 2 * time.Second,
 		},
 		client: &http.Client{

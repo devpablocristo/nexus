@@ -39,15 +39,15 @@ services:
       NEXUS_REDIS_URL: "${NEXUS_REDIS_URL}"
       NEXUS_OPERATOR_URL: "${NEXUS_OPERATOR_URL}"
       NEXUS_OPERATOR_INTERNAL_KEY: "${NEXUS_OPERATOR_INTERNAL_KEY}"
-      NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081,world-sim:8087}"
-      NEXUS_WORLDSIM_BASE_URL: "${NEXUS_WORLDSIM_BASE_URL:-http://world-sim:8087}"
-      NEXUS_WORLDSIM_INTERNAL_KEY: "${NEXUS_WORLDSIM_INTERNAL_KEY:-worldsim-internal-key}"
+      NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081,sim-engine:8087}"
+      NEXUS_SIM_ENGINE_BASE_URL: "${NEXUS_SIM_ENGINE_BASE_URL:-http://sim-engine:8087}"
+      NEXUS_SIM_ENGINE_INTERNAL_KEY: "${NEXUS_SIM_ENGINE_INTERNAL_KEY:-sim-engine-internal-key}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      world-sim:
+      sim-engine:
         condition: service_healthy
     ports:
       - "${NEXUS_HTTP_PORT}:8080"
@@ -60,17 +60,17 @@ services:
     networks:
       default: {}
 
-  world-sim:
+  sim-engine:
     restart: unless-stopped
     build:
-      context: ./world-sim
+      context: ./sim-engine
       dockerfile: Dockerfile
     env_file:
       - .env
     environment:
-      WORLDSIM_PORT: "8087"
-      WORLDSIM_DATABASE_URL: "${WORLDSIM_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/nexus?sslmode=disable}"
-      NEXUS_WORLDSIM_INTERNAL_KEY: "${NEXUS_WORLDSIM_INTERNAL_KEY:-worldsim-internal-key}"
+      SIM_ENGINE_PORT: "8087"
+      SIM_ENGINE_DATABASE_URL: "${SIM_ENGINE_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/nexus?sslmode=disable}"
+      NEXUS_SIM_ENGINE_INTERNAL_KEY: "${NEXUS_SIM_ENGINE_INTERNAL_KEY:-sim-engine-internal-key}"
     depends_on:
       postgres:
         condition: service_healthy

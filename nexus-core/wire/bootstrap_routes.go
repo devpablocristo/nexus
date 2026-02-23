@@ -106,8 +106,8 @@ func NewRouter(
 	oidcH.Register(oidcGroup)
 
 	worldH := world.NewHandler(world.NewService(world.Config{
-		BaseURL:     cfg.WorldSimBaseURL,
-		InternalKey: cfg.WorldSimInternalKey,
+		BaseURL:     cfg.SimEngineBaseURL,
+		InternalKey: cfg.SimEngineInternalKey,
 		Timeout:     6 * time.Second,
 	}))
 

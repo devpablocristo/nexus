@@ -28,8 +28,8 @@ type ServiceConfig struct {
 	TimeoutBudgetMaxMS     int
 	DisableSSRFProtection  bool
 	EgressAllowlist        string
-	WorldSimBaseURL        string
-	WorldSimInternalKey    string
+	SimEngineBaseURL       string
+	SimEngineInternalKey   string
 	CORSAllowedOrigins     string
 	CORSAllowedMethods     string
 	CORSAllowedHeaders     string

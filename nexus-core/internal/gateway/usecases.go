@@ -1,17 +1,22 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	auditdomain "nexus-core/internal/audit/usecases/domain"
 	"nexus-core/internal/dlp"
@@ -97,8 +102,8 @@ type Config struct {
 	HTTPRetries                 int
 	DisableSSRFProtection       bool
 	EgressAllowlist             string
-	WorldSimBaseURL             string
-	WorldSimInternalKey         string
+	SimEngineBaseURL            string
+	SimEngineInternalKey        string
 }
 
 // runState agrupa el estado compartido del pipeline Run entre las funciones auxiliares.
@@ -612,7 +617,7 @@ func (s *service) runOverridesRateLimitsEgressSecrets(ctx context.Context, orgID
 	if tenantRunRPM > 0 {
 		tenantKey := orgID.String() + ":tenant"
 		if !s.limiter.Allow(tenantKey, tenantRunRPM) {
-			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "tenant run rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "tenant run rate limit exceeded (bucket=org:tenant limit_per_minute="+strconv.Itoa(tenantRunRPM)+")", types.ErrCodeRateLimited, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
 			s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
 			return &resp, nil
 		}
@@ -627,7 +632,7 @@ func (s *service) runOverridesRateLimitsEgressSecrets(ctx context.Context, orgID
 	if perMin > 0 {
 		key := orgID.String() + ":" + st.tool.Name
 		if !s.limiter.Allow(key, perMin) {
-			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "rate limit exceeded", types.ErrCodeRateLimited, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+			resp := s.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, "rate limit exceeded (bucket=org+tool limit_per_minute="+strconv.Itoa(perMin)+")", types.ErrCodeRateLimited, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
 			s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
 			return &resp, nil
 		}
@@ -674,9 +679,9 @@ func (s *service) runOverridesRateLimitsEgressSecrets(ctx context.Context, orgID
 	}
 	// Propagate canonical request_id to upstream providers for end-to-end traceability.
 	st.headers["X-Nexus-Request-Id"] = st.requestID
-	// Send Core->WorldSim shared secret only when target is the configured WorldSim provider.
-	if strings.TrimSpace(s.cfg.WorldSimInternalKey) != "" && s.isWorldSimToolURL(st.tool.URL) {
-		st.headers["X-WorldSim-Internal-Key"] = s.cfg.WorldSimInternalKey
+	// Send Core->SimEngine shared secret only when target is the configured SimEngine provider.
+	if strings.TrimSpace(s.cfg.SimEngineInternalKey) != "" && s.isSimEngineToolURL(st.tool.URL) {
+		st.headers["X-Sim-Engine-Internal-Key"] = s.cfg.SimEngineInternalKey
 	}
 	return nil, nil
 }
@@ -768,6 +773,7 @@ func (s *service) runExecuteAndFinish(ctx context.Context, orgID uuid.UUID, req 
 		}
 		respForIdem := gwdomain.RunResponse{Decision: gwdomain.DecisionAllow, Status: gwdomain.RunStatusError, ErrorCode: &code, ErrorMsg: &msg, HTTPStatus: status}
 		s.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &respForIdem)
+		annotateRunSpan(ctx, orgID, st.input, st.tool.Name, st.requestID, "allow", st.policyID)
 		s.observeRun(ctx, st.tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusError), time.Duration(st.latency)*time.Millisecond)
 		return gwdomain.RunResponse{
 			RequestID: st.requestID, Decision: gwdomain.DecisionAllow, ToolName: st.tool.Name,
@@ -795,6 +801,7 @@ func (s *service) runExecuteAndFinish(ctx context.Context, orgID uuid.UUID, req 
 		Str("request_id", st.requestID).Str("org_id", orgID.String()).Str("tool_name", st.tool.Name).
 		Str("decision", "allow").Str("status", "success").Int64("latency_ms", st.latency).
 		Msg("run_success")
+	annotateRunSpan(ctx, orgID, st.input, st.tool.Name, st.requestID, "allow", st.policyID)
 	s.observeRun(ctx, st.tool.Name, string(gwdomain.DecisionAllow), string(gwdomain.RunStatusSuccess), time.Duration(st.latency)*time.Millisecond)
 	return gwdomain.RunResponse{
 		RequestID: st.requestID, Decision: gwdomain.DecisionAllow, ToolName: st.tool.Name,
@@ -1148,6 +1155,8 @@ func (s *service) blocked(ctx context.Context, orgID uuid.UUID, actor, role *str
 		Int64("latency_ms", latency).
 		Str("error_code", code).
 		Msg("run_blocked")
+	s.emitWorldEnforcementEvent(ctx, orgID, requestID, toolName, code, policyID, reason, input)
+	annotateRunSpan(ctx, orgID, input, toolName, requestID, "deny", policyID)
 	s.observeRun(ctx, toolName, string(gwdomain.DecisionDeny), string(gwdomain.RunStatusBlocked), time.Duration(latency)*time.Millisecond)
 	return gwdomain.RunResponse{
 		RequestID:   requestID,
@@ -1161,6 +1170,131 @@ func (s *service) blocked(ctx context.Context, orgID uuid.UUID, actor, role *str
 		HTTPStatus:  httpStatus,
 		Idempotency: idem,
 	}
+}
+
+func (s *service) emitWorldEnforcementEvent(ctx context.Context, orgID uuid.UUID, requestID, toolName, code string, policyID *uuid.UUID, reason string, input map[string]any) {
+	if !strings.HasPrefix(toolName, "world.") {
+		return
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(s.cfg.SimEngineBaseURL), "/")
+	if baseURL == "" {
+		return
+	}
+	runID := strings.TrimSpace(asString(input["run_id"]))
+	if runID == "" {
+		return
+	}
+	eventType := ""
+	switch code {
+	case types.ErrCodePolicyDenied:
+		eventType = "tool.denied"
+	case types.ErrCodeRateLimited:
+		eventType = "tool.rate_limited"
+	default:
+		return
+	}
+	agentID := strings.TrimSpace(asString(input["agent_id"]))
+	orgIDStr := strings.TrimSpace(asString(input["org_id"]))
+	if orgIDStr == "" {
+		orgIDStr = orgID.String()
+	}
+	stepID := toInt64Any(input["step_id"])
+	payload := map[string]any{
+		"org_id":     orgIDStr,
+		"run_id":     runID,
+		"step_id":    stepID,
+		"agent_id":   agentID,
+		"tool_name":  toolName,
+		"request_id": requestID,
+		"event_type": eventType,
+		"detail":     reason,
+	}
+	if eventType == "tool.rate_limited" {
+		payload["bucket"] = "org+tool"
+	}
+	if policyID != nil {
+		payload["policy_id"] = policyID.String()
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	upstreamCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, baseURL+"/admin/run/enforcement", bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if strings.TrimSpace(requestID) != "" {
+		req.Header.Set("X-Nexus-Request-Id", requestID)
+	}
+	if strings.TrimSpace(s.cfg.SimEngineInternalKey) != "" {
+		req.Header.Set("X-Sim-Engine-Internal-Key", s.cfg.SimEngineInternalKey)
+	}
+	resp, err := (&http.Client{Timeout: 1500 * time.Millisecond}).Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+}
+
+func asString(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case json.Number:
+		return t.String()
+	default:
+		return ""
+	}
+}
+
+func toInt64Any(v any) int64 {
+	switch t := v.(type) {
+	case int:
+		return int64(t)
+	case int32:
+		return int64(t)
+	case int64:
+		return t
+	case float64:
+		return int64(t)
+	case json.Number:
+		if n, err := t.Int64(); err == nil {
+			return n
+		}
+	case string:
+		if n, err := strconv.ParseInt(strings.TrimSpace(t), 10, 64); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func annotateRunSpan(ctx context.Context, orgID uuid.UUID, input map[string]any, toolName, requestID, decision string, policyID *uuid.UUID) {
+	span := trace.SpanFromContext(ctx)
+	if !span.SpanContext().IsValid() {
+		return
+	}
+	agentID := strings.TrimSpace(asString(input["agent_id"]))
+	runID := strings.TrimSpace(asString(input["run_id"]))
+	stepID := toInt64Any(input["step_id"])
+	attrs := []attribute.KeyValue{
+		attribute.String("nexus.org_id", orgID.String()),
+		attribute.String("nexus.agent_id", agentID),
+		attribute.String("nexus.run_id", runID),
+		attribute.Int64("nexus.step_id", stepID),
+		attribute.String("nexus.tool_name", toolName),
+		attribute.String("nexus.request_id", requestID),
+		attribute.String("nexus.decision", decision),
+	}
+	if policyID != nil {
+		attrs = append(attrs, attribute.String("nexus.policy_id", policyID.String()))
+	}
+	span.SetAttributes(attrs...)
 }
 
 func strPtr(s string) *string {
@@ -1280,12 +1414,12 @@ func (s *service) errorRun(ctx context.Context, orgID uuid.UUID, req gwdomain.Ru
 	}
 }
 
-func (s *service) isWorldSimToolURL(rawToolURL string) bool {
+func (s *service) isSimEngineToolURL(rawToolURL string) bool {
 	toolHostPort, ok := normalizedHostPort(rawToolURL)
 	if !ok {
 		return false
 	}
-	worldHostPort, ok := normalizedHostPort(s.cfg.WorldSimBaseURL)
+	worldHostPort, ok := normalizedHostPort(s.cfg.SimEngineBaseURL)
 	if !ok {
 		return false
 	}
