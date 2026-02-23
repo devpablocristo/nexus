@@ -11,8 +11,9 @@ const navItems = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const shellClass = location.pathname === '/acuario' ? 'shell shell-acuario' : 'shell';
   return (
-    <div className="shell">
+    <div className={shellClass}>
       <header className="shell-header">
         <div>
           <p className="eyebrow">Nexus Tower</p>

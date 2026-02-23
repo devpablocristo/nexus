@@ -692,75 +692,6 @@ export function AcuarioPage() {
 
   return (
     <div className="acuario-page">
-      <section className="panel acuario-summary">
-        <h2>Door Jam Snapshot</h2>
-        <div className="acuario-kpis">
-          <div className="kpi">
-            <p>Agents</p>
-            <strong>{agents.length}</strong>
-          </div>
-          <div className="kpi">
-            <p>Moves</p>
-            <strong>{incident.moved}</strong>
-          </div>
-          <div className="kpi">
-            <p>Collisions</p>
-            <strong>{incident.collisions}</strong>
-          </div>
-          <div className="kpi">
-            <p>Policy Denied</p>
-            <strong>{incident.denied}</strong>
-          </div>
-          <div className="kpi">
-            <p>Rate Limited</p>
-            <strong>{incident.rateLimited}</strong>
-          </div>
-          <div className="kpi">
-            <p>Loop Agents</p>
-            <strong>{incident.loops}</strong>
-          </div>
-        </div>
-        <div className="acuario-root-cause">
-          <div>
-            <p className="muted">Run Health</p>
-            <p className={`severity severity-${incident.severity}`}>{incident.severity.toUpperCase()}</p>
-          </div>
-          <div>
-            <p className="muted">Jam Index</p>
-            <p><strong>{incident.jamIndex}</strong> collisions per move</p>
-          </div>
-          <div>
-            <p className="muted">Throughput</p>
-            <p><strong>{incident.throughput}</strong> moves/step</p>
-          </div>
-        </div>
-        <div className="acuario-compare">
-          <label>
-            Compare with run
-            <select value={compareRun} onChange={(e) => setCompareRun(e.target.value)}>
-              <option value="">None</option>
-              {(runsQ.data?.items || [])
-                .filter((r) => r.run_id !== selectedRun)
-                .map((run) => (
-                  <option key={run.run_id} value={run.run_id}>
-                    {run.run_id} · seed {run.seed}
-                  </option>
-                ))}
-            </select>
-          </label>
-          {compareIncident && (
-            <div className="compare-delta-grid">
-              <p>Moves <strong>{incident.moved}</strong> <span className="delta-pos">{deltaLabel(incident.moved, compareIncident.moved)}</span></p>
-              <p>Collisions <strong>{incident.collisions}</strong> <span className="delta-neg">{deltaLabel(incident.collisions, compareIncident.collisions)}</span></p>
-              <p>Denied <strong>{incident.denied}</strong> <span className="delta-neg">{deltaLabel(incident.denied, compareIncident.denied)}</span></p>
-              <p>Rate <strong>{incident.rateLimited}</strong> <span className="delta-neg">{deltaLabel(incident.rateLimited, compareIncident.rateLimited)}</span></p>
-              <p>Loops <strong>{incident.loops}</strong> <span className="delta-neg">{deltaLabel(incident.loops, compareIncident.loops)}</span></p>
-              <p>Throughput <strong>{incident.throughput}</strong> <span className="delta-pos">{deltaLabel(incident.throughput, compareIncident.throughput)}</span></p>
-            </div>
-          )}
-        </div>
-      </section>
-
       <div className="acuario-grid">
       <Card title="Acuario 3D">
         <QueryError error={runsQ.error || worldEventsQ.error || stateQ.error || compareStateQ.error || auditQ.error || compareWorldEventsQ.error || compareAuditQ.error} onRetry={() => {
@@ -836,6 +767,75 @@ export function AcuarioPage() {
           Visual key: collision = orange ring (thick/bright when recent), loop = magenta, policy = red, rate = yellow.
         </p>
       </Card>
+
+      <section className="panel acuario-summary">
+        <h2>Door Jam Snapshot</h2>
+        <div className="acuario-kpis">
+          <div className="kpi">
+            <p>Agents</p>
+            <strong>{agents.length}</strong>
+          </div>
+          <div className="kpi">
+            <p>Moves</p>
+            <strong>{incident.moved}</strong>
+          </div>
+          <div className="kpi">
+            <p>Collisions</p>
+            <strong>{incident.collisions}</strong>
+          </div>
+          <div className="kpi">
+            <p>Policy Denied</p>
+            <strong>{incident.denied}</strong>
+          </div>
+          <div className="kpi">
+            <p>Rate Limited</p>
+            <strong>{incident.rateLimited}</strong>
+          </div>
+          <div className="kpi">
+            <p>Loop Agents</p>
+            <strong>{incident.loops}</strong>
+          </div>
+        </div>
+        <div className="acuario-root-cause">
+          <div>
+            <p className="muted">Run Health</p>
+            <p className={`severity severity-${incident.severity}`}>{incident.severity.toUpperCase()}</p>
+          </div>
+          <div>
+            <p className="muted">Jam Index</p>
+            <p><strong>{incident.jamIndex}</strong> collisions per move</p>
+          </div>
+          <div>
+            <p className="muted">Throughput</p>
+            <p><strong>{incident.throughput}</strong> moves/step</p>
+          </div>
+        </div>
+        <div className="acuario-compare">
+          <label>
+            Compare with run
+            <select value={compareRun} onChange={(e) => setCompareRun(e.target.value)}>
+              <option value="">None</option>
+              {(runsQ.data?.items || [])
+                .filter((r) => r.run_id !== selectedRun)
+                .map((run) => (
+                  <option key={run.run_id} value={run.run_id}>
+                    {run.run_id} · seed {run.seed}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {compareIncident && (
+            <div className="compare-delta-grid">
+              <p>Moves <strong>{incident.moved}</strong> <span className="delta-pos">{deltaLabel(incident.moved, compareIncident.moved)}</span></p>
+              <p>Collisions <strong>{incident.collisions}</strong> <span className="delta-neg">{deltaLabel(incident.collisions, compareIncident.collisions)}</span></p>
+              <p>Denied <strong>{incident.denied}</strong> <span className="delta-neg">{deltaLabel(incident.denied, compareIncident.denied)}</span></p>
+              <p>Rate <strong>{incident.rateLimited}</strong> <span className="delta-neg">{deltaLabel(incident.rateLimited, compareIncident.rateLimited)}</span></p>
+              <p>Loops <strong>{incident.loops}</strong> <span className="delta-neg">{deltaLabel(incident.loops, compareIncident.loops)}</span></p>
+              <p>Throughput <strong>{incident.throughput}</strong> <span className="delta-pos">{deltaLabel(incident.throughput, compareIncident.throughput)}</span></p>
+            </div>
+          )}
+        </div>
+      </section>
 
       <Card title="Replay + Agent POV">
         <div className="replay-controls">
