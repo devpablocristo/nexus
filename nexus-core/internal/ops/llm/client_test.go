@@ -31,6 +31,13 @@ func TestMockClient_GenerateStrict(t *testing.T) {
 	}, "communication_plan.json"); err != nil {
 		t.Fatalf("communication strict generation failed: %v", err)
 	}
+
+	if _, err := client.GenerateStrict(context.Background(), Request{
+		Task:  "executive_qa",
+		Input: map[string]any{"org_id": "996e9e43-7bab-4e68-a831-0a766befbf54", "question": "status?"},
+	}, "executive_qa_response.json"); err != nil {
+		t.Fatalf("executive qa strict generation failed: %v", err)
+	}
 }
 
 func repoRoot(t *testing.T) string {

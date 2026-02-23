@@ -1,0 +1,18 @@
+{
+  "answer": "Se aplico mitigacion temporal de rate limit y el incidente esta en monitoreo.",
+  "evidence_refs": ["incident:latest", "action:last_applied"],
+  "recommended_action": {
+    "action_type": "set_rate_limit",
+    "scope": {
+      "level": "tool",
+      "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54",
+      "tool_id": "world.move"
+    },
+    "ttl_seconds": 600,
+    "params": {
+      "rpm": 200,
+      "tool_id": "world.move"
+    },
+    "evidence_refs": ["incident:latest"]
+  }
+}

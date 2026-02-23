@@ -19,23 +19,23 @@ func TestEventFixturesValidateAgainstEnvelopeAndEventSchema(t *testing.T) {
 	envelopeSchema := mustCompileSchema(t, cache, "event-envelope-v1", filepath.Join(root, "internal/ops/schemas/events/envelope_v1.json"))
 
 	cases := []struct {
-		fixture    string
-		eventType  string
+		fixture     string
+		eventType   string
 		eventSchema string
 	}{
 		{
-			fixture:    filepath.Join(root, "testdata/events/tool_call_finished.valid.json"),
-			eventType:  "tool_call.finished",
+			fixture:     filepath.Join(root, "testdata/events/tool_call_finished.valid.json"),
+			eventType:   "tool_call.finished",
 			eventSchema: filepath.Join(root, "internal/ops/schemas/events/tool_call_finished_v1.json"),
 		},
 		{
-			fixture:    filepath.Join(root, "testdata/events/anomaly_detected.valid.json"),
-			eventType:  "anomaly.detected",
+			fixture:     filepath.Join(root, "testdata/events/anomaly_detected.valid.json"),
+			eventType:   "anomaly.detected",
 			eventSchema: filepath.Join(root, "internal/ops/schemas/events/anomaly_detected_v1.json"),
 		},
 		{
-			fixture:    filepath.Join(root, "testdata/events/action_applied.valid.json"),
-			eventType:  "action.applied",
+			fixture:     filepath.Join(root, "testdata/events/action_applied.valid.json"),
+			eventType:   "action.applied",
 			eventSchema: filepath.Join(root, "internal/ops/schemas/events/action_applied_v1.json"),
 		},
 	}
@@ -72,6 +72,7 @@ func TestLLMSchemasValidateFixtures(t *testing.T) {
 	cache := jsonschema.NewCompilerCache()
 	diagnosisSchema := mustCompileSchema(t, cache, "llm-diagnosis", filepath.Join(root, "internal/ops/schemas/llm/diagnosis_report.json"))
 	commsSchema := mustCompileSchema(t, cache, "llm-comms", filepath.Join(root, "internal/ops/schemas/llm/communication_plan.json"))
+	execQASchema := mustCompileSchema(t, cache, "llm-exec-qa", filepath.Join(root, "internal/ops/schemas/llm/executive_qa_response.json"))
 
 	for _, p := range []string{
 		filepath.Join(root, "testdata/llm/diagnosis.valid.json"),
@@ -107,6 +108,20 @@ func TestLLMSchemasValidateFixtures(t *testing.T) {
 			t.Fatalf("expected communication invalid fixture to fail")
 		}
 	})
+
+	t.Run("valid-executive-qa", func(t *testing.T) {
+		doc := mustReadJSONFile(t, filepath.Join(root, "testdata/llm/executive_qa.valid.json"))
+		if err := jsonschema.Validate(execQASchema, doc); err != nil {
+			t.Fatalf("executive qa schema should pass: %v", err)
+		}
+	})
+
+	t.Run("invalid-executive-qa", func(t *testing.T) {
+		doc := mustReadJSONFile(t, filepath.Join(root, "testdata/llm/executive_qa.invalid.json"))
+		if err := jsonschema.Validate(execQASchema, doc); err == nil {
+			t.Fatalf("expected executive qa invalid fixture to fail")
+		}
+	})
 }
 
 func TestActionSchemasCompileAndValidateExamples(t *testing.T) {
@@ -116,7 +131,7 @@ func TestActionSchemasCompileAndValidateExamples(t *testing.T) {
 	cache := jsonschema.NewCompilerCache()
 
 	cases := []struct {
-		schema string
+		schema  string
 		example map[string]any
 	}{
 		{

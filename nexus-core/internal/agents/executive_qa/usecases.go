@@ -2,6 +2,7 @@ package executive_qa
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -42,16 +43,19 @@ func (s *service) Ask(ctx context.Context, orgID uuid.UUID, actor *string, req A
 	if strings.TrimSpace(req.Question) == "" {
 		return AskResponse{}, types.NewHTTPError(400, types.ErrCodeValidation, "question is required")
 	}
-	raw, err := s.llmClient.Generate(ctx, llm.Request{
+	raw, err := s.llmClient.GenerateStrict(ctx, llm.Request{
 		Task: "executive_qa",
 		Input: map[string]any{
 			"org_id":      orgID.String(),
 			"incident_id": uuidToString(req.IncidentID),
 			"question":    req.Question,
 		},
-	})
+	}, "executive_qa_response.json")
 	if err != nil {
-		return AskResponse{}, err
+		return AskResponse{
+			Answer:       "unknown",
+			EvidenceRefs: []string{fmt.Sprintf("llm_validation_error:%s", sanitizeReason(err.Error()))},
+		}, nil
 	}
 
 	resp := AskResponse{
@@ -77,6 +81,15 @@ func (s *service) Ask(ctx context.Context, orgID uuid.UUID, actor *string, req A
 		}
 	}
 	return resp, nil
+}
+
+func sanitizeReason(msg string) string {
+	clean := strings.TrimSpace(msg)
+	clean = strings.ReplaceAll(clean, "\n", " ")
+	if len(clean) > 120 {
+		clean = clean[:120]
+	}
+	return clean
 }
 
 func asString(v any) string {

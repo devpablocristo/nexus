@@ -2,11 +2,12 @@ package executive_qa
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
-	actiondomain "nexus-core/internal/ops/actionengine/usecases/domain"
 	"nexus-core/internal/ops/actionengine"
+	actiondomain "nexus-core/internal/ops/actionengine/usecases/domain"
 	"nexus-core/internal/ops/llm"
 )
 
@@ -26,9 +27,35 @@ func TestService_AskCreatesActionProposalViaEngine(t *testing.T) {
 	}
 }
 
+func TestService_AskReturnsUnknownOnInvalidLLMOutput(t *testing.T) {
+	t.Parallel()
+	orgID := uuid.MustParse("996e9e43-7bab-4e68-a831-0a766befbf54")
+	svc := NewService(llmQABrokenStub{}, actionEngineStub{})
+
+	out, err := svc.Ask(context.Background(), orgID, ptr("alice"), AskRequest{
+		Question: "Any update?",
+	})
+	if err != nil {
+		t.Fatalf("ask failed: %v", err)
+	}
+	if out.Answer != "unknown" {
+		t.Fatalf("expected unknown answer, got=%q", out.Answer)
+	}
+	if len(out.EvidenceRefs) == 0 {
+		t.Fatalf("expected evidence ref reason")
+	}
+	if out.ProposedActionID != nil {
+		t.Fatalf("did not expect proposal on invalid llm output")
+	}
+}
+
 type llmQAStub struct{}
 
 func (llmQAStub) Generate(context.Context, llm.Request) (map[string]any, error) {
+	return nil, errors.New("Generate should not be used")
+}
+
+func (llmQAStub) GenerateStrict(context.Context, llm.Request, string) (map[string]any, error) {
 	return map[string]any{
 		"answer": "Increase rate limit temporarily.",
 		"evidence_refs": []any{
@@ -53,8 +80,14 @@ func (llmQAStub) Generate(context.Context, llm.Request) (map[string]any, error) 
 	}, nil
 }
 
-func (llmQAStub) GenerateStrict(context.Context, llm.Request, string) (map[string]any, error) {
-	return nil, nil
+type llmQABrokenStub struct{}
+
+func (llmQABrokenStub) Generate(context.Context, llm.Request) (map[string]any, error) {
+	return nil, errors.New("Generate should not be used")
+}
+
+func (llmQABrokenStub) GenerateStrict(context.Context, llm.Request, string) (map[string]any, error) {
+	return nil, errors.New("schema validation failed")
 }
 
 type actionEngineStub struct{}
