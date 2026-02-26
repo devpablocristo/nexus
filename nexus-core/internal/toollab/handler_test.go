@@ -1,4 +1,4 @@
-package toolab
+package toollab
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	domain "nexus-core/internal/toolab/usecases/domain"
+	domain "nexus-core/internal/toollab/usecases/domain"
 )
 
 type mockRepo struct {
@@ -56,7 +56,7 @@ func (m *mockRepo) Schema(context.Context) (*domain.SchemaResponse, error) {
 	return m.schemaResp, nil
 }
 
-func TestHandler_ExposesToolabStandardEndpoints(t *testing.T) {
+func TestHandler_ExposesToollabStandardEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	openapiSpec := []byte(`openapi: "3.0.3"
@@ -87,11 +87,11 @@ paths:
 	h := NewHandler(svc)
 
 	r := gin.New()
-	group := r.Group("/_toolab")
+	group := r.Group("/_toollab")
 	h.Register(group)
 
 	t.Run("manifest", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/_toolab/manifest", nil)
+		req := httptest.NewRequest(http.MethodGet, "/_toollab/manifest", nil)
 		req.Host = "nexus.example:8080"
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -113,12 +113,12 @@ paths:
 
 	t.Run("profile_and_children", func(t *testing.T) {
 		paths := []string{
-			"/_toolab/profile",
-			"/_toolab/schema",
-			"/_toolab/suggested_flows",
-			"/_toolab/invariants",
-			"/_toolab/limits",
-			"/_toolab/environment",
+			"/_toollab/profile",
+			"/_toollab/schema",
+			"/_toollab/suggested_flows",
+			"/_toollab/invariants",
+			"/_toollab/limits",
+			"/_toollab/environment",
 		}
 		for _, path := range paths {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -135,7 +135,7 @@ paths:
 	})
 
 	t.Run("openapi", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/_toolab/openapi", nil)
+		req := httptest.NewRequest(http.MethodGet, "/_toollab/openapi", nil)
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
@@ -150,14 +150,14 @@ paths:
 	})
 
 	t.Run("legacy_state_and_metrics", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/_toolab/state/fingerprint", nil)
+		req := httptest.NewRequest(http.MethodGet, "/_toollab/state/fingerprint", nil)
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("state/fingerprint status=%d body=%s", rec.Code, rec.Body.String())
 		}
 
-		req = httptest.NewRequest(http.MethodGet, "/_toolab/metrics", nil)
+		req = httptest.NewRequest(http.MethodGet, "/_toollab/metrics", nil)
 		rec = httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {

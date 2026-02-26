@@ -1,4 +1,4 @@
-package toolab
+package toollab
 
 import (
 	"context"

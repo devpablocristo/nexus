@@ -1,20 +1,20 @@
-// Package toolab wires the TOOLAB adapter library into Nexus routes.
-package toolab
+// Package toollab wires the TOOLLAB adapter library into Nexus routes.
+package toollab
 
 import (
 	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	adapterlib "github.com/toolab/toolab-adapter-go"
+	adapterlib "github.com/toollab/toollab-adapter-go"
 )
 
-// Handler mounts the external TOOLAB adapter library under /_toolab.
+// Handler mounts the external TOOLLAB adapter library under /_toollab.
 type Handler struct {
 	httpHandler http.Handler
 }
 
-// NewHandler creates a new handler backed by github.com/toolab/toolab-adapter-go.
+// NewHandler creates a new handler backed by github.com/toollab/toollab-adapter-go.
 func NewHandler(svc Service) *Handler {
 	manifest := svc.Manifest("")
 	adapter := adapterlib.NewAdapter(adapterlib.Config{
@@ -35,7 +35,7 @@ func NewHandler(svc Service) *Handler {
 
 // Register mounts all adapter routes on the given router group.
 func (h *Handler) Register(rg *gin.RouterGroup) {
-	wrapped := http.StripPrefix("/_toolab", h.httpHandler)
+	wrapped := http.StripPrefix("/_toollab", h.httpHandler)
 	rg.Any("/*path", gin.WrapH(wrapped))
 }
 

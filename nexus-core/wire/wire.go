@@ -41,7 +41,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 		MCPSet,
 		A2ASet,
 		MiddlewareSet,
-		ToolabSet,
+		ToollabSet,
 
 		NewRouter,
 		NewHTTPServer,

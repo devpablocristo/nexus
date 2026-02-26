@@ -1,4 +1,4 @@
-package toolab
+package toollab
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	domain "nexus-core/internal/toolab/usecases/domain"
+	domain "nexus-core/internal/toollab/usecases/domain"
 
 	"gorm.io/gorm"
 )
@@ -131,7 +131,7 @@ func (r *Repository) TruncateAll(ctx context.Context) error {
 	return err
 }
 
-// Schema returns a best-effort public schema description compatible with TOOLAB Standard.
+// Schema returns a best-effort public schema description compatible with TOOLLAB Standard.
 func (r *Repository) Schema(ctx context.Context) (*domain.SchemaResponse, error) {
 	sqlDB, err := r.db.DB()
 	if err != nil {

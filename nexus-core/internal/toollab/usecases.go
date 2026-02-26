@@ -1,4 +1,4 @@
-package toolab
+package toollab
 
 import (
 	"context"
@@ -16,10 +16,10 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"gopkg.in/yaml.v3"
 
-	domain "nexus-core/internal/toolab/usecases/domain"
+	domain "nexus-core/internal/toollab/usecases/domain"
 )
 
-// Service defines the business operations for the toolab adapter.
+// Service defines the business operations for the toollab adapter.
 type Service interface {
 	Manifest(baseURL string) domain.Manifest
 	Fingerprint(ctx context.Context) (string, error)
@@ -67,7 +67,7 @@ type service struct {
 	snapshots map[string]domain.SnapshotMeta
 }
 
-// NewService creates the toolab adapter service.
+// NewService creates the toollab adapter service.
 func NewService(repo RepositoryPort, cfg Config) Service {
 	if cfg.AppVersion == "" {
 		cfg.AppVersion = "1.0.0"
@@ -122,12 +122,12 @@ func (s *service) Manifest(baseURL string) domain.Manifest {
 	if baseURL != "" {
 		links = map[string]string{
 			"openapi_url":         baseURL + "/openapi.yaml",
-			"schema_url":          baseURL + "/_toolab/schema",
-			"profile_url":         baseURL + "/_toolab/profile",
-			"suggested_flows_url": baseURL + "/_toolab/suggested_flows",
-			"invariants_url":      baseURL + "/_toolab/invariants",
-			"limits_url":          baseURL + "/_toolab/limits",
-			"environment_url":     baseURL + "/_toolab/environment",
+			"schema_url":          baseURL + "/_toollab/schema",
+			"profile_url":         baseURL + "/_toollab/profile",
+			"suggested_flows_url": baseURL + "/_toollab/suggested_flows",
+			"invariants_url":      baseURL + "/_toollab/invariants",
+			"limits_url":          baseURL + "/_toollab/limits",
+			"environment_url":     baseURL + "/_toollab/environment",
 		}
 	}
 	return domain.Manifest{
@@ -284,7 +284,7 @@ func (s *service) SuggestedFlows(ctx context.Context) (*domain.SuggestedFlowsRes
 	methodOrder := []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 	paths := make([]string, 0, len(doc.Paths))
 	for path := range doc.Paths {
-		if strings.HasPrefix(path, "/_toolab/") {
+		if strings.HasPrefix(path, "/_toollab/") {
 			continue
 		}
 		paths = append(paths, path)
@@ -387,7 +387,7 @@ func (s *service) Environment() *domain.EnvironmentResponse {
 		Mode:     s.cfg.Environment,
 		ReadOnly: s.cfg.ReadOnly,
 		Features: map[string]bool{
-			"toolab_standard_v1_1": true,
+			"toollab_standard_v1_1": true,
 			"profile":              true,
 			"schema":               true,
 			"openapi":              true,

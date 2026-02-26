@@ -24,7 +24,7 @@ import (
 	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
 	"nexus-core/internal/ops/actionengine"
-	toolabadapter "nexus-core/internal/toolab"
+	toollabadapter "nexus-core/internal/toollab"
 	opscomms "nexus-core/internal/ops/comms"
 	opsdiagnosis "nexus-core/internal/ops/diagnosis"
 	opseventstore "nexus-core/internal/ops/eventstore"
@@ -61,7 +61,7 @@ func NewRouter(
 	mcpH *mcp.Handler,
 	a2aH *a2a.Handler,
 	oidcH *identity.OIDCHandler,
-	toolabH *toolabadapter.Handler,
+	toollabH *toollabadapter.Handler,
 ) *gin.Engine {
 	r := ginserver.NewEngine(
 		ginserver.EngineOptions{},
@@ -93,9 +93,9 @@ func NewRouter(
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
-	// Toolab adapter — public, no auth (like /healthz).
-	toolabGroup := r.Group("/_toolab")
-	toolabH.Register(toolabGroup)
+	// Toollab adapter — public, no auth (like /healthz).
+	toollabGroup := r.Group("/_toollab")
+	toollabH.Register(toollabGroup)
 
 	r.GET("/openapi.yaml", func(c *gin.Context) {
 		c.File("docs/openapi.yaml")

@@ -6,19 +6,19 @@ import (
 
 	"github.com/google/wire"
 
-	"nexus-core/internal/toolab"
+	"nexus-core/internal/toollab"
 )
 
-var ToolabSet = wire.NewSet(
-	toolab.NewRepository,
-	wire.Bind(new(toolab.RepositoryPort), new(*toolab.Repository)),
-	ProvideToolabConfig,
-	toolab.NewService,
-	toolab.NewHandler,
+var ToollabSet = wire.NewSet(
+	toollab.NewRepository,
+	wire.Bind(new(toollab.RepositoryPort), new(*toollab.Repository)),
+	ProvideToollabConfig,
+	toollab.NewService,
+	toollab.NewHandler,
 )
 
-func ProvideToolabConfig() toolab.Config {
-	return toolab.Config{
+func ProvideToollabConfig() toollab.Config {
+	return toollab.Config{
 		AppVersion:           envOrDefault("NEXUS_APP_VERSION", "1.0.0"),
 		Environment:          envOrDefault("NEXUS_ENV", "dev"),
 		GitSHA:               os.Getenv("NEXUS_GIT_SHA"),

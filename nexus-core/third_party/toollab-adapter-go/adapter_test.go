@@ -1,4 +1,4 @@
-package toolab
+package toollab
 
 import (
 	"context"
@@ -354,7 +354,7 @@ func (m *mockEnvironmentProvider) Environment(_ context.Context) (any, error) {
 	return map[string]any{
 		"mode":      "test",
 		"read_only": false,
-		"features":  map[string]bool{"toolab_standard_v1_1": true},
+		"features":  map[string]bool{"toollab_standard_v1_1": true},
 	}, nil
 }
 

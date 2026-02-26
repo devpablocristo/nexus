@@ -1,23 +1,23 @@
 package dto
 
-import domain "nexus-core/internal/toolab/usecases/domain"
+import domain "nexus-core/internal/toollab/usecases/domain"
 
-// ManifestResponse is returned by GET /_toolab/manifest.
+// ManifestResponse is returned by GET /_toollab/manifest.
 type ManifestResponse = domain.Manifest
 
-// FingerprintResponse is returned by GET /_toolab/state/fingerprint.
+// FingerprintResponse is returned by GET /_toollab/state/fingerprint.
 type FingerprintResponse struct {
 	Fingerprint string `json:"fingerprint"`
 	Scope       string `json:"scope"`
 	Timestamp   string `json:"timestamp"`
 }
 
-// SnapshotRequest is the body for POST /_toolab/state/snapshot.
+// SnapshotRequest is the body for POST /_toollab/state/snapshot.
 type SnapshotRequest struct {
 	Label string `json:"label"`
 }
 
-// SnapshotResponse is returned by POST /_toolab/state/snapshot.
+// SnapshotResponse is returned by POST /_toollab/state/snapshot.
 type SnapshotResponse struct {
 	SnapshotID  string `json:"snapshot_id"`
 	Fingerprint string `json:"fingerprint"`
@@ -25,25 +25,25 @@ type SnapshotResponse struct {
 	CreatedAt   string `json:"created_at"`
 }
 
-// RestoreRequest is the body for POST /_toolab/state/restore.
+// RestoreRequest is the body for POST /_toollab/state/restore.
 type RestoreRequest struct {
 	SnapshotID string `json:"snapshot_id"`
 }
 
-// RestoreResponse is returned by POST /_toolab/state/restore.
+// RestoreResponse is returned by POST /_toollab/state/restore.
 type RestoreResponse struct {
 	Restored    bool   `json:"restored"`
 	SnapshotID  string `json:"snapshot_id"`
 	Fingerprint string `json:"fingerprint"`
 }
 
-// ResetResponse is returned by POST /_toolab/state/reset.
+// ResetResponse is returned by POST /_toollab/state/reset.
 type ResetResponse struct {
 	Reset       bool   `json:"reset"`
 	Fingerprint string `json:"fingerprint"`
 }
 
-// MetricResponse is a single metric entry in GET /_toolab/metrics.
+// MetricResponse is a single metric entry in GET /_toollab/metrics.
 type MetricResponse struct {
 	Name   string            `json:"name"`
 	Type   string            `json:"type"`
@@ -51,7 +51,7 @@ type MetricResponse struct {
 	Labels map[string]string `json:"labels"`
 }
 
-// MetricsResponse is returned by GET /_toolab/metrics.
+// MetricsResponse is returned by GET /_toollab/metrics.
 type MetricsResponse struct {
 	CollectedAt string           `json:"collected_at"`
 	Metrics     []MetricResponse `json:"metrics"`
@@ -63,20 +63,20 @@ type ErrorResponse struct {
 	Message string `json:"message"`
 }
 
-// SchemaResponse is returned by GET /_toolab/schema.
+// SchemaResponse is returned by GET /_toollab/schema.
 type SchemaResponse = domain.SchemaResponse
 
-// SuggestedFlowsResponse is returned by GET /_toolab/suggested_flows.
+// SuggestedFlowsResponse is returned by GET /_toollab/suggested_flows.
 type SuggestedFlowsResponse = domain.SuggestedFlowsResponse
 
-// InvariantsResponse is returned by GET /_toolab/invariants.
+// InvariantsResponse is returned by GET /_toollab/invariants.
 type InvariantsResponse = domain.InvariantsResponse
 
-// LimitsResponse is returned by GET /_toolab/limits.
+// LimitsResponse is returned by GET /_toollab/limits.
 type LimitsResponse = domain.LimitsResponse
 
-// EnvironmentResponse is returned by GET /_toolab/environment.
+// EnvironmentResponse is returned by GET /_toollab/environment.
 type EnvironmentResponse = domain.EnvironmentResponse
 
-// ProfileResponse is returned by GET /_toolab/profile.
+// ProfileResponse is returned by GET /_toollab/profile.
 type ProfileResponse = domain.ProfileResponse

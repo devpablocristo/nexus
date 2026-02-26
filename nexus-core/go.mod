@@ -110,7 +110,7 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
-	github.com/toolab/toolab-adapter-go v0.0.0
+	github.com/toollab/toollab-adapter-go v0.0.0
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
@@ -134,4 +134,4 @@ require (
 	gorm.io/driver/mysql v1.5.6 // indirect
 )
 
-replace github.com/toolab/toolab-adapter-go => ./third_party/toolab-adapter-go
+replace github.com/toollab/toollab-adapter-go => ./third_party/toollab-adapter-go

@@ -1,6 +1,6 @@
 package domain
 
-// Manifest describes TOOLAB adapter capabilities and discovery links.
+// Manifest describes TOOLLAB adapter capabilities and discovery links.
 type Manifest struct {
 	AdapterVersion  string            `json:"adapter_version"`
 	StandardVersion string            `json:"standard_version"`
@@ -10,7 +10,7 @@ type Manifest struct {
 	Links           map[string]string `json:"links,omitempty"`
 }
 
-// SchemaResponse is returned by GET /_toolab/schema.
+// SchemaResponse is returned by GET /_toollab/schema.
 type SchemaResponse struct {
 	Database         DatabaseInfo      `json:"database"`
 	Entities         []EntityInfo      `json:"entities"`
@@ -51,7 +51,7 @@ type OperationEffect struct {
 	Idempotent bool   `json:"idempotent"`
 }
 
-// SuggestedFlowsResponse is returned by GET /_toolab/suggested_flows.
+// SuggestedFlowsResponse is returned by GET /_toollab/suggested_flows.
 type SuggestedFlowsResponse struct {
 	Flows          []SuggestedFlow   `json:"flows"`
 	DefaultHeaders map[string]string `json:"default_headers,omitempty"`
@@ -78,7 +78,7 @@ type SuggestedFlowRequest struct {
 	IdempotencyKey string            `json:"idempotency_key,omitempty"`
 }
 
-// InvariantsResponse is returned by GET /_toolab/invariants.
+// InvariantsResponse is returned by GET /_toollab/invariants.
 type InvariantsResponse struct {
 	Invariants []Invariant `json:"invariants"`
 }
@@ -94,7 +94,7 @@ type Invariant struct {
 	Params      map[string]any `json:"params,omitempty"`
 }
 
-// LimitsResponse is returned by GET /_toolab/limits.
+// LimitsResponse is returned by GET /_toollab/limits.
 type LimitsResponse struct {
 	Rate        *RateLimits        `json:"rate,omitempty"`
 	Quotas      []QuotaLimit       `json:"quotas,omitempty"`
@@ -132,7 +132,7 @@ type PayloadLimits struct {
 	MaxTracesSpans       int   `json:"max_traces_spans,omitempty"`
 }
 
-// EnvironmentResponse is returned by GET /_toolab/environment.
+// EnvironmentResponse is returned by GET /_toollab/environment.
 type EnvironmentResponse struct {
 	Mode     string          `json:"mode"`
 	ReadOnly bool            `json:"read_only"`

@@ -1,14 +1,14 @@
-// Package toolab provides a Toolab Adapter SDK that any Go HTTP application
-// can mount to become toolab-ready.
+// Package toollab provides a Toollab Adapter SDK that any Go HTTP application
+// can mount to become toollab-ready.
 //
 // Usage with net/http:
 //
-//	adapter := toolab.NewAdapter(toolab.Config{
+//	adapter := toollab.NewAdapter(toollab.Config{
 //	    AppName:    "my-app",
 //	    AppVersion: "1.0.0",
 //	})
-//	http.Handle("/_toolab/", http.StripPrefix("/_toolab", adapter.Handler()))
-package toolab
+//	http.Handle("/_toollab/", http.StripPrefix("/_toollab", adapter.Handler()))
+package toollab
 
 import (
 	"crypto/sha256"
@@ -65,7 +65,7 @@ type Config struct {
 	OpenAPIProvider        OpenAPIProvider
 }
 
-// Adapter is the toolab adapter instance.
+// Adapter is the toollab adapter instance.
 type Adapter struct {
 	cfg       Config
 	mu        sync.RWMutex
@@ -91,9 +91,9 @@ func NewAdapter(cfg Config) *Adapter {
 }
 
 // Handler returns an http.Handler that serves all adapter endpoints.
-// Mount it at /_toolab/:
+// Mount it at /_toollab/:
 //
-//	http.Handle("/_toolab/", http.StripPrefix("/_toolab", adapter.Handler()))
+//	http.Handle("/_toollab/", http.StripPrefix("/_toollab", adapter.Handler()))
 func (a *Adapter) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/manifest", a.handleManifest)
@@ -243,22 +243,22 @@ func (a *Adapter) manifestPayload(r *http.Request) map[string]any {
 			links["openapi_url"] = base + "/openapi.yaml"
 		}
 		if a.cfg.SchemaProvider != nil {
-			links["schema_url"] = base + "/_toolab/schema"
+			links["schema_url"] = base + "/_toollab/schema"
 		}
 		if a.hasProfile() {
-			links["profile_url"] = base + "/_toolab/profile"
+			links["profile_url"] = base + "/_toollab/profile"
 		}
 		if a.cfg.SuggestedFlowsProvider != nil {
-			links["suggested_flows_url"] = base + "/_toolab/suggested_flows"
+			links["suggested_flows_url"] = base + "/_toollab/suggested_flows"
 		}
 		if a.cfg.InvariantsProvider != nil {
-			links["invariants_url"] = base + "/_toolab/invariants"
+			links["invariants_url"] = base + "/_toollab/invariants"
 		}
 		if a.cfg.LimitsProvider != nil {
-			links["limits_url"] = base + "/_toolab/limits"
+			links["limits_url"] = base + "/_toollab/limits"
 		}
 		if a.cfg.EnvironmentProvider != nil {
-			links["environment_url"] = base + "/_toolab/environment"
+			links["environment_url"] = base + "/_toollab/environment"
 		}
 		if len(links) > 0 {
 			out["links"] = links
