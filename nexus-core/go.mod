@@ -134,4 +134,4 @@ require (
 	gorm.io/driver/mysql v1.5.6 // indirect
 )
 
-replace github.com/toolab/toolab-adapter-go => /home/pablo/Projects/Pablo/toolab/toolab-adapter-go
+replace github.com/toolab/toolab-adapter-go => ./third_party/toolab-adapter-go
