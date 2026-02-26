@@ -14,6 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	adapterlib "github.com/toollab/toollab-adapter-go"
 	"gopkg.in/yaml.v3"
 
 	domain "nexus-core/internal/toollab/usecases/domain"
@@ -35,6 +36,7 @@ type Service interface {
 	Profile(ctx context.Context, baseURL string) (*domain.ProfileResponse, error)
 	OpenAPIDocument(ctx context.Context) ([]byte, error)
 	OpenAPIInfo(ctx context.Context, baseURL string) (*domain.OpenAPIInfo, error)
+	ServiceDescription(ctx context.Context) (*adapterlib.ServiceDescription, error)
 }
 
 // Config holds adapter configuration provided at startup.
@@ -128,6 +130,7 @@ func (s *service) Manifest(baseURL string) domain.Manifest {
 			"invariants_url":      baseURL + "/_toollab/invariants",
 			"limits_url":          baseURL + "/_toollab/limits",
 			"environment_url":     baseURL + "/_toollab/environment",
+			"description_url":     baseURL + "/_toollab/description",
 		}
 	}
 	return domain.Manifest{
@@ -154,6 +157,7 @@ func (s *service) capabilities() []string {
 		"invariants",
 		"limits",
 		"environment",
+		"description",
 	}
 }
 
@@ -490,6 +494,27 @@ func (s *service) OpenAPIInfo(ctx context.Context, baseURL string) (*domain.Open
 		ETag:        etag,
 		SHA256:      sha,
 	}, nil
+}
+
+func (s *service) ServiceDescription(ctx context.Context) (*adapterlib.ServiceDescription, error) {
+	openAPIRaw, _ := s.OpenAPIDocument(ctx)
+
+	var schemaJSON []byte
+	schema, err := s.Schema(ctx)
+	if err == nil {
+		schemaJSON, _ = json.Marshal(schema)
+	}
+
+	desc := adapterlib.BuildAutoDescription("nexus", openAPIRaw, schemaJSON, adapterlib.AutoDescriptionConfig{
+		Purpose:   "API de gestión de políticas de seguridad para agentes de IA. Controla qué herramientas pueden ejecutar los agentes, bajo qué condiciones, y con qué nivel de supervisión.",
+		Domain:    "ai-security",
+		Consumers: "Frontend dashboard, CLI, agentes de IA, microservicios internos",
+		ExtraDeps: []adapterlib.Dependency{
+			{Name: "PostgreSQL", Type: "database", Description: "Almacenamiento principal de datos", Required: true},
+		},
+	})
+
+	return desc, nil
 }
 
 func metricTypeName(t dto.MetricType) string {

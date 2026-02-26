@@ -63,6 +63,9 @@ type Config struct {
 	LimitsProvider         LimitsProvider
 	EnvironmentProvider    EnvironmentProvider
 	OpenAPIProvider        OpenAPIProvider
+
+	// Standard v1.2 — rich service description for comprehension reports.
+	ServiceDescriptionProvider ServiceDescriptionProvider
 }
 
 // Adapter is the toollab adapter instance.
@@ -119,6 +122,9 @@ func (a *Adapter) Handler() http.Handler {
 	if a.cfg.EnvironmentProvider != nil {
 		mux.HandleFunc("/environment", a.handleEnvironment)
 	}
+	if a.cfg.ServiceDescriptionProvider != nil {
+		mux.HandleFunc("/description", a.handleDescription)
+	}
 
 	if a.hasState() {
 		mux.HandleFunc("/state/fingerprint", a.handleStateFingerprint)
@@ -151,7 +157,8 @@ func (a *Adapter) hasProfile() bool {
 		a.cfg.InvariantsProvider != nil ||
 		a.cfg.LimitsProvider != nil ||
 		a.cfg.EnvironmentProvider != nil ||
-		a.cfg.OpenAPIProvider != nil
+		a.cfg.OpenAPIProvider != nil ||
+		a.cfg.ServiceDescriptionProvider != nil
 }
 
 func (a *Adapter) stateProvider() StateProvider {
@@ -201,6 +208,9 @@ func (a *Adapter) capabilities() []string {
 	}
 	if a.cfg.EnvironmentProvider != nil {
 		caps = append(caps, "environment")
+	}
+	if a.cfg.ServiceDescriptionProvider != nil {
+		caps = append(caps, "description")
 	}
 	sort.Strings(caps)
 	return caps
@@ -259,6 +269,9 @@ func (a *Adapter) manifestPayload(r *http.Request) map[string]any {
 		}
 		if a.cfg.EnvironmentProvider != nil {
 			links["environment_url"] = base + "/_toollab/environment"
+		}
+		if a.cfg.ServiceDescriptionProvider != nil {
+			links["description_url"] = base + "/_toollab/description"
 		}
 		if len(links) > 0 {
 			out["links"] = links
@@ -348,6 +361,17 @@ func (a *Adapter) handleProfile(w http.ResponseWriter, r *http.Request) {
 			profile["environment"] = value
 			if h := hashAny(value); h != "" {
 				hashes["environment_sha256"] = h
+			}
+		}
+	}
+	if a.cfg.ServiceDescriptionProvider != nil {
+		value, err := a.cfg.ServiceDescriptionProvider.ServiceDescription(r.Context())
+		if err != nil {
+			unknowns = append(unknowns, "description unavailable")
+		} else {
+			profile["description"] = value
+			if h := hashAny(value); h != "" {
+				hashes["description_sha256"] = h
 			}
 		}
 	}
@@ -478,6 +502,23 @@ func (a *Adapter) handleEnvironment(w http.ResponseWriter, r *http.Request) {
 	value, err := a.cfg.EnvironmentProvider.Environment(r.Context())
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "environment_not_available", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, value)
+}
+
+func (a *Adapter) handleDescription(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use GET")
+		return
+	}
+	if a.cfg.ServiceDescriptionProvider == nil {
+		writeError(w, http.StatusNotImplemented, "not_supported", "description capability not supported")
+		return
+	}
+	value, err := a.cfg.ServiceDescriptionProvider.ServiceDescription(r.Context())
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "description_not_available", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, value)

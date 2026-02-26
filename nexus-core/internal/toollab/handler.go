@@ -18,17 +18,18 @@ type Handler struct {
 func NewHandler(svc Service) *Handler {
 	manifest := svc.Manifest("")
 	adapter := adapterlib.NewAdapter(adapterlib.Config{
-		AppName:                "nexus",
-		AppVersion:             manifest.AppVersion,
-		StandardVersion:        manifest.StandardVersion,
-		StateProvider:          &stateProviderBridge{svc: svc},
-		MetricsProvider:        &metricsProviderBridge{svc: svc},
-		SchemaProvider:         &schemaProviderBridge{svc: svc},
-		SuggestedFlowsProvider: &suggestedFlowsProviderBridge{svc: svc},
-		InvariantsProvider:     &invariantsProviderBridge{svc: svc},
-		LimitsProvider:         &limitsProviderBridge{svc: svc},
-		EnvironmentProvider:    &environmentProviderBridge{svc: svc},
-		OpenAPIProvider:        &openAPIProviderBridge{svc: svc},
+		AppName:                    "nexus",
+		AppVersion:                 manifest.AppVersion,
+		StandardVersion:            manifest.StandardVersion,
+		StateProvider:              &stateProviderBridge{svc: svc},
+		MetricsProvider:            &metricsProviderBridge{svc: svc},
+		SchemaProvider:             &schemaProviderBridge{svc: svc},
+		SuggestedFlowsProvider:     &suggestedFlowsProviderBridge{svc: svc},
+		InvariantsProvider:         &invariantsProviderBridge{svc: svc},
+		LimitsProvider:             &limitsProviderBridge{svc: svc},
+		EnvironmentProvider:        &environmentProviderBridge{svc: svc},
+		OpenAPIProvider:            &openAPIProviderBridge{svc: svc},
+		ServiceDescriptionProvider: &serviceDescriptionBridge{svc: svc},
 	})
 	return &Handler{httpHandler: adapter.Handler()}
 }
@@ -113,6 +114,12 @@ type environmentProviderBridge struct{ svc Service }
 func (b *environmentProviderBridge) Environment(ctx context.Context) (any, error) {
 	_ = ctx
 	return b.svc.Environment(), nil
+}
+
+type serviceDescriptionBridge struct{ svc Service }
+
+func (b *serviceDescriptionBridge) ServiceDescription(ctx context.Context) (*adapterlib.ServiceDescription, error) {
+	return b.svc.ServiceDescription(ctx)
 }
 
 type openAPIProviderBridge struct{ svc Service }
