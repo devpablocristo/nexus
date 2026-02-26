@@ -4,6 +4,7 @@
 package toolab
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -26,6 +27,13 @@ func NewHandler(svc Service) *Handler {
 // Register mounts all adapter routes on the given router group.
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.GET("/manifest", h.manifest)
+	rg.GET("/profile", h.profile)
+	rg.GET("/schema", h.schema)
+	rg.GET("/openapi", h.openapi)
+	rg.GET("/suggested_flows", h.suggestedFlows)
+	rg.GET("/invariants", h.invariants)
+	rg.GET("/limits", h.limits)
+	rg.GET("/environment", h.environment)
 	rg.GET("/state/fingerprint", h.stateFingerprint)
 	rg.POST("/state/snapshot", h.stateSnapshot)
 	rg.POST("/state/restore", h.stateRestore)
@@ -34,13 +42,56 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) manifest(c *gin.Context) {
-	appName, appVersion, adapterVersion, caps := h.svc.Manifest()
-	c.JSON(http.StatusOK, toolabdto.ManifestResponse{
-		AdapterVersion: adapterVersion,
-		AppName:        appName,
-		AppVersion:     appVersion,
-		Capabilities:   caps,
-	})
+	c.JSON(http.StatusOK, h.svc.Manifest(requestBaseURL(c)))
+}
+
+func (h *Handler) profile(c *gin.Context) {
+	profile, err := h.svc.Profile(c.Request.Context(), requestBaseURL(c))
+	if err != nil {
+		writeErr(c, http.StatusServiceUnavailable, "profile_not_available", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, profile)
+}
+
+func (h *Handler) schema(c *gin.Context) {
+	value, err := h.svc.Schema(c.Request.Context())
+	if err != nil {
+		writeErr(c, http.StatusServiceUnavailable, "schema_not_available", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, value)
+}
+
+func (h *Handler) openapi(c *gin.Context) {
+	raw, err := h.svc.OpenAPIDocument(c.Request.Context())
+	if err != nil {
+		writeErr(c, http.StatusServiceUnavailable, "openapi_not_available", err.Error())
+		return
+	}
+	c.Header("Content-Type", "application/yaml; charset=utf-8")
+	c.Data(http.StatusOK, "application/yaml; charset=utf-8", raw)
+}
+
+func (h *Handler) suggestedFlows(c *gin.Context) {
+	value, err := h.svc.SuggestedFlows(c.Request.Context())
+	if err != nil {
+		writeErr(c, http.StatusServiceUnavailable, "suggested_flows_not_available", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, value)
+}
+
+func (h *Handler) invariants(c *gin.Context) {
+	c.JSON(http.StatusOK, h.svc.Invariants())
+}
+
+func (h *Handler) limits(c *gin.Context) {
+	c.JSON(http.StatusOK, h.svc.Limits())
+}
+
+func (h *Handler) environment(c *gin.Context) {
+	c.JSON(http.StatusOK, h.svc.Environment())
 }
 
 func (h *Handler) stateFingerprint(c *gin.Context) {
@@ -134,4 +185,25 @@ func (h *Handler) metrics(c *gin.Context) {
 
 func writeErr(c *gin.Context, status int, code, message string) {
 	c.JSON(status, toolabdto.ErrorResponse{Error: code, Message: message})
+}
+
+func requestBaseURL(c *gin.Context) string {
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if forwarded := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")); forwarded != "" {
+		scheme = strings.ToLower(forwarded)
+	}
+	host := strings.TrimSpace(c.Request.Host)
+	if host == "" {
+		host = c.GetHeader("Host")
+	}
+	if host == "" {
+		host = "localhost"
+	}
+	if _, _, err := net.SplitHostPort(host); err != nil && strings.Count(host, ":") == 0 {
+		// Keep host as-is when no port is present.
+	}
+	return scheme + "://" + host
 }

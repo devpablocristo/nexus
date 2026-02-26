@@ -1,12 +1,9 @@
 package dto
 
+import domain "nexus-core/internal/toolab/usecases/domain"
+
 // ManifestResponse is returned by GET /_toolab/manifest.
-type ManifestResponse struct {
-	AdapterVersion string   `json:"adapter_version"`
-	AppName        string   `json:"app_name"`
-	AppVersion     string   `json:"app_version"`
-	Capabilities   []string `json:"capabilities"`
-}
+type ManifestResponse = domain.Manifest
 
 // FingerprintResponse is returned by GET /_toolab/state/fingerprint.
 type FingerprintResponse struct {
@@ -65,3 +62,21 @@ type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
 }
+
+// SchemaResponse is returned by GET /_toolab/schema.
+type SchemaResponse = domain.SchemaResponse
+
+// SuggestedFlowsResponse is returned by GET /_toolab/suggested_flows.
+type SuggestedFlowsResponse = domain.SuggestedFlowsResponse
+
+// InvariantsResponse is returned by GET /_toolab/invariants.
+type InvariantsResponse = domain.InvariantsResponse
+
+// LimitsResponse is returned by GET /_toolab/limits.
+type LimitsResponse = domain.LimitsResponse
+
+// EnvironmentResponse is returned by GET /_toolab/environment.
+type EnvironmentResponse = domain.EnvironmentResponse
+
+// ProfileResponse is returned by GET /_toolab/profile.
+type ProfileResponse = domain.ProfileResponse
