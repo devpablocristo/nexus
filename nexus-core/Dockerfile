@@ -5,7 +5,6 @@ WORKDIR /src
 RUN apk add --no-cache git
 
 COPY go.mod go.sum ./
-COPY third_party/toollab-adapter-go ./third_party/toollab-adapter-go
 RUN go mod download
 
 COPY . .

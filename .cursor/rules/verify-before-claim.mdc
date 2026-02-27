@@ -1,0 +1,13 @@
+---
+description: Probar antes de afirmar que algo funciona
+globs:
+alwaysApply: true
+---
+
+# Regla obligatoria
+
+- **Nunca afirmes que algo "funciona" o "está listo" sin haberlo probado.**
+- Antes de decir que un cambio funciona: ejecutar la prueba relevante (build, test, curl, comando, flujo) y verificar el resultado.
+- Si es un endpoint: hacer la petición y comprobar código/body esperado.
+- Si es un flujo (up, seed, UI): ejecutar los pasos y confirmar que el resultado es el esperado.
+- Si no podés probar en el entorno actual, decilo explícitamente en lugar de afirmar que funciona.

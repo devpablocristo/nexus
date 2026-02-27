@@ -25,7 +25,6 @@ import (
 	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
 	"nexus-core/internal/tool"
-	"nexus-core/internal/toollab"
 )
 
 // Injectors from wire.go:
@@ -127,11 +126,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	discoveryClient := NewOIDCDiscoveryClient(oidcConfig)
 	tokenExchanger := NewOIDCTokenExchanger(oidcConfig, discoveryClient)
 	oidcHandler := NewOIDCHandler(oidcConfig, discoveryClient, tokenExchanger, service)
-	toollabRepository := toollab.NewRepository(db)
-	toollabConfig := ProvideToollabConfig()
-	toollabService := toollab.NewService(toollabRepository, toollabConfig)
-	toollabHandler := toollab.NewHandler(toollabService)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, adminHandler, eventsHandler, actionsHandler, incidentsHandler, policyproposalHandler, assistantHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler, a2aHandler, oidcHandler, toollabHandler)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, adminHandler, eventsHandler, actionsHandler, incidentsHandler, policyproposalHandler, assistantHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler, a2aHandler, oidcHandler)
 	apiConfig := ProvideAPIConfig(cfg)
 	server := NewHTTPServer(apiConfig, engine)
 	app := NewApp(engine, server, actionsService)

@@ -6,7 +6,7 @@ methods and verify the complete pipeline:
 """
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, call
+from unittest.mock import call
 
 import pytest
 

@@ -47,7 +47,7 @@ Set `VITE_NEXUS_API_KEY` in `.env` if you want Tower to query authenticated endp
 - Nexus Core API: `http://localhost:8080`
 - Admin Console: `http://localhost:8080/admin`
 - Operator API: `http://localhost:8000`
-- Tower UI: `http://localhost:5173`
+- Tower UI: `http://localhost:5174` (or 5173 if NEXUS_TOWER_PORT=5173)
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000`
 

@@ -7,7 +7,6 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from tests.integration.conftest import (
-    TEST_OPERATOR_KEY,
     auth_headers,
     build_app,
     make_mock_client,

@@ -24,7 +24,6 @@ import (
 	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
 	"nexus-core/internal/ops/actionengine"
-	toollabadapter "nexus-core/internal/toollab"
 	opscomms "nexus-core/internal/ops/comms"
 	opsdiagnosis "nexus-core/internal/ops/diagnosis"
 	opseventstore "nexus-core/internal/ops/eventstore"
@@ -61,7 +60,6 @@ func NewRouter(
 	mcpH *mcp.Handler,
 	a2aH *a2a.Handler,
 	oidcH *identity.OIDCHandler,
-	toollabH *toollabadapter.Handler,
 ) *gin.Engine {
 	r := ginserver.NewEngine(
 		ginserver.EngineOptions{},
@@ -77,6 +75,9 @@ func NewRouter(
 	prom := ginprometheus.NewPrometheus("nexus_gateway")
 	prom.Use(r)
 
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusFound, "/docs")
+	})
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -92,10 +93,6 @@ func NewRouter(
 		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
-
-	// Toollab adapter — public, no auth (like /healthz).
-	toollabGroup := r.Group("/_toollab")
-	toollabH.Register(toollabGroup)
 
 	r.GET("/openapi.yaml", func(c *gin.Context) {
 		c.File("docs/openapi.yaml")
