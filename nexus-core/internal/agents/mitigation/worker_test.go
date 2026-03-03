@@ -30,12 +30,12 @@ func TestMitigationWorker_AppliesOnlyNonApprovalActions(t *testing.T) {
 						"scope": map[string]any{
 							"level":   "tool",
 							"org_id":  "996e9e43-7bab-4e68-a831-0a766befbf54",
-							"tool_id": "world.move",
+							"tool_id": "echo",
 						},
 						"ttl_seconds": 600,
 						"params": map[string]any{
 							"rpm":     120,
-							"tool_id": "world.move",
+							"tool_id": "echo",
 						},
 					},
 					map[string]any{

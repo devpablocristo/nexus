@@ -28,8 +28,6 @@ type ServiceConfig struct {
 	TimeoutBudgetMaxMS     int
 	DisableSSRFProtection  bool
 	EgressAllowlist        string
-	SimEngineBaseURL       string
-	SimEngineInternalKey   string
 	LLMProvider            string
 	LLMModel               string
 	LLMOllamaBaseURL       string

@@ -9,7 +9,7 @@
   "source": "gateway.run",
   "payload": {
     "request_id": "req-1001",
-    "tool_name": "world.move",
+    "tool_name": "echo",
     "status": "success",
     "decision": "allow",
     "latency_ms": 42,

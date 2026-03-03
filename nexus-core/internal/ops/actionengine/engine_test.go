@@ -38,12 +38,12 @@ func TestEngine_DryRun_IdempotencyIgnoresTTL(t *testing.T) {
 		Scope: map[string]any{
 			"level":   "tool",
 			"org_id":  orgID.String(),
-			"tool_id": "world.move",
+			"tool_id": "echo",
 		},
 		TTLSeconds: 600,
 		Params: map[string]any{
 			"rpm":     120,
-			"tool_id": "world.move",
+			"tool_id": "echo",
 		},
 	})
 	if err != nil {
@@ -56,12 +56,12 @@ func TestEngine_DryRun_IdempotencyIgnoresTTL(t *testing.T) {
 		Scope: map[string]any{
 			"level":   "tool",
 			"org_id":  orgID.String(),
-			"tool_id": "world.move",
+			"tool_id": "echo",
 		},
 		TTLSeconds: 1200,
 		Params: map[string]any{
 			"rpm":     120,
-			"tool_id": "world.move",
+			"tool_id": "echo",
 		},
 	})
 	if err != nil {

@@ -39,15 +39,11 @@ services:
       NEXUS_REDIS_URL: "${NEXUS_REDIS_URL}"
       NEXUS_OPERATOR_URL: "${NEXUS_OPERATOR_URL}"
       NEXUS_OPERATOR_INTERNAL_KEY: "${NEXUS_OPERATOR_INTERNAL_KEY}"
-      NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081,sim-engine:8087}"
-      NEXUS_SIM_ENGINE_BASE_URL: "${NEXUS_SIM_ENGINE_BASE_URL:-http://sim-engine:8087}"
-      NEXUS_SIM_ENGINE_INTERNAL_KEY: "${NEXUS_SIM_ENGINE_INTERNAL_KEY:-sim-engine-internal-key}"
+      NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      sim-engine:
         condition: service_healthy
     ports:
       - "${NEXUS_HTTP_PORT}:8080"
@@ -59,28 +55,6 @@ services:
       retries: 30
     networks:
       default: {}
-
-  sim-engine:
-    restart: unless-stopped
-    build:
-      context: ./sim-engine
-      dockerfile: Dockerfile
-    env_file:
-      - .env
-    environment:
-      SIM_ENGINE_PORT: "8087"
-      SIM_ENGINE_DATABASE_URL: "${SIM_ENGINE_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/nexus?sslmode=disable}"
-      NEXUS_SIM_ENGINE_INTERNAL_KEY: "${NEXUS_SIM_ENGINE_INTERNAL_KEY:-sim-engine-internal-key}"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    expose:
-      - "8087"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/healthz >/dev/null 2>&1 || exit 1"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
 
   mock-tools:
     restart: unless-stopped
@@ -114,7 +88,23 @@ services:
     profiles:
       - ollama
 
-  nexus-operator:
+  nexus-control-operators:
+    restart: unless-stopped
+    build:
+      context: ./nexus-core
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      NEXUS_DATABASE_URL: "${NEXUS_DATABASE_URL}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["/app/ops-workers"]
+
+  nexus-external-operators:
     restart: unless-stopped
     build:
       context: .
@@ -134,6 +124,8 @@ services:
     depends_on:
       nexus-core:
         condition: service_healthy
+      nexus-control-operators:
+        condition: service_started
     ports:
       - "${NEXUS_OPERATOR_PORT}:8000"
     healthcheck:
@@ -141,6 +133,10 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    networks:
+      default:
+        aliases:
+          - nexus-operator
 
   nexus-tower:
     restart: unless-stopped
@@ -156,7 +152,7 @@ services:
     depends_on:
       nexus-core:
         condition: service_healthy
-      nexus-operator:
+      nexus-external-operators:
         condition: service_healthy
     ports:
       - "${NEXUS_TOWER_PORT}:4173"

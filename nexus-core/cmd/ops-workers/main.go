@@ -12,9 +12,7 @@ import (
 
 	"gorm.io/gorm"
 	"nexus-core/cmd/config"
-	"nexus-core/internal/agents/comms"
 	"nexus-core/internal/agents/coordinator"
-	"nexus-core/internal/agents/diagnostician"
 	"nexus-core/internal/agents/mitigation"
 	"nexus-core/internal/agents/recovery"
 	agentruntime "nexus-core/internal/agents/runtime"
@@ -22,10 +20,7 @@ import (
 	"nexus-core/internal/events"
 	"nexus-core/internal/incidents"
 	opsaction "nexus-core/internal/ops/actionengine"
-	opscomms "nexus-core/internal/ops/comms"
-	opsdiagnosis "nexus-core/internal/ops/diagnosis"
 	opseventstore "nexus-core/internal/ops/eventstore"
-	opsllm "nexus-core/internal/ops/llm"
 	opstenant "nexus-core/internal/ops/tenant"
 	gormdb "nexus-core/pkg/databases/sql/gorm"
 	"nexus-core/pkg/validations/jsonschema"
@@ -63,17 +58,6 @@ func main() {
 		jsonschema.NewCompilerCache(),
 	)
 
-	opsDiagSvc := opsdiagnosis.NewUsecases(opsdiagnosis.NewRepository(db))
-	opsCommsSvc := opscomms.NewUsecases(opscomms.NewRepository(db))
-
-	llmClient := opsllm.NewClient(opsllm.Config{
-		Provider:      cfg.Service.LLMProvider,
-		Model:         cfg.Service.LLMModel,
-		OllamaBaseURL: cfg.Service.LLMOllamaBaseURL,
-		CloudBaseURL:  cfg.Service.LLMCloudBaseURL,
-		CloudAPIKey:   cfg.Service.LLMCloudAPIKey,
-	}, jsonschema.NewCompilerCache())
-
 	legacyEventsSvc := events.NewUsecases(events.NewRepository(db))
 	incidentSvc := incidents.NewUsecases(incidents.NewRepository(db), legacyEventsSvc)
 
@@ -85,10 +69,8 @@ func main() {
 			sentry.Config{},
 		),
 		coordinator.NewWorker(opsEmitter),
-		diagnostician.NewWorker(llmClient, opsDiagSvc, opsEmitter, cfg.Service.LLMProvider, cfg.Service.LLMModel),
 		mitigation.NewWorker(actionEngine),
 		recovery.NewWorker(opsEmitter, recovery.Config{}),
-		comms.NewWorker(llmClient, opsCommsSvc, opsEmitter),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

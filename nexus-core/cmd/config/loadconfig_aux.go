@@ -104,8 +104,6 @@ func loadGateway(cfg *Config) error {
 
 	cfg.Service.DisableSSRFProtection = mustBoolDefault("NEXUS_DISABLE_SSRF_PROTECTION", false)
 	cfg.Service.EgressAllowlist = mustStrDefault("NEXUS_EGRESS_ALLOWLIST", "")
-	cfg.Service.SimEngineBaseURL = mustStrDefault("NEXUS_SIM_ENGINE_BASE_URL", "http://sim-engine:8087")
-	cfg.Service.SimEngineInternalKey = mustStrDefault("NEXUS_SIM_ENGINE_INTERNAL_KEY", "")
 	cfg.Service.LLMProvider = mustStrDefault("NEXUS_LLM_PROVIDER", "mock")
 	cfg.Service.LLMModel = mustStrDefault("NEXUS_LLM_MODEL", "mock-default")
 	cfg.Service.LLMOllamaBaseURL = mustStrDefault("NEXUS_OLLAMA_BASE_URL", "http://localhost:11434")

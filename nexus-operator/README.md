@@ -1,11 +1,13 @@
-# nexus-operator
+# nexus-external-operators (nexus-operator)
 
-`nexus-operator` is the AI-operated service that automates L1 operational responses using Nexus Core APIs only.
+`nexus-operator` is the external AI-operators service that automates operational responses using Nexus APIs only.
+
+This directory keeps the historical name (`nexus-operator`) for compatibility, while the target architecture name is `nexus-external-operators`.
 
 ## Responsibilities
 
 - Consume `GET /v1/events` by cursor.
-- Produce deterministic signals (deny ratio spikes).
+- Produce AI-assisted signals and recommendations.
 - Apply temporary actions with TTL (`POST /v1/actions/apply`).
 - Open incidents (`POST /v1/incidents`).
 - Create policy proposals for human review (`POST /v1/policy-proposals`).

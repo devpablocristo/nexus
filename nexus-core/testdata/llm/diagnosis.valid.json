@@ -1,8 +1,8 @@
 {
-  "summary_30s": "Spike de errores por saturacion de world.move.",
+  "summary_30s": "Spike de errores por saturacion de echo.",
   "root_cause": "rate_limit_bucket_saturated",
   "confidence": 0.81,
-  "evidence_refs": ["audit:req-1001", "metrics:world.move:p95"],
+  "evidence_refs": ["audit:req-1001", "metrics:echo:p95"],
   "hypotheses": [
     {
       "title": "Rate limit bajo para el patron actual",
@@ -13,9 +13,9 @@
   "recommended_actions": [
     {
       "action_type": "set_rate_limit",
-      "scope": {"level": "tool", "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54", "tool_id": "world.move"},
+      "scope": {"level": "tool", "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54", "tool_id": "echo"},
       "ttl_seconds": 600,
-      "params": {"rpm": 180, "tool_id": "world.move"},
+      "params": {"rpm": 180, "tool_id": "echo"},
       "evidence_refs": ["audit:req-1001"]
     }
   ],

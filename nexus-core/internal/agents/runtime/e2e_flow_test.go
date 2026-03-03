@@ -70,7 +70,7 @@ func TestAgentFlowE2E_MockLLM(t *testing.T) {
 			Actor:  opsdomain.Actor{ActorType: "system"},
 			Source: "gateway.run",
 			Payload: map[string]any{
-				"tool_name": "world.move",
+				"tool_name": "echo",
 				"status":    "error",
 			},
 		},
@@ -281,12 +281,12 @@ func (llmFlowStub) GenerateStrict(_ context.Context, req llm.Request, schemaFile
 					"scope": map[string]any{
 						"level":   "tool",
 						"org_id":  asString(req.Input["org_id"]),
-						"tool_id": "world.move",
+						"tool_id": "echo",
 					},
 					"ttl_seconds": 600,
 					"params": map[string]any{
 						"rpm":     180,
-						"tool_id": "world.move",
+						"tool_id": "echo",
 					},
 				},
 			},
@@ -378,7 +378,7 @@ func (e *engineFlowStub) Apply(ctx context.Context, orgID uuid.UUID, actor *stri
 			Source: "engine.stub",
 			Payload: map[string]any{
 				"incident_id": incidentID,
-				"tool_name":   "world.move",
+				"tool_name":   "echo",
 				"status":      "success",
 			},
 		})

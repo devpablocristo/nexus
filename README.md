@@ -4,10 +4,10 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 
 ## Architecture
 
-- **nexus-core**: deterministic backend — gateway, policies, DLP, rate-limits, circuit breaker, HITL approval, audit, alerts, sessions.
-- **nexus-operator**: AI-operated service — signals, risk scoring, reversible actions, policy proposals.
+- **nexus-core**: deterministic gateway/data-plane — run/simulate, policies, DLP, egress, idempotency, audit.
+- **nexus-control-operators**: deterministic control-plane workers (Go) — sentry, coordinator, mitigation, recovery.
+- **nexus-external-operators**: AI-operated service (Python) — risk scoring, policy proposals, assistant-facing intelligence.
 - **nexus-tower**: supervision UI — overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.
-- **sim-engine**: deterministic simulation engine for Door Jam demo.
 - **sdks/**: Python (sync + async) and TypeScript SDKs with LangChain and OpenAI Agents integrations.
 
 ## Core Features
@@ -34,10 +34,10 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 ## Monorepo Layout
 
 ```text
-/nexus-core        Go backend (gateway + control plane + audit)
-/nexus-operator    Python AI-operated service
+/nexus-core        Go backend (gateway/data plane)
+/nexus-core/cmd/ops-workers  Go deterministic control workers (nexus-control-operators service)
+/nexus-operator    Python external operators service (a.k.a. nexus-external-operators)
 /nexus-tower       React supervision UI
-/sim-engine        Go simulation engine (Door Jam)
 /sdks              Python SDK + TypeScript SDK
 /shared            Contracts (OpenAPI, event schemas, error codes)
 /docs              Architecture and operations docs
@@ -52,7 +52,6 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 cp .env.example .env
 make up
 make migrate-up
-make migrate-sim-engine
 make seed
 ```
 
@@ -65,7 +64,7 @@ make seed
 | Nexus Core API | http://localhost:8080 |
 | API Docs | http://localhost:8080/docs |
 | Tower UI | http://localhost:5174 |
-| Operator API | http://localhost:8000 |
+| External Operators API | http://localhost:8000 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
 
@@ -115,7 +114,6 @@ const resp = await client.run('echo', { hello: 'world' });
 | `make qa` | Run all tests (core + operator + tower) |
 | `make e2e` | End-to-end integration tests |
 | `make jwt-e2e` | JWT authentication e2e tests |
-| `make demo-doorjam` | Run Door Jam simulation demo |
 
 ## Contracts
 
@@ -127,8 +125,9 @@ Shared contracts under `shared/`:
 
 ## Agent-Operated Model
 
-- Operator **never** writes to DB directly.
-- Operator consumes `GET /v1/events` and acts through: `POST /v1/actions/apply`, `POST /v1/incidents`, `POST /v1/policy-proposals`.
+- External operators **never** write to DB directly.
+- External operators consume `GET /v1/events` and act through Nexus APIs (`/v1/actions/*`, `/v1/incidents`, `/v1/policy-proposals`).
+- Control operators run deterministic workers from `nexus-core/cmd/ops-workers` and react via internal event-store workflows.
 - HITL: policies with `require_approval` block execution until a human approves/rejects.
 - Tower does not call LLM directly — routes through `nexus-core /v1/assistant/query`.
 
@@ -137,7 +136,3 @@ Shared contracts under `shared/`:
 - [`docs/DOC.md`](docs/DOC.md) — Full technical reference (pipeline, endpoints, directory structure, SDKs).
 - [`docs/AGENT_OPERATED_MODEL.md`](docs/AGENT_OPERATED_MODEL.md) — Agent-operated model and HITL flow.
 - [`docs/NAMING_AND_BOUNDARIES.md`](docs/NAMING_AND_BOUNDARIES.md) — Names, headers, compatibility.
-- [`docs/architecture/viewer.md`](docs/architecture/viewer.md) — Sim Engine / Viewer architecture.
-- [`docs/testing/sim_engine_regression.md`](docs/testing/sim_engine_regression.md) — Determinism and regression tests.
-- [`docs/runbooks/sim_engine_ops.md`](docs/runbooks/sim_engine_ops.md) — Sim Engine ops runbook.
-- [`docs/demo/door_jam.md`](docs/demo/door_jam.md) — Door Jam demo instructions.

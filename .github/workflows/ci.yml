@@ -65,26 +65,9 @@ jobs:
       - name: Build (verify production build)
         run: npm run build
 
-  sim-engine:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: sim-engine
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-      - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: go test ./...
-      - name: Docker build (verify only)
-        run: docker build -t sim-engine:ci .
-
   docker-build:
     runs-on: ubuntu-latest
-    needs: [nexus-core, nexus-operator, nexus-tower, sim-engine]
+    needs: [nexus-core, nexus-operator, nexus-tower]
     steps:
       - uses: actions/checkout@v4
       - name: Create .env from example
@@ -106,8 +89,6 @@ jobs:
         run: make e2e
       - name: Run JWT e2e tests
         run: make jwt-e2e
-      - name: Run Viewer Door Jam regression
-        run: make demo-doorjam
       - name: Cleanup
         if: always()
         run: docker compose down -v || true

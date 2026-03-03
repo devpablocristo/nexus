@@ -29,5 +29,5 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     await engine.stop()
 
 
-app = FastAPI(title='nexus-operator', version='0.1.0', lifespan=lifespan)
+app = FastAPI(title='nexus-external-operators', version='0.1.0', lifespan=lifespan)
 app.include_router(router)

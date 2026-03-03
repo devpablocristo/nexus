@@ -33,7 +33,7 @@ func TestSchemaValidator_ValidEnvelopeAndPayload(t *testing.T) {
 		Payload: map[string]any{
 			"fingerprint":     "fp:org:tool:error_rate",
 			"signal":          "error_rate_spike",
-			"tool_name":       "world.move",
+			"tool_name":       "echo",
 			"observed_value":  0.8,
 			"threshold_value": 0.3,
 		},

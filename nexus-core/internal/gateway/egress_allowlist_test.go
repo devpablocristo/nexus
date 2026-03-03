@@ -11,20 +11,40 @@ import (
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
 	"nexus-core/internal/policy"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
+	"nexus-core/pkg/types"
 	"nexus-core/pkg/validations/jsonschema"
 )
 
-func TestRun_SSRFAllowlist_AllowsSimEngineHostPort(t *testing.T) {
+type captureExecutor struct {
+	lastHeaders map[string]string
+}
+
+func (c *captureExecutor) Execute(_ context.Context, _ string, _ string, _ map[string]any, headers map[string]string, _ int) (any, int, *types.HTTPError) {
+	c.lastHeaders = map[string]string{}
+	for k, v := range headers {
+		c.lastHeaders[k] = v
+	}
+	return map[string]any{"ok": true}, 200, nil
+}
+
+func strVal(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func TestRun_SSRFAllowlist_AllowsAllowlistedHostPort(t *testing.T) {
 	orgID := uuid.New()
 	exec := &captureExecutor{}
 	service := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:              uuid.New(),
 			OrgID:           orgID,
-			Name:            "world.observe",
+			Name:            "echo",
 			Kind:            tooldomain.ToolKindHTTP,
 			Method:          "POST",
-			URL:             "http://sim-engine:8087/tools/world.observe",
+			URL:             "http://mock-tools:8081/tools/echo",
 			InputSchemaJSON: []byte(`{"type":"object"}`),
 			ActionType:      tooldomain.ActionRead,
 			Enabled:         true,
@@ -47,7 +67,7 @@ func TestRun_SSRFAllowlist_AllowsSimEngineHostPort(t *testing.T) {
 			TimeoutBudgetDefaultMS: 10000,
 			TimeoutBudgetMinMS:     1000,
 			TimeoutBudgetMaxMS:     30000,
-			EgressAllowlist:        "sim-engine:8087",
+			EgressAllowlist:        "mock-tools:8081",
 			DisableSSRFProtection:  false,
 		},
 		zerolog.Nop(),
@@ -55,8 +75,8 @@ func TestRun_SSRFAllowlist_AllowsSimEngineHostPort(t *testing.T) {
 
 	resp, err := service.Run(context.Background(), orgID, gwdomain.RunRequest{
 		RequestID: "req-1",
-		ToolName:  "world.observe",
-		Input:     map[string]any{"org_id": orgID.String(), "run_id": "r1", "agent_id": "a1", "step_id": 0},
+		ToolName:  "echo",
+		Input:     map[string]any{"hello": "e2e"},
 		Context:   map[string]any{},
 	})
 	if err != nil {
@@ -100,7 +120,7 @@ func TestRun_SSRFAllowlist_BlocksPrivateHostNotAllowlisted(t *testing.T) {
 			TimeoutBudgetDefaultMS: 10000,
 			TimeoutBudgetMinMS:     1000,
 			TimeoutBudgetMaxMS:     30000,
-			EgressAllowlist:        "sim-engine:8087",
+			EgressAllowlist:        "mock-tools:8081",
 			DisableSSRFProtection:  false,
 		},
 		zerolog.Nop(),

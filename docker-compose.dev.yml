@@ -13,13 +13,6 @@ services:
       timeout: 10s
       retries: 60
 
-  sim-engine:
-    build:
-      context: ./sim-engine
-      dockerfile: Dockerfile.dev
-    volumes:
-      - ./sim-engine:/src
-
   mock-tools:
     build:
       context: ./nexus-core
@@ -28,7 +21,19 @@ services:
       - ./nexus-core:/src
     command: ["air", "-c", ".air-mock-tools.toml"]
 
-  nexus-operator:
+  nexus-control-operators:
+    build:
+      context: ./nexus-core
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./nexus-core:/src
+    command: ["go", "run", "./cmd/ops-workers"]
+
+  nexus-external-operators:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ./nexus-operator:/workspace/nexus-operator
+    networks:
+      default:
+        aliases:
+          - nexus-operator

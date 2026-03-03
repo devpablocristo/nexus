@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -34,7 +32,6 @@ import (
 	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
 	"nexus-core/internal/tool"
-	"nexus-core/internal/world"
 	ginmw "nexus-core/pkg/http/middlewares/gin"
 	ginserver "nexus-core/pkg/http/servers/gin"
 	"nexus-core/pkg/validations/jsonschema"
@@ -90,11 +87,6 @@ func NewRouter(
 	onboardGroup := r.Group("/v1")
 	orgH.Register(onboardGroup)
 
-	worldH := world.NewHandler(world.NewUsecases(world.Config{
-		BaseURL:     cfg.SimEngineBaseURL,
-		InternalKey: cfg.SimEngineInternalKey,
-		Timeout:     6 * time.Second,
-	}))
 	opsEventRepo := opseventstore.NewRepository(db)
 	opsEventSvc := opseventstore.NewUsecases(
 		opsEventRepo,
@@ -137,7 +129,6 @@ func NewRouter(
 	gwH.Register(v1)
 	secretH.Register(v1)
 	egressH.Register(v1)
-	worldH.Register(v1)
 	approvalH.Register(v1)
 	alertsH.Register(v1)
 	sessionH.Register(v1)

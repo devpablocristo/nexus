@@ -5,12 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
-    app_name: str = Field(default='nexus-operator', alias='OPERATOR_APP_NAME')
+    app_name: str = Field(default='nexus-external-operators', alias='OPERATOR_APP_NAME')
     app_env: str = Field(default='dev', alias='OPERATOR_ENV')
     app_port: int = Field(default=8000, alias='OPERATOR_PORT')
 
     core_base_url: str = Field(default='http://nexus-core:8080', alias='NEXUS_CORE_BASE_URL')
-    core_api_key: str = Field(default='nexus-operator-local-key', alias='NEXUS_CORE_API_KEY')
+    core_api_key: str = Field(default='nexus-external-operators-local-key', alias='NEXUS_CORE_API_KEY')
     core_timeout_seconds: float = Field(default=5.0, alias='NEXUS_CORE_TIMEOUT_SECONDS')
 
     poll_interval_seconds: int = Field(default=10, alias='OPERATOR_POLL_INTERVAL_SECONDS')

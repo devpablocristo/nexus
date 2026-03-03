@@ -37,12 +37,12 @@ func (m *mockProvider) Generate(_ context.Context, req ProviderRequest) (map[str
 					"scope": map[string]any{
 						"level":   "tool",
 						"org_id":  asString(req.Input["org_id"]),
-						"tool_id": "world.move",
+						"tool_id": "echo",
 					},
 					"ttl_seconds": 600,
 					"params": map[string]any{
 						"rpm":     180,
-						"tool_id": "world.move",
+						"tool_id": "echo",
 					},
 					"evidence_refs": []any{
 						"audit:req-1001",
@@ -86,12 +86,12 @@ func (m *mockProvider) Generate(_ context.Context, req ProviderRequest) (map[str
 				"scope": map[string]any{
 					"level":   "tool",
 					"org_id":  asString(req.Input["org_id"]),
-					"tool_id": "world.move",
+					"tool_id": "echo",
 				},
 				"ttl_seconds": 600,
 				"params": map[string]any{
 					"rpm":     200,
-					"tool_id": "world.move",
+					"tool_id": "echo",
 				},
 				"evidence_refs": []any{
 					"incident:latest",

@@ -8,28 +8,64 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 
 ---
 
-## Las 4 piezas
+## Las piezas
 
 1. **nexus-core**  
-   - Recibe pedidos de ejecución (`POST /v1/run`, MCP, A2A).  
-   - Valida auth, políticas, DLP, rate limits, circuit breaker, egress/SSRF.  
+   - Recibe pedidos de ejecución (`POST /v1/run`, MCP, A2A).
+   - Aplica controles síncronos del gateway: auth, políticas, DLP, rate limits, circuit breaker, egress/SSRF, idempotencia, timeout budget.
    - Puede requerir aprobación humana antes de ejecutar (HITL).
-   - Ejecuta la tool HTTP si todo pasa.  
-   - Audita cada intento (allow/deny) con hash-chain.
-   - Trackea sesiones de agente (calls, writes, denials).
-   - Evalúa reglas de alerta y dispara webhooks.
+   - Ejecuta la tool HTTP solo si todas las validaciones pasan.
+   - Audita cada intento (allow/deny/error) con hash-chain.
 
-2. **nexus-operator**  
-   - Lee eventos de core (`GET /v1/events`).  
-   - Si detecta muchas denegaciones (riesgo alto), aplica throttles, crea incidentes o propone políticas nuevas.
+2. **nexus-control-operators** (determinista, Go)  
+   - Plano de control interno: monitorea eventos y ejecuta respuestas deterministas.
+   - Workers activos: `sentry`, `coordinator`, `mitigation`, `recovery`.
+   - No forma parte del path síncrono de `/v1/run` (opera en background).
+   - Se despliega desde `nexus-core/cmd/ops-workers` como servicio separado en compose.
 
-3. **nexus-tower**  
-   - UI de supervisión: overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.  
-   - Incluye simulador "Door Jam" para probar agentes en un grid.
+3. **nexus-external-operators** (IA, Python)  
+   - Servicio externo de operadores con IA/ML (evolución del `nexus-operator` actual).
+   - Consume APIs de Nexus (sin acceso directo a DB).
+   - Objetivo: diagnóstico inteligente, policy suggestions, automaciones asistidas por IA.
+   - Debe invocar herramientas de control y no aplicar cambios críticos fuera de controles deterministas.
 
-4. **SDKs** (Python + TypeScript)
+4. **nexus-tower**  
+   - UI de supervisión: overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.
+
+5. **SDKs** (Python + TypeScript)
    - Clientes tipados para toda la API.
    - Integraciones: LangChain (`NexusTool`, `NexusToolkit`), OpenAI Agents SDK (`nexus_function_tools`).
+
+---
+
+## Flujo de request (POST /v1/run)
+
+El pipeline completo solo aplica a `POST /v1/run` y `POST /v1/run/simulate`. Otras rutas pasan por auth y su handler directo.
+
+1. **Auth** — Identifica org, actor y permisos (API key o JWT).
+2. **Tool lookup** — Busca la tool por nombre en la org.
+3. **Idempotencia** — Para writes, comprueba si ya se procesó esa key.
+4. **Validación** — Context, DLP (PII) y schema del input.
+5. **Políticas** — Evalúa condiciones (first-match) y decide allow/deny.
+6. **Approval (HITL)** — Si la política exige aprobación humana, bloquea hasta que se apruebe.
+7. **Controles** — Rate limits, egress (hosts permitidos), secrets, action overrides (operator).
+8. **Ejecución** — Si allow y no requiere approval: llama por HTTP al upstream (respetando timeout budget).
+9. **Respuesta** — Valida output schema, escribe auditoría y devuelve el resultado.
+
+### Timeout budget
+
+Hay un presupuesto de tiempo que se consume en el pipeline. Si se agota antes de ejecutar, la request se bloquea con timeout.
+
+### Rutas públicas (sin auth)
+
+- **OIDC** (`/v1/oidc/*`) — Punto de entrada para login OAuth2.
+- **Onboarding** (`POST /v1/orgs`) — Crear org y API key inicial.
+
+El resto de rutas bajo `/v1` requieren auth.
+
+### Demo: echo y mock-tools
+
+En local, el seed crea el tool **echo** que apunta a `http://mock-tools:8081/echo`. **mock-tools** es un servicio HTTP de prueba (en docker-compose) que emula un upstream real: recibe el JSON y lo devuelve. Sirve para probar el flujo sin servicios externos.
 
 ---
 
@@ -181,7 +217,6 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 | `/v1/assistant/query` | POST | Consulta al asistente |
 | `/mcp` | POST | Model Context Protocol (JSON-RPC) |
 | `/a2a/call` | POST | Agent-to-Agent |
-| `/v1/world/*` | GET/POST | Sim engine (Door Jam) |
 
 ---
 
@@ -196,7 +231,7 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 | `cmd/config` | Carga de configuración desde env (DB, HTTP, auth, OIDC, circuit breaker, etc.) |
 | `cmd/migrate` | Ejecución de migraciones SQL |
 | `cmd/mock-tools` | Servidor mock de tools para pruebas |
-| `cmd/ops-workers` | Proceso que ejecuta los agentes (sentry, diagnostician, comms, etc.) |
+| `cmd/ops-workers` | Proceso del servicio `nexus-control-operators` (workers deterministas: sentry, coordinator, mitigation, recovery) |
 
 ### 2. `internal/` — Módulos por dominio
 
@@ -274,12 +309,16 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 |------------|-----------------|
 | `internal/agents/sentry` | Detección de anomalías (EWMA, baselines) |
 | `internal/agents/coordinator` | Orquestación de incidentes y cooldown |
-| `internal/agents/diagnostician` | Diagnóstico con LLM (root cause, acciones sugeridas) |
 | `internal/agents/mitigation` | Aplicación de acciones recomendadas |
 | `internal/agents/recovery` | Verificación y rollback automático |
-| `internal/agents/comms` | Borradores de comunicación con LLM |
-| `internal/agents/executive_qa` | Q&A para operadores con LLM |
+| `internal/agents/diagnostician` | Diagnóstico con LLM (actualmente en core; objetivo de migración a external operators) |
+| `internal/agents/comms` | Borradores de comunicación con LLM (objetivo de migración a external operators) |
+| `internal/agents/executive_qa` | Q&A para operadores con LLM (objetivo de migración a external operators) |
 | `internal/agents/runtime` | Tests E2E del flujo de agentes |
+
+**Frontera objetivo de arquitectura:**
+- **Control operators (determinista):** sentry, coordinator, mitigation, recovery.
+- **External operators (IA):** diagnostician, comms, executive_qa (vía servicio Python).
 
 #### Otros módulos
 
@@ -290,7 +329,6 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 | `internal/org` | Organizaciones (multi-tenant) + onboarding (`POST /v1/orgs`) |
 | `internal/mcp` | Endpoint MCP JSON-RPC (`tools/list`, `tools/call`) |
 | `internal/a2a` | Protocolo Agent-to-Agent |
-| `internal/world` | Integración con sim-engine (observe, move) |
 | `internal/shared/authz` | Permisos y scopes por endpoint |
 | `internal/shared/handlers` | Middleware de auth (API key, JWT) |
 

@@ -1,13 +1,10 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -115,8 +112,6 @@ type Config struct {
 	HTTPRetries                 int
 	DisableSSRFProtection       bool
 	EgressAllowlist             string
-	SimEngineBaseURL            string
-	SimEngineInternalKey        string
 }
 
 // runState agrupa el estado compartido del pipeline Run entre las funciones auxiliares.
@@ -795,7 +790,6 @@ func (u *Usecases) blocked(ctx context.Context, orgID uuid.UUID, actor, role *st
 		Int64("latency_ms", latency).
 		Str("error_code", code).
 		Msg("run_blocked")
-	u.emitWorldEnforcementEvent(ctx, orgID, requestID, toolName, code, policyID, reason, input)
 	annotateRunSpan(ctx, orgID, input, toolName, requestID, "deny", policyID)
 	u.observeRun(ctx, toolName, string(gwdomain.DecisionDeny), string(gwdomain.RunStatusBlocked), time.Duration(latency)*time.Millisecond)
 	return gwdomain.RunResponse{
@@ -810,75 +804,6 @@ func (u *Usecases) blocked(ctx context.Context, orgID uuid.UUID, actor, role *st
 		HTTPStatus:  httpStatus,
 		Idempotency: idem,
 	}
-}
-
-func (u *Usecases) emitWorldEnforcementEvent(ctx context.Context, orgID uuid.UUID, requestID, toolName, code string, policyID *uuid.UUID, reason string, input map[string]any) {
-	if !strings.HasPrefix(toolName, "world.") {
-		return
-	}
-	baseURL := strings.TrimRight(strings.TrimSpace(u.cfg.SimEngineBaseURL), "/")
-	if baseURL == "" {
-		return
-	}
-	runID := strings.TrimSpace(asString(input["run_id"]))
-	if runID == "" {
-		return
-	}
-	eventType := ""
-	switch code {
-	case types.ErrCodePolicyDenied:
-		eventType = "tool.denied"
-	case types.ErrCodeRateLimited:
-		eventType = "tool.rate_limited"
-	default:
-		return
-	}
-	agentID := strings.TrimSpace(asString(input["agent_id"]))
-	orgIDStr := strings.TrimSpace(asString(input["org_id"]))
-	if orgIDStr == "" {
-		orgIDStr = orgID.String()
-	}
-	stepID := toInt64Any(input["step_id"])
-	payload := map[string]any{
-		"org_id":     orgIDStr,
-		"run_id":     runID,
-		"step_id":    stepID,
-		"agent_id":   agentID,
-		"tool_name":  toolName,
-		"request_id": requestID,
-		"event_type": eventType,
-		"detail":     reason,
-	}
-	if eventType == "tool.rate_limited" {
-		payload["bucket"] = "org+tool"
-	}
-	if policyID != nil {
-		payload["policy_id"] = policyID.String()
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return
-	}
-	upstreamCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-	defer cancel()
-	req, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, baseURL+"/admin/run/enforcement", bytes.NewReader(raw))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	if strings.TrimSpace(requestID) != "" {
-		req.Header.Set("X-Nexus-Request-Id", requestID)
-	}
-	if strings.TrimSpace(u.cfg.SimEngineInternalKey) != "" {
-		req.Header.Set("X-Sim-Engine-Internal-Key", u.cfg.SimEngineInternalKey)
-	}
-	resp, err := (&http.Client{Timeout: 1500 * time.Millisecond}).Do(req)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 }
 
 func asString(v any) string {
@@ -1054,34 +979,3 @@ func (u *Usecases) errorRun(ctx context.Context, orgID uuid.UUID, req gwdomain.R
 	}
 }
 
-func (u *Usecases) isSimEngineToolURL(rawToolURL string) bool {
-	toolHostPort, ok := normalizedHostPort(rawToolURL)
-	if !ok {
-		return false
-	}
-	worldHostPort, ok := normalizedHostPort(u.cfg.SimEngineBaseURL)
-	if !ok {
-		return false
-	}
-	return strings.EqualFold(toolHostPort, worldHostPort)
-}
-
-func normalizedHostPort(rawURL string) (string, bool) {
-	u, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || u.Hostname() == "" {
-		return "", false
-	}
-	host := strings.ToLower(u.Hostname())
-	port := u.Port()
-	if port == "" {
-		switch strings.ToLower(u.Scheme) {
-		case "http":
-			port = "80"
-		case "https":
-			port = "443"
-		default:
-			return "", false
-		}
-	}
-	return host + ":" + port, true
-}

@@ -1,14 +1,13 @@
 SHELL := /bin/bash
 
 CORE_DIR := nexus-core
-OPERATOR_DIR := nexus-operator
+EXTERNAL_OPERATORS_DIR := nexus-operator
 TOWER_DIR := nexus-tower
-SIM_ENGINE_DIR := sim-engine
 CORE_SERVICE := nexus-core
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test operator-test tower-test tower-qa qa e2e jwt-e2e quickstart-admin \
-	core-dev operator-dev tower-dev qa-sim-engine migrate-sim-engine demo-doorjam replay reset-nexus logs-tail \
+	core-dev control-dev operator-dev external-operators-dev tower-dev reset-nexus logs-tail \
 	sdk-test-python sdk-test
 
 up:
@@ -35,10 +34,6 @@ migrate-up:
 migrate-down:
 	docker compose exec -T $(CORE_SERVICE) /app/migrate -cmd down -steps 1
 
-migrate-sim-engine:
-	@docker compose up -d --wait postgres
-	docker compose exec -T postgres psql -U postgres -d nexus < sim-engine/migrations/0001_sim_engine.up.sql
-
 cleanup-idempotency:
 	docker compose exec -T $(CORE_SERVICE) /app/cleanup-idempotency
 
@@ -51,7 +46,7 @@ core-test:
 	cd $(CORE_DIR) && go test ./...
 
 operator-test:
-	cd $(OPERATOR_DIR) && \
+	cd $(EXTERNAL_OPERATORS_DIR) && \
 		if [ ! -d .venv ]; then python3 -m venv .venv; fi && \
 		. .venv/bin/activate && \
 		if ! python -c "import importlib.util,sys;mods=['fastapi','httpx','pydantic','pytest'];sys.exit(0 if all(importlib.util.find_spec(m) for m in mods) else 1)"; then \
@@ -86,26 +81,12 @@ qa:
 	$(MAKE) operator-test
 	$(MAKE) tower-qa
 
-qa-sim-engine:
-	cd $(SIM_ENGINE_DIR) && GOCACHE=/tmp/go-build GOMODCACHE=/home/pablo/go/pkg/mod GOPROXY=off GOSUMDB=off go test ./...
-	cd $(CORE_DIR) && GOCACHE=/tmp/go-build go test ./internal/world ./internal/gateway ./pkg/utils -run 'TestHandler_|TestServiceListRuns_|TestRun_SSRFAllowlist_|TestRun_SimEngineInternalHeaders|TestRun_NonSimEngineDoesNotGetInternalKey|TestValidateEgressURLWithAllowlist|TestRun_WorldPolicyDenied_EmitsEnforcementEvent|TestRun_WorldRateLimited_EmitsEnforcementEvent'
-
-demo-doorjam:
-	$(MAKE) migrate-sim-engine
-	bash scripts/seed_sim_engine_demo.sh
-	python scripts/demo_doorjam.py
-
-replay:
-	@if [ -z "$(RUN_ID)" ]; then echo "RUN_ID is required. Usage: make replay RUN_ID=<run-id>"; exit 1; fi
-	python scripts/replay_sim_engine.py --run-id "$(RUN_ID)"
-
 reset-nexus:
 	$(MAKE) clean
 	$(MAKE) build
 	$(MAKE) up
 	$(MAKE) migrate-up
 	$(MAKE) seed
-	$(MAKE) demo-doorjam
 	$(MAKE) logs-tail
 
 e2e:
@@ -125,7 +106,12 @@ core-dev:
 	cd $(CORE_DIR) && go run ./cmd/api
 
 operator-dev:
-	cd $(OPERATOR_DIR) && . .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000
+	cd $(EXTERNAL_OPERATORS_DIR) && . .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+external-operators-dev: operator-dev
+
+control-dev:
+	cd $(CORE_DIR) && go run ./cmd/ops-workers
 
 tower-dev:
 	cd $(TOWER_DIR) && npm run dev

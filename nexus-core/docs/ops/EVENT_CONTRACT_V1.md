@@ -76,9 +76,9 @@ Cada evento se valida en dos pasos:
   },
   "source": "agents.sentry",
   "payload": {
-    "fingerprint": "fp:org:world.move:error_rate",
+    "fingerprint": "fp:org:echo:error_rate",
     "signal": "error_rate_spike",
-    "tool_name": "world.move",
+    "tool_name": "echo",
     "window_size": 50,
     "observed_value": 0.68,
     "threshold_value": 0.35,
@@ -110,8 +110,8 @@ Cada evento se valida en dos pasos:
     "severity": "HIGH",
     "state": "OPEN",
     "title": "Tool error-rate spike",
-    "summary": "Error-rate de world.move por encima de baseline",
-    "fingerprint": "fp:org:world.move:error_rate"
+    "summary": "Error-rate de echo por encima de baseline",
+    "fingerprint": "fp:org:echo:error_rate"
   }
 }
 ```
@@ -141,7 +141,7 @@ Cada evento se valida en dos pasos:
     "scope": {
       "level": "tool",
       "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54",
-      "tool_id": "world.move"
+      "tool_id": "echo"
     },
     "ttl_seconds": 600
   }

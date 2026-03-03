@@ -24,7 +24,7 @@ done
 # Fixed keys for local dev.
 # Keep these stable so local environments are deterministic.
 API_KEY="nexus-core-local-key"
-OPERATOR_API_KEY="nexus-operator-local-key"
+OPERATOR_API_KEY="nexus-external-operators-local-key"
 
 API_KEY_HASH="$(
 API_KEY="$API_KEY" python3 - <<'PY'

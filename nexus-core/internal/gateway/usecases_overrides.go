@@ -132,8 +132,5 @@ func (u *Usecases) resolveSecrets(ctx context.Context, orgID uuid.UUID, st *runS
 		}
 	}
 	st.headers["X-Nexus-Request-Id"] = st.requestID
-	if strings.TrimSpace(u.cfg.SimEngineInternalKey) != "" && u.isSimEngineToolURL(st.tool.URL) {
-		st.headers["X-Sim-Engine-Internal-Key"] = u.cfg.SimEngineInternalKey
-	}
 	return nil
 }

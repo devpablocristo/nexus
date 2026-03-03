@@ -33,7 +33,7 @@ func TestSentryWorker_EmitsAnomalyAndIncident(t *testing.T) {
 			EventType:  "tool_call.finished",
 			OccurredAt: time.Now().UTC(),
 			Payload: map[string]any{
-				"tool_name": "world.move",
+				"tool_name": "echo",
 				"status":    "error",
 			},
 		},
@@ -75,7 +75,7 @@ func TestSentryWorker_ConsumesPolicyQuotaAndDegradedSignals(t *testing.T) {
 				EventType:  "policy.denied",
 				OccurredAt: time.Now().UTC(),
 				Payload: map[string]any{
-					"tool_name": "world.move",
+					"tool_name": "echo",
 					"policy_id": "policy.low_rate",
 				},
 			},
@@ -87,8 +87,8 @@ func TestSentryWorker_ConsumesPolicyQuotaAndDegradedSignals(t *testing.T) {
 				EventType:  "quota.exceeded",
 				OccurredAt: time.Now().UTC(),
 				Payload: map[string]any{
-					"tool_name": "world.move",
-					"bucket":    "org:world.move",
+					"tool_name": "echo",
+					"bucket":    "org:echo",
 				},
 			},
 		},
@@ -99,7 +99,7 @@ func TestSentryWorker_ConsumesPolicyQuotaAndDegradedSignals(t *testing.T) {
 				EventType:  "tool_degraded",
 				OccurredAt: time.Now().UTC(),
 				Payload: map[string]any{
-					"tool_name":        "world.move",
+					"tool_name":        "echo",
 					"degradation_type": "p95_latency",
 					"p95_latency_ms":   1800,
 				},

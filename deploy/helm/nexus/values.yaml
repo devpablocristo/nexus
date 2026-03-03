@@ -296,8 +296,8 @@ secrets:
   NEXUS_OPERATOR_INTERNAL_KEY: "operator-internal-key"
   OPERATOR_INTERNAL_KEY: "operator-internal-key"
   # API keys
-  NEXUS_CORE_API_KEY: "nexus-operator-local-key"
-  NEXUS_OPERATOR_API_KEY: "nexus-operator-local-key"
+  NEXUS_CORE_API_KEY: "nexus-external-operators-local-key"
+  NEXUS_OPERATOR_API_KEY: "nexus-external-operators-local-key"
   # Anthropic key for operator LLM features
   ANTHROPIC_API_KEY: ""
   # Tower build-time keys baked into the SPA - override via image build args

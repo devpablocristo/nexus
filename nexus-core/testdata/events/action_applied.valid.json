@@ -15,7 +15,7 @@
     "proposal_id": "5791f5df-0fda-4119-8fe9-643d7c983a5d",
     "action_id": "82f62307-4127-41fa-a1d1-b38031e3a465",
     "action_type": "set_rate_limit",
-    "scope": {"level": "tool", "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54", "tool_id": "world.move"},
+    "scope": {"level": "tool", "org_id": "996e9e43-7bab-4e68-a831-0a766befbf54", "tool_id": "echo"},
     "ttl_seconds": 600
   }
 }
