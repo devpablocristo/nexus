@@ -12,7 +12,7 @@ BASE="http://localhost:${NEXUS_HTTP_PORT:-8080}"
 : "${NEXUS_API_KEY:?Set NEXUS_API_KEY from seed output}"
 
 hdr() { printf "\n=== %s ===\n" "$1"; }
-acurl() { curl -sS -H "X-NEXUS-GATEWAY-KEY: ${NEXUS_API_KEY}" "$@"; }
+acurl() { curl -sS -H "X-NEXUS-CORE-KEY: ${NEXUS_API_KEY}" "$@"; }
 
 # 1) Health check
 hdr "1. Health check"

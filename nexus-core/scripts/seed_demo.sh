@@ -23,7 +23,7 @@ done
 
 # Fixed keys for local dev.
 # Keep these stable so local environments are deterministic.
-API_KEY="nexus-tower-local-key"
+API_KEY="nexus-core-local-key"
 OPERATOR_API_KEY="nexus-operator-local-key"
 
 API_KEY_HASH="$(

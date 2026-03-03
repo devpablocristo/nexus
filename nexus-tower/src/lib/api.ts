@@ -19,7 +19,7 @@ const scopes = import.meta.env.VITE_NEXUS_SCOPES || 'admin:console:read,admin:co
 
 const baseHeaders: HeadersInit = {
   'Content-Type': 'application/json',
-  'X-NEXUS-GATEWAY-KEY': apiKey,
+  'X-NEXUS-CORE-KEY': apiKey,
   'X-NEXUS-SCOPES': scopes,
   'X-NEXUS-ACTOR': 'tower/ui',
 };

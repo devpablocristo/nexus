@@ -31,7 +31,7 @@ fi
 echo "[4/5] Configure egress for demo tools"
 for tool in echo transfer; do
   curl -sS -o /dev/null -w "${tool} -> HTTP %{http_code}\n" \
-    -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" \
+    -H "X-NEXUS-CORE-KEY: ${API_KEY}" \
     -H "Content-Type: application/json" \
     -d '{"host":"mock-tools","enabled":true}' \
     "${BASE}/v1/tools/${tool}/egress-rules"
@@ -40,31 +40,31 @@ done
 echo "[5/5] Validate REST + MCP + A2A + Admin bootstrap"
 echo "RBAC check: /v1/tools without scope must be 403"
 RBAC_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
-  -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" \
+  -H "X-NEXUS-CORE-KEY: ${API_KEY}" \
   "${BASE}/v1/tools")
 if [[ "$RBAC_CODE" != "403" ]]; then
   echo "Expected 403 without scope, got ${RBAC_CODE}" >&2
   exit 1
 fi
 
-curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" \
+curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" \
   -H "X-NEXUS-ROLE: admin" \
   -H "X-NEXUS-SCOPES: admin:console:read,admin:console:write,admin:secrets" \
   "${BASE}/v1/admin/bootstrap" | jq
 
-curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" \
+curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" \
   -H "X-NEXUS-SCOPES: gateway:run" \
   -H "Content-Type: application/json" \
   -d '{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"u_1"}}' \
   "${BASE}/v1/run" | jq
 
-curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" \
+curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" \
   -H "X-NEXUS-SCOPES: mcp:read" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
   "${BASE}/mcp" | jq
 
-curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" \
+curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" \
   -H "X-NEXUS-SCOPES: a2a:call" \
   -H "Content-Type: application/json" \
   -d '{"tool_name":"echo","input":{"hello":"a2a"},"context":{"user_id":"u_1"}}' \

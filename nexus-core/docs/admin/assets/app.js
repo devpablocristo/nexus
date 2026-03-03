@@ -6,7 +6,7 @@
 
   function headers(json) {
     const h = {
-      "X-NEXUS-GATEWAY-KEY": $("apiKey").value.trim(),
+      "X-NEXUS-CORE-KEY": $("apiKey").value.trim(),
       "X-NEXUS-ACTOR": $("actor").value.trim(),
       "X-NEXUS-ROLE": $("role").value.trim(),
       "X-NEXUS-SCOPES": $("scopes").value.trim()

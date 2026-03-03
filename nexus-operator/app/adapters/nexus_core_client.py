@@ -64,7 +64,7 @@ class NexusCoreClient:
         json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         headers = {
-            'X-NEXUS-GATEWAY-KEY': self._api_key,
+            'X-NEXUS-CORE-KEY': self._api_key,
             'X-NEXUS-SCOPES': ','.join(scopes),
             'X-NEXUS-ACTOR': actor,
             'Content-Type': 'application/json',

@@ -17,7 +17,7 @@ class NexusCoreClient:
     def _headers(self, scopes: list[str] | None = None) -> dict[str, str]:
         resolved_scopes = scopes or self.scopes
         headers = {
-            "X-NEXUS-GATEWAY-KEY": self.api_key,
+            "X-NEXUS-CORE-KEY": self.api_key,
             "X-NEXUS-ACTOR": self.actor,
             "X-NEXUS-SCOPES": ",".join(resolved_scopes),
             "Content-Type": "application/json",

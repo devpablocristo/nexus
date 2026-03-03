@@ -5,7 +5,7 @@ info:
   description: |
     Multi-tenant Agent Tool Gateway for controlled tool execution.
 
-    Authentication supports API key (`X-NEXUS-GATEWAY-KEY`) and optional JWT bearer mode (`Authorization: Bearer`) when enabled by feature flags.
+    Authentication supports API key (`X-NEXUS-CORE-KEY`) and optional JWT bearer mode (`Authorization: Bearer`) when enabled by feature flags.
 
     Idempotency semantics for `POST /v1/run` on WRITE tools:
     - Same `Idempotency-Key` + same request fingerprint + `COMPLETED` => replay cached success.
@@ -1438,7 +1438,7 @@ components:
     NexusApiKey:
       type: apiKey
       in: header
-      name: X-NEXUS-GATEWAY-KEY
+      name: X-NEXUS-CORE-KEY
       description: Tenant API key (stored hashed in DB).
     BearerAuth:
       type: http

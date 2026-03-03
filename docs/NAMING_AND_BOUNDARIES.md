@@ -10,7 +10,7 @@
 ## Stable Compatibility
 
 - Existing REST/MCP endpoint paths are unchanged.
-- Existing auth headers remain (`X-NEXUS-GATEWAY-KEY`, etc.).
+- Existing auth headers remain (`X-NEXUS-CORE-KEY`, etc.).
 
 ## Explicit Non-Renames (for safety)
 

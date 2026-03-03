@@ -18,7 +18,7 @@ def call(core_url: str, api_key: str, scopes: str, actor: str, run_id: str, time
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "X-NEXUS-GATEWAY-KEY": api_key,
+            "X-NEXUS-CORE-KEY": api_key,
             "X-NEXUS-SCOPES": scopes,
             "X-NEXUS-ACTOR": actor,
         },
@@ -40,7 +40,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Replay one sim-engine run through nexus-core.")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--core-url", default=os.getenv("NEXUS_CORE_URL", "http://localhost:8080"))
-    parser.add_argument("--api-key", default=os.getenv("NEXUS_DEMO_API_KEY", "nexus-tower-local-key"))
+    parser.add_argument("--api-key", default=os.getenv("NEXUS_DEMO_API_KEY", "nexus-core-local-key"))
     parser.add_argument("--scopes", default=os.getenv("NEXUS_SCOPES", "admin:console:write,admin:console:read"))
     parser.add_argument("--actor", default="tower/world-replay")
     parser.add_argument("--timeout", type=float, default=15.0)

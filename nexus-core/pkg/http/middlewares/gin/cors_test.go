@@ -14,14 +14,14 @@ func TestCORSPreflightAllowedOrigin(t *testing.T) {
 	r.Use(CORS(
 		"http://localhost:5173",
 		"GET,POST,OPTIONS",
-		"X-NEXUS-GATEWAY-KEY,Content-Type",
+		"X-NEXUS-CORE-KEY,Content-Type",
 	))
 	r.GET("/v1/events", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodOptions, "/v1/events", nil)
 	req.Header.Set("Origin", "http://localhost:5173")
 	req.Header.Set("Access-Control-Request-Method", "GET")
-	req.Header.Set("Access-Control-Request-Headers", "X-NEXUS-GATEWAY-KEY")
+	req.Header.Set("Access-Control-Request-Headers", "X-NEXUS-CORE-KEY")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -39,7 +39,7 @@ func TestCORSPreflightRejectedOrigin(t *testing.T) {
 	r.Use(CORS(
 		"http://localhost:5173",
 		"GET,POST,OPTIONS",
-		"X-NEXUS-GATEWAY-KEY,Content-Type",
+		"X-NEXUS-CORE-KEY,Content-Type",
 	))
 	r.GET("/v1/events", func(c *gin.Context) { c.Status(http.StatusOK) })
 

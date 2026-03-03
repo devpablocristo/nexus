@@ -144,7 +144,7 @@ assert_jq "$H" '.ok == true'
 echo "[e2e] /openapi.yaml contains gateway header"
 SPEC="$(curl -fsS "${HTTP_BASE}/openapi.yaml")"
 echo "$SPEC" | match "openapi:" >/dev/null || fail "openapi.yaml missing openapi:"
-echo "$SPEC" | match "X-NEXUS-GATEWAY-KEY" >/dev/null || fail "openapi.yaml missing X-NEXUS-GATEWAY-KEY"
+echo "$SPEC" | match "X-NEXUS-CORE-KEY" >/dev/null || fail "openapi.yaml missing X-NEXUS-CORE-KEY"
 
 echo "[e2e] /docs returns html"
 DOCS="$(curl -fsS "${HTTP_BASE}/docs")"
@@ -159,11 +159,11 @@ assert_jq "$U_BODY" '.error.code == "UNAUTHORIZED"'
 assert_jq "$U_BODY" '.error.message | type=="string" and length>0'
 
 auth_curl() {
-  curl -fsS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" "$@"
+  curl -fsS -H "X-NEXUS-CORE-KEY: ${API_KEY}" "$@"
 }
 
 auth_curl_no_fail() {
-  curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" "$@"
+  curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" "$@"
 }
 
 post_json() {
@@ -182,7 +182,7 @@ post_json_with_role() {
   local url="$1"
   local payload="$2"
   local role="$3"
-  curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "X-NEXUS-ROLE: ${role}" -H "Content-Type: application/json" -d "$payload" -w "\n%{http_code}" "$url"
+  curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "X-NEXUS-ROLE: ${role}" -H "Content-Type: application/json" -d "$payload" -w "\n%{http_code}" "$url"
 }
 
 echo "[e2e] setup egress rules (default-deny requires explicit allowlist)"
@@ -339,7 +339,7 @@ assert_jq "$RUN_DLP_DENY_BODY" '.error.code=="POLICY_DENIED"'
 
 echo "[e2e] run transfer allowed with idempotency key"
 IDK="idem-$(date +%s)"
-RUN_OK="$(curl -fsS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
+RUN_OK="$(curl -fsS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
 assert_jq "$RUN_OK" '.decision == "allow"'
 assert_jq "$RUN_OK" '.tool_name == "transfer"'
 assert_jq "$RUN_OK" '.status == "success"'
@@ -348,13 +348,13 @@ assert_jq "$RUN_OK" '.result.amount == 500'
 assert_jq "$RUN_OK" '.result.tx_id | type=="string" and length>0'
 
 echo "[e2e] idempotency replay (same key, same payload)"
-RUN_REPLAY="$(curl -fsS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
+RUN_REPLAY="$(curl -fsS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":500},"context":{"user_id":"u_1","token":"secret"}}' "${HTTP_BASE}/v1/run")"
 assert_jq "$RUN_REPLAY" '.idempotency.outcome=="REPLAY" and .status=="success"'
 TRANS_STATS="$(curl -fsS "${MOCK_BASE}/_stats/transfer")"
 assert_jq "$TRANS_STATS" '.execution_count == 1'
 
 echo "[e2e] idempotency conflict (same key, different input)"
-RUN_CONFLICT_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_CONFLICT_WITH_CODE="$(curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: ${IDK}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
 RUN_CONFLICT_BODY="$(echo "$RUN_CONFLICT_WITH_CODE" | head -n1)"
 RUN_CONFLICT_CODE="$(echo "$RUN_CONFLICT_WITH_CODE" | tail -n1)"
 [[ "$RUN_CONFLICT_CODE" == "409" ]] || fail "expected 409 got ${RUN_CONFLICT_CODE} body=$RUN_CONFLICT_BODY"
@@ -362,9 +362,9 @@ assert_jq "$RUN_CONFLICT_BODY" '.error.code=="IDEMPOTENCY_KEY_CONFLICT" or .stat
 
 echo "[e2e] idempotency in-progress"
 INPROG_KEY="idem-inprog-$(date +%s)"
-curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${INPROG_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":501,"sleep_ms":1500},"context":{"user_id":"u_1"}}' "${HTTP_BASE}/v1/run" >/tmp/inprog_first.json &
+curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: ${INPROG_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":501,"sleep_ms":1500},"context":{"user_id":"u_1"}}' "${HTTP_BASE}/v1/run" >/tmp/inprog_first.json &
 sleep 0.2
-RUN_INPROG_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${INPROG_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":501,"sleep_ms":1500},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_INPROG_WITH_CODE="$(curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: ${INPROG_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":501,"sleep_ms":1500},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
 RUN_INPROG_BODY="$(echo "$RUN_INPROG_WITH_CODE" | head -n1)"
 RUN_INPROG_CODE="$(echo "$RUN_INPROG_WITH_CODE" | tail -n1)"
 [[ "$RUN_INPROG_CODE" == "409" ]] || fail "expected 409 got ${RUN_INPROG_CODE} body=$RUN_INPROG_BODY"
@@ -372,7 +372,7 @@ assert_jq "$RUN_INPROG_BODY" '.error.code=="IDEMPOTENCY_IN_PROGRESS" or .status=
 wait
 
 echo "[e2e] timeout budget exceeded"
-RUN_TIMEOUT_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: idem-timeout-$(date +%s)" -H "X-Timeout-Ms: 1000" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":510,"sleep_ms":2500},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_TIMEOUT_WITH_CODE="$(curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: idem-timeout-$(date +%s)" -H "X-Timeout-Ms: 1000" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":510,"sleep_ms":2500},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
 RUN_TIMEOUT_BODY="$(echo "$RUN_TIMEOUT_WITH_CODE" | head -n1)"
 RUN_TIMEOUT_CODE="$(echo "$RUN_TIMEOUT_WITH_CODE" | tail -n1)"
 [[ "$RUN_TIMEOUT_CODE" == "408" ]] || fail "expected 408 got ${RUN_TIMEOUT_CODE} body=$RUN_TIMEOUT_BODY"
@@ -381,13 +381,13 @@ assert_jq "$RUN_TIMEOUT_BODY" '.error.code=="TIMEOUT_BUDGET_EXCEEDED" or .status
 echo "[e2e] idempotency failed is terminal (same key -> replay same error)"
 FAIL_KEY="idem-failed-$(date +%s)"
 TRANS_BEFORE="$(curl -fsS "${MOCK_BASE}/_stats/transfer" | jq -r '.execution_count')"
-RUN_FAIL_1_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${FAIL_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700,"force_5xx":true},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_FAIL_1_WITH_CODE="$(curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: ${FAIL_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700,"force_5xx":true},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
 RUN_FAIL_1_BODY="$(echo "$RUN_FAIL_1_WITH_CODE" | head -n1)"
 RUN_FAIL_1_CODE="$(echo "$RUN_FAIL_1_WITH_CODE" | tail -n1)"
 [[ "$RUN_FAIL_1_CODE" == "502" ]] || fail "expected 502 got ${RUN_FAIL_1_CODE} body=$RUN_FAIL_1_BODY"
 assert_jq "$RUN_FAIL_1_BODY" '.status=="error" and .error.code=="UPSTREAM_5XX"'
 TRANS_AFTER_FIRST="$(curl -fsS "${MOCK_BASE}/_stats/transfer" | jq -r '.execution_count')"
-RUN_FAIL_2_WITH_CODE="$(curl -sS -H "X-NEXUS-GATEWAY-KEY: ${API_KEY}" -H "Idempotency-Key: ${FAIL_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700,"force_5xx":true},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
+RUN_FAIL_2_WITH_CODE="$(curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Idempotency-Key: ${FAIL_KEY}" -H "Content-Type: application/json" -d '{"tool_name":"transfer","input":{"amount":700,"force_5xx":true},"context":{"user_id":"u_1"}}' -w "\n%{http_code}" "${HTTP_BASE}/v1/run")"
 RUN_FAIL_2_BODY="$(echo "$RUN_FAIL_2_WITH_CODE" | head -n1)"
 RUN_FAIL_2_CODE="$(echo "$RUN_FAIL_2_WITH_CODE" | tail -n1)"
 [[ "$RUN_FAIL_2_CODE" == "502" ]] || fail "expected replay 502 got ${RUN_FAIL_2_CODE} body=$RUN_FAIL_2_BODY"

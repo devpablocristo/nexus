@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	HeaderAPIKey = "X-NEXUS-GATEWAY-KEY"
+	HeaderAPIKey = "X-NEXUS-CORE-KEY"
 	HeaderActor  = "X-NEXUS-ACTOR"
 	HeaderRole   = "X-NEXUS-ROLE"
 	HeaderScopes = "X-NEXUS-SCOPES"

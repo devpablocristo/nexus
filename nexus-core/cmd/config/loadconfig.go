@@ -117,7 +117,7 @@ func Load() (Config, error) {
 	cfg.Service.LLMCloudAPIKey = mustStrDefault("NEXUS_LLM_CLOUD_API_KEY", "")
 	cfg.Service.CORSAllowedOrigins = mustStrDefault("NEXUS_CORS_ALLOWED_ORIGINS", "")
 	cfg.Service.CORSAllowedMethods = mustStrDefault("NEXUS_CORS_ALLOWED_METHODS", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-	cfg.Service.CORSAllowedHeaders = mustStrDefault("NEXUS_CORS_ALLOWED_HEADERS", "Authorization,Content-Type,X-NEXUS-GATEWAY-KEY,X-NEXUS-SCOPES,X-NEXUS-ACTOR,Idempotency-Key,X-Timeout-Ms")
+	cfg.Service.CORSAllowedHeaders = mustStrDefault("NEXUS_CORS_ALLOWED_HEADERS", "Authorization,Content-Type,X-NEXUS-CORE-KEY,X-NEXUS-SCOPES,X-NEXUS-ACTOR,Idempotency-Key,X-Timeout-Ms")
 
 	// OIDC/SSO
 	cfg.Service.OIDCEnabled = mustBoolDefault("NEXUS_OIDC_ENABLED", false)

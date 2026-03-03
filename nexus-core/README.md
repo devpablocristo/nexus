@@ -66,6 +66,6 @@ Docs and UI:
 
 ## API Stability
 
-- HTTP API headers remain stable (`X-NEXUS-GATEWAY-KEY`, etc.).
+- HTTP API headers remain stable (`X-NEXUS-CORE-KEY`, etc.).
 - Existing REST/MCP endpoints are unchanged.
 

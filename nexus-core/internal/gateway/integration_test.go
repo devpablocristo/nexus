@@ -186,7 +186,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 	egressBody, _ := json.Marshal(map[string]any{"host": mockURL.Hostname()})
 	egressReq := httptest.NewRequest(http.MethodPost, "/v1/tools/transfer/egress-rules", bytes.NewReader(egressBody))
 	egressReq.Header.Set("Content-Type", "application/json")
-	egressReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	egressReq.Header.Set("X-NEXUS-CORE-KEY", apiKey)
 	egressReq.Header.Set("X-NEXUS-SCOPES", "egress:write")
 	egressRR := httptest.NewRecorder()
 	app.Router.ServeHTTP(egressRR, egressReq)
@@ -199,7 +199,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(http.MethodPost, "/v1/run", bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+		req.Header.Set("X-NEXUS-CORE-KEY", apiKey)
 		req.Header.Set("X-NEXUS-SCOPES", "gateway:run")
 		rr := httptest.NewRecorder()
 		app.Router.ServeHTTP(rr, req)
@@ -234,7 +234,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 	}
 
 	auditReq := httptest.NewRequest(http.MethodGet, "/v1/audit?tool_name=transfer&limit=5", nil)
-	auditReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	auditReq.Header.Set("X-NEXUS-CORE-KEY", apiKey)
 	auditReq.Header.Set("X-NEXUS-SCOPES", "audit:read")
 	rr := httptest.NewRecorder()
 	app.Router.ServeHTTP(rr, auditReq)
@@ -270,7 +270,7 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 	}
 
 	exportReq := httptest.NewRequest(http.MethodGet, "/v1/audit/export?format=jsonl&tool_name=transfer&limit=5", nil)
-	exportReq.Header.Set("X-NEXUS-GATEWAY-KEY", apiKey)
+	exportReq.Header.Set("X-NEXUS-CORE-KEY", apiKey)
 	exportReq.Header.Set("X-NEXUS-SCOPES", "audit:read")
 	exportRR := httptest.NewRecorder()
 	app.Router.ServeHTTP(exportRR, exportReq)

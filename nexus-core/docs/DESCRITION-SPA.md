@@ -46,7 +46,7 @@ make seed
 
 ```bash
 export NEXUS_API_KEY="<seed-output-value>"
-curl -sS -H "X-NEXUS-GATEWAY-KEY: $NEXUS_API_KEY" \
+curl -sS -H "X-NEXUS-CORE-KEY: $NEXUS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"tool_name":"echo","input":{"hello":"world"},"context":{"user_id":"u_1"}}' \
   http://localhost:8080/v1/run | jq
@@ -110,7 +110,7 @@ Opciones:
 
 ### 2) Auth e identidad
 
-* API key: `X-NEXUS-GATEWAY-KEY`.
+* API key: `X-NEXUS-CORE-KEY`.
 * JWT + JWKS (modo JWT): Bearer token + validación de claims.
 * Contexto: `actor`, `role`, `scopes`, y `auth_method` (`api_key` o `jwt`) para decisiones seguras.
 

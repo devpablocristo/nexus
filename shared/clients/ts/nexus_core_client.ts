@@ -11,7 +11,7 @@ export class NexusCoreClient {
   private headers(extra?: Record<string, string>): HeadersInit {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-NEXUS-GATEWAY-KEY": this.cfg.apiKey,
+      "X-NEXUS-CORE-KEY": this.cfg.apiKey,
     };
     if (this.cfg.scopes && this.cfg.scopes.length > 0) {
       h["X-NEXUS-SCOPES"] = this.cfg.scopes.join(",");

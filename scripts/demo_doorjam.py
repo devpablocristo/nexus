@@ -24,7 +24,7 @@ class CoreClient:
         self.timeout_s = timeout_s
         self.base_headers = {
             "Content-Type": "application/json",
-            "X-NEXUS-GATEWAY-KEY": api_key,
+            "X-NEXUS-CORE-KEY": api_key,
             "X-NEXUS-SCOPES": scopes,
             "X-NEXUS-ACTOR": actor,
         }
@@ -330,7 +330,7 @@ def write_golden(baseline_events: list[dict[str, Any]], checksums: dict[str, Any
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run Door Jam demo for sim-engine through nexus-core.")
     parser.add_argument("--core-url", default=os.getenv("NEXUS_CORE_URL", "http://localhost:8080"))
-    parser.add_argument("--api-key", default=os.getenv("NEXUS_DEMO_API_KEY", "nexus-tower-local-key"))
+    parser.add_argument("--api-key", default=os.getenv("NEXUS_DEMO_API_KEY", "nexus-core-local-key"))
     parser.add_argument(
         "--scopes",
         default=os.getenv(

@@ -2,7 +2,7 @@
 
 ## 1) Authentication
 
-- API key auth (`X-NEXUS-GATEWAY-KEY`) y JWT/JWKS opcional.
+- API key auth (`X-NEXUS-CORE-KEY`) y JWT/JWKS opcional.
 - Referencias:
   - `internal/shared/handlers/auth_middleware.go`
   - `internal/identity/usecases.go`

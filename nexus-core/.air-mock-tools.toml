@@ -1,0 +1,16 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "CGO_ENABLED=0 go build -o ./tmp/mock-tools ./cmd/mock-tools"
+  bin = "./tmp/mock-tools"
+  full_bin = "./tmp/mock-tools"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor", "docs", "monitoring"]
+  delay = 1000
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

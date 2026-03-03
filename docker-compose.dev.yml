@@ -1,0 +1,34 @@
+services:
+  nexus-core:
+    build:
+      context: ./nexus-core
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./nexus-core:/src
+    environment:
+      NEXUS_MIGRATIONS_DIR: /src/migrations
+    command: ["sh", "-c", "go run ./cmd/migrate -cmd up && air -c .air.toml"]
+    healthcheck:
+      interval: 5s
+      timeout: 10s
+      retries: 60
+
+  sim-engine:
+    build:
+      context: ./sim-engine
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./sim-engine:/src
+
+  mock-tools:
+    build:
+      context: ./nexus-core
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./nexus-core:/src
+    command: ["air", "-c", ".air-mock-tools.toml"]
+
+  nexus-operator:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./nexus-operator:/workspace/nexus-operator
