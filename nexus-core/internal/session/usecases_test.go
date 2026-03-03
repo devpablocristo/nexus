@@ -60,7 +60,7 @@ func (r *stubSessionRepo) GetBySessionID(_ context.Context, orgID uuid.UUID, ses
 
 func TestTrackCall(t *testing.T) {
 	repo := newStubSessionRepo()
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 
 	orgID := uuid.New()
 	actor := "bot-1"
@@ -81,7 +81,7 @@ func TestTrackCall(t *testing.T) {
 
 func TestTrackCall_Write(t *testing.T) {
 	repo := newStubSessionRepo()
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 
 	orgID := uuid.New()
 	svc.TrackCall(context.Background(), orgID, "sess-2", nil, true, false)
@@ -94,7 +94,7 @@ func TestTrackCall_Write(t *testing.T) {
 
 func TestTrackCall_Denial(t *testing.T) {
 	repo := newStubSessionRepo()
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 
 	orgID := uuid.New()
 	svc.TrackCall(context.Background(), orgID, "sess-3", nil, false, true)
@@ -106,7 +106,7 @@ func TestTrackCall_Denial(t *testing.T) {
 }
 
 func TestCheckLimits(t *testing.T) {
-	svc := NewService(newStubSessionRepo())
+	svc := NewUsecases(newStubSessionRepo())
 
 	tests := []struct {
 		name   string

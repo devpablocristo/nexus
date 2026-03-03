@@ -24,10 +24,10 @@ type Emitter interface {
 }
 
 type emitter struct {
-	service Service
+	service *Usecases
 }
 
-func NewEmitter(service Service) Emitter {
+func NewEmitter(service *Usecases) Emitter {
 	return &emitter{service: service}
 }
 

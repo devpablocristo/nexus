@@ -2,10 +2,10 @@ package world
 
 import (
 	"bytes"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,27 +14,32 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type fakeWorldService struct{}
-
-func (f fakeWorldService) ListRuns(_ context.Context, _ uuid.UUID, _ string, _ int, _ string) (any, error) {
-	return map[string]any{"items": []any{}, "next_cursor": ""}, nil
-}
-func (f fakeWorldService) GetState(_ context.Context, _ uuid.UUID, _ string, _ string, _ *int64) (any, error) {
-	return map[string]any{"run_id": "r1", "step_id": 0, "state_hash": "h"}, nil
-}
-func (f fakeWorldService) GetEvents(_ context.Context, _ uuid.UUID, _ string, _ string, _ int64, _ int) (any, error) {
-	return map[string]any{"items": []any{}, "next_seq": 0}, nil
-}
-func (f fakeWorldService) CreateRun(_ context.Context, _ uuid.UUID, _ string, _ map[string]any) (any, error) {
-	return map[string]any{"run_id": "r1"}, nil
-}
-func (f fakeWorldService) Replay(_ context.Context, _ uuid.UUID, _ string, _ map[string]any) (any, error) {
-	return map[string]any{"run_id": "r1", "replayed_moves": 0}, nil
+func fakeUsecases(t *testing.T) *Usecases {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/admin/run/runs":
+			_, _ = w.Write([]byte(`{"items":[],"next_cursor":""}`))
+		case r.URL.Path == "/admin/run/state":
+			_, _ = w.Write([]byte(`{"run_id":"r1","step_id":0,"state_hash":"h"}`))
+		case r.URL.Path == "/admin/run/events":
+			_, _ = w.Write([]byte(`{"items":[],"next_seq":0}`))
+		case r.URL.Path == "/admin/run/create":
+			_, _ = w.Write([]byte(`{"run_id":"r1"}`))
+		case r.URL.Path == "/admin/run/replay":
+			_, _ = w.Write([]byte(`{"run_id":"r1","replayed_moves":0}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return NewUsecases(Config{BaseURL: srv.URL, Timeout: 2 * time.Second})
 }
 
 func TestHandler_ReadEndpointRequiresReadScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(fakeWorldService{})
+	h := NewHandler(fakeUsecases(t))
 	r := gin.New()
 	r.Use(ginmw.RequestID())
 	v1 := r.Group("/v1")
@@ -56,7 +61,7 @@ func TestHandler_ReadEndpointRequiresReadScope(t *testing.T) {
 
 func TestHandler_WriteEndpointRequiresWriteScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(fakeWorldService{})
+	h := NewHandler(fakeUsecases(t))
 	r := gin.New()
 	r.Use(ginmw.RequestID())
 	v1 := r.Group("/v1")
@@ -79,7 +84,7 @@ func TestHandler_WriteEndpointRequiresWriteScope(t *testing.T) {
 
 func TestHandler_ListRunsWithReadScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(fakeWorldService{})
+	h := NewHandler(fakeUsecases(t))
 	r := gin.New()
 	r.Use(ginmw.RequestID())
 	v1 := r.Group("/v1")
@@ -101,7 +106,7 @@ func TestHandler_ListRunsWithReadScope(t *testing.T) {
 
 func TestHandler_StreamEventsRequiresRunID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(fakeWorldService{})
+	h := NewHandler(fakeUsecases(t))
 	r := gin.New()
 	r.Use(ginmw.RequestID())
 	v1 := r.Group("/v1")

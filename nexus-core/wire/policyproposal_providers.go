@@ -7,12 +7,12 @@ import (
 	"nexus-core/internal/policyproposal"
 )
 
-func ProvidePolicyProposalEventSink(s events.Service) policyproposal.EventSink { return s }
+func ProvidePolicyProposalEventSink(s *events.Usecases) policyproposal.EventSink { return s }
 
 var PolicyProposalSet = wire.NewSet(
 	policyproposal.NewRepository,
 	wire.Bind(new(policyproposal.RepositoryPort), new(*policyproposal.Repository)),
 	ProvidePolicyProposalEventSink,
-	policyproposal.NewService,
+	policyproposal.NewUsecases,
 	policyproposal.NewHandler,
 )

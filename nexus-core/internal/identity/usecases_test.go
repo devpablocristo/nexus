@@ -18,7 +18,7 @@ func (f fakeVerifier) VerifyToken(_ context.Context, _ string) (map[string]any, 
 
 func TestResolvePrincipal_OK(t *testing.T) {
 	orgID := uuid.New()
-	svc := NewService(fakeVerifier{
+	svc := NewUsecases(fakeVerifier{
 		claims: map[string]any{
 			"iss":    "issuer",
 			"aud":    []any{"nexus-core"},
@@ -52,7 +52,7 @@ func TestResolvePrincipal_OK(t *testing.T) {
 }
 
 func TestResolvePrincipal_InvalidAudience(t *testing.T) {
-	svc := NewService(fakeVerifier{
+	svc := NewUsecases(fakeVerifier{
 		claims: map[string]any{
 			"iss":    "issuer",
 			"aud":    "wrong",

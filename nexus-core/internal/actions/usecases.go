@@ -26,14 +26,6 @@ type EventSink interface {
 	Append(ctx context.Context, orgID uuid.UUID, eventType string, payload map[string]any) (eventdomain.Event, error)
 }
 
-type Service interface {
-	Apply(ctx context.Context, orgID uuid.UUID, actor *string, req ApplyRequest) (actiondomain.Action, error)
-	Rollback(ctx context.Context, orgID, id uuid.UUID, actor *string) (actiondomain.Action, error)
-	List(ctx context.Context, orgID uuid.UUID, q ListQuery) ([]actiondomain.Action, error)
-	ExpireDue(ctx context.Context, now time.Time, batch int) (int, error)
-	ResolveRuntimeOverrides(ctx context.Context, orgID uuid.UUID, toolName string) (actiondomain.RuntimeOverrides, error)
-}
-
 type ApplyRequest struct {
 	ScopeType    string
 	ScopeID      *string
@@ -49,16 +41,16 @@ type ListQuery struct {
 	Limit      int
 }
 
-type service struct {
+type Usecases struct {
 	repo   RepositoryPort
 	events EventSink
 }
 
-func NewService(repo RepositoryPort, events EventSink) Service {
-	return &service{repo: repo, events: events}
+func NewUsecases(repo RepositoryPort, events EventSink) *Usecases {
+	return &Usecases{repo: repo, events: events}
 }
 
-func (s *service) Apply(ctx context.Context, orgID uuid.UUID, actor *string, req ApplyRequest) (actiondomain.Action, error) {
+func (u *Usecases) Apply(ctx context.Context, orgID uuid.UUID, actor *string, req ApplyRequest) (actiondomain.Action, error) {
 	scopeType := actiondomain.ScopeType(req.ScopeType)
 	switch scopeType {
 	case actiondomain.ScopeTenant, actiondomain.ScopeTool, actiondomain.ScopeAgent, actiondomain.ScopeGlobal:
@@ -80,7 +72,7 @@ func (s *service) Apply(ctx context.Context, orgID uuid.UUID, actor *string, req
 	if req.Params == nil {
 		req.Params = map[string]any{}
 	}
-	created, err := s.repo.Create(ctx, actiondomain.Action{
+	created, err := u.repo.Create(ctx, actiondomain.Action{
 		OrgID:        orgID,
 		ScopeType:    scopeType,
 		ScopeID:      req.ScopeID,
@@ -94,8 +86,8 @@ func (s *service) Apply(ctx context.Context, orgID uuid.UUID, actor *string, req
 	if err != nil {
 		return actiondomain.Action{}, err
 	}
-	if s.events != nil {
-		_, _ = s.events.Append(ctx, orgID, "action.applied", map[string]any{
+	if u.events != nil {
+		_, _ = u.events.Append(ctx, orgID, "action.applied", map[string]any{
 			"action_id":      created.ID.String(),
 			"scope_type":     string(created.ScopeType),
 			"scope_id":       created.ScopeID,
@@ -110,8 +102,8 @@ func (s *service) Apply(ctx context.Context, orgID uuid.UUID, actor *string, req
 	return created, nil
 }
 
-func (s *service) Rollback(ctx context.Context, orgID, id uuid.UUID, actor *string) (actiondomain.Action, error) {
-	a, err := s.repo.GetByID(ctx, orgID, id)
+func (u *Usecases) Rollback(ctx context.Context, orgID, id uuid.UUID, actor *string) (actiondomain.Action, error) {
+	a, err := u.repo.GetByID(ctx, orgID, id)
 	if err != nil {
 		return actiondomain.Action{}, err
 	}
@@ -119,12 +111,12 @@ func (s *service) Rollback(ctx context.Context, orgID, id uuid.UUID, actor *stri
 		return actiondomain.Action{}, types.NewHTTPError(http.StatusConflict, types.ErrCodeValidation, "action is not active")
 	}
 	now := time.Now().UTC()
-	updated, err := s.repo.UpdateStatus(ctx, orgID, id, actiondomain.StatusRolledBack, actor, &now)
+	updated, err := u.repo.UpdateStatus(ctx, orgID, id, actiondomain.StatusRolledBack, actor, &now)
 	if err != nil {
 		return actiondomain.Action{}, err
 	}
-	if s.events != nil {
-		_, _ = s.events.Append(ctx, orgID, "action.rolled_back", map[string]any{
+	if u.events != nil {
+		_, _ = u.events.Append(ctx, orgID, "action.rolled_back", map[string]any{
 			"action_id":   updated.ID.String(),
 			"action_type": string(updated.ActionType),
 			"rolled_back_by": actor,
@@ -134,24 +126,24 @@ func (s *service) Rollback(ctx context.Context, orgID, id uuid.UUID, actor *stri
 	return updated, nil
 }
 
-func (s *service) List(ctx context.Context, orgID uuid.UUID, q ListQuery) ([]actiondomain.Action, error) {
-	return s.repo.List(ctx, orgID, q.Status, q.ActionType, q.Limit)
+func (u *Usecases) List(ctx context.Context, orgID uuid.UUID, q ListQuery) ([]actiondomain.Action, error) {
+	return u.repo.List(ctx, orgID, q.Status, q.ActionType, q.Limit)
 }
 
-func (s *service) ExpireDue(ctx context.Context, now time.Time, batch int) (int, error) {
-	candidates, err := s.repo.ListExpiredCandidates(ctx, now, batch)
+func (u *Usecases) ExpireDue(ctx context.Context, now time.Time, batch int) (int, error) {
+	candidates, err := u.repo.ListExpiredCandidates(ctx, now, batch)
 	if err != nil {
 		return 0, err
 	}
 	expired := 0
 	for _, a := range candidates {
-		updated, err := s.repo.UpdateStatus(ctx, a.OrgID, a.ID, actiondomain.StatusExpired, nil, nil)
+		updated, err := u.repo.UpdateStatus(ctx, a.OrgID, a.ID, actiondomain.StatusExpired, nil, nil)
 		if err != nil {
 			continue
 		}
 		expired++
-		if s.events != nil {
-			_, _ = s.events.Append(ctx, updated.OrgID, "action.expired", map[string]any{
+		if u.events != nil {
+			_, _ = u.events.Append(ctx, updated.OrgID, "action.expired", map[string]any{
 				"action_id":   updated.ID.String(),
 				"action_type": string(updated.ActionType),
 				"expired_at":  now.UTC().Format(time.RFC3339),
@@ -161,8 +153,8 @@ func (s *service) ExpireDue(ctx context.Context, now time.Time, batch int) (int,
 	return expired, nil
 }
 
-func (s *service) ResolveRuntimeOverrides(ctx context.Context, orgID uuid.UUID, toolName string) (actiondomain.RuntimeOverrides, error) {
-	items, err := s.repo.ListActiveForRun(ctx, orgID, toolName, time.Now().UTC())
+func (u *Usecases) ResolveRuntimeOverrides(ctx context.Context, orgID uuid.UUID, toolName string) (actiondomain.RuntimeOverrides, error) {
+	items, err := u.repo.ListActiveForRun(ctx, orgID, toolName, time.Now().UTC())
 	if err != nil {
 		return actiondomain.RuntimeOverrides{}, err
 	}

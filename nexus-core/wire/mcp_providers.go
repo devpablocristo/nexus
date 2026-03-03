@@ -8,12 +8,12 @@ import (
 	"nexus-core/internal/tool"
 )
 
-func ProvideMCPToolPort(s tool.Service) mcp.ToolPort  { return s }
-func ProvideMCPRunPort(s gateway.Service) mcp.RunPort { return s }
+func ProvideMCPToolPort(s *tool.Usecases) mcp.ToolPort { return s }
+func ProvideMCPRunPort(s *gateway.Usecases) mcp.RunPort { return s }
 
 var MCPSet = wire.NewSet(
 	ProvideMCPToolPort,
 	ProvideMCPRunPort,
-	mcp.NewService,
+	mcp.NewUsecases,
 	mcp.NewHandler,
 )

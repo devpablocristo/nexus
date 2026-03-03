@@ -14,11 +14,11 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	uc *Usecases
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -35,7 +35,7 @@ func (h *Handler) getSession(c *gin.Context) {
 		httperr.BadRequest(c, "session_id required")
 		return
 	}
-	sess, err := h.svc.GetBySessionID(c.Request.Context(), mustOrgID(c), sessionID)
+	sess, err := h.uc.GetBySessionID(c.Request.Context(), mustOrgID(c), sessionID)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return

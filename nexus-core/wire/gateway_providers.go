@@ -23,12 +23,13 @@ func ProvideGatewayIdempotencyRepo(r *gateway.IdempotencyRepository) gateway.Ide
 }
 func ProvideGatewaySecretRepo(r *secrets.Repository) gateway.SecretRepoPort { return r }
 func ProvideGatewayTenantCaps(r *admin.Repository) gateway.TenantLimitsPort { return r }
-func ProvideGatewayEgressPort(s egress.Service) gateway.EgressPort          { return s }
+func ProvideGatewayEgressPort(s *egress.Usecases) gateway.EgressPort         { return s }
 func ProvideGatewayRateLimiter(l ratelimit.Adapter) gateway.RateLimiterPort {
 	return l
 }
 func ProvideGatewayMetrics(m *exectelemetry.RunMetrics) gateway.RunMetricsPort { return m }
 func ProvideGatewayHTTPExecutor(e *exechttp.Executor) gateway.HTTPExecutorPort { return e }
+func ProvideGatewayHandler(uc *gateway.Usecases) *gateway.Handler            { return gateway.NewHandler(uc) }
 
 var GatewaySet = wire.NewSet(
 	ProvideGatewayToolRepo,
@@ -43,6 +44,6 @@ var GatewaySet = wire.NewSet(
 	ProvideGatewayHTTPExecutor,
 	exectelemetry.NewRunMetrics,
 	gateway.NewIdempotencyRepository,
-	gateway.NewService,
-	gateway.NewHandler,
+	gateway.NewUsecases,
+	ProvideGatewayHandler,
 )

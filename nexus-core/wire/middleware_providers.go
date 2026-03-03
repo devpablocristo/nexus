@@ -11,9 +11,10 @@ import (
 	"nexus-core/internal/shared/handlers"
 )
 
-func NewAuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth org.AuthUsecase, jwtAuth identity.Service) gin.HandlerFunc {
+func NewAuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth *org.Usecases, jwtAuth *identity.Usecases) gin.HandlerFunc {
 	return handlers.AuthMiddleware(l, cfg, auth, jwtAuth)
 }
+
 
 var MiddlewareSet = wire.NewSet(
 	NewAuthMiddleware,

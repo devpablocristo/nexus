@@ -16,11 +16,11 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -39,7 +39,7 @@ func (h *Handler) apply(c *gin.Context) {
 		httperr.BadRequest(c, "invalid json")
 		return
 	}
-	out, err := h.svc.Apply(c.Request.Context(), mustOrgID(c), actorFromCtx(c), ApplyRequest{
+	out, err := h.uc.Apply(c.Request.Context(), mustOrgID(c), actorFromCtx(c), ApplyRequest{
 		ScopeType:    req.ScopeType,
 		ScopeID:      req.ScopeID,
 		ActionType:   req.ActionType,
@@ -69,7 +69,7 @@ func (h *Handler) rollback(c *gin.Context) {
 		httperr.BadRequest(c, "invalid action_id")
 		return
 	}
-	out, err := h.svc.Rollback(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
+	out, err := h.uc.Rollback(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -83,7 +83,7 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	items, err := h.svc.List(c.Request.Context(), mustOrgID(c), ListQuery{
+	items, err := h.uc.List(c.Request.Context(), mustOrgID(c), ListQuery{
 		Status:     c.Query("status"),
 		ActionType: c.Query("action_type"),
 		Limit:      limit,

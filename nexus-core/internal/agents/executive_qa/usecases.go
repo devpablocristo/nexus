@@ -11,10 +11,6 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Service interface {
-	Ask(ctx context.Context, orgID uuid.UUID, actor *string, req AskRequest) (AskResponse, error)
-}
-
 type AskRequest struct {
 	Question   string
 	IncidentID *uuid.UUID
@@ -27,23 +23,23 @@ type AskResponse struct {
 	ProposedActionType *string
 }
 
-type service struct {
+type Usecases struct {
 	llmClient    llm.Client
 	actionEngine opsaction.Engine
 }
 
-func NewService(llmClient llm.Client, actionEngine opsaction.Engine) Service {
-	return &service{
+func NewUsecases(llmClient llm.Client, actionEngine opsaction.Engine) *Usecases {
+	return &Usecases{
 		llmClient:    llmClient,
 		actionEngine: actionEngine,
 	}
 }
 
-func (s *service) Ask(ctx context.Context, orgID uuid.UUID, actor *string, req AskRequest) (AskResponse, error) {
+func (u *Usecases) Ask(ctx context.Context, orgID uuid.UUID, actor *string, req AskRequest) (AskResponse, error) {
 	if strings.TrimSpace(req.Question) == "" {
 		return AskResponse{}, types.NewHTTPError(400, types.ErrCodeValidation, "question is required")
 	}
-	raw, err := s.llmClient.GenerateStrict(ctx, llm.Request{
+	raw, err := u.llmClient.GenerateStrict(ctx, llm.Request{
 		Task: "executive_qa",
 		Input: map[string]any{
 			"org_id":      orgID.String(),
@@ -62,10 +58,10 @@ func (s *service) Ask(ctx context.Context, orgID uuid.UUID, actor *string, req A
 		Answer:       strings.TrimSpace(asString(raw["answer"])),
 		EvidenceRefs: toStringSlice(raw["evidence_refs"]),
 	}
-	if rec, ok := raw["recommended_action"].(map[string]any); ok && s.actionEngine != nil {
+	if rec, ok := raw["recommended_action"].(map[string]any); ok && u.actionEngine != nil {
 		actionType := strings.TrimSpace(asString(rec["action_type"]))
 		if actionType != "" {
-			dryRun, dryErr := s.actionEngine.DryRun(ctx, orgID, actor, opsaction.EngineRequest{
+			dryRun, dryErr := u.actionEngine.DryRun(ctx, orgID, actor, opsaction.EngineRequest{
 				IncidentID:   req.IncidentID,
 				ActionType:   actionType,
 				Scope:        toMap(rec["scope"]),

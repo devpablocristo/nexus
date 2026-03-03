@@ -10,19 +10,15 @@ type APIKeyRepositoryPort interface {
 	FindPrincipalByAPIKeyHash(ctx context.Context, apiKeyHash string) (principal domain.Principal, storedHash string, err error)
 }
 
-type AuthUsecase interface {
-	ResolvePrincipal(ctx context.Context, apiKeyHash string) (domain.Principal, error)
-}
-
-type authService struct {
+type Usecases struct {
 	repo APIKeyRepositoryPort
 }
 
-func NewAuthUsecase(repo APIKeyRepositoryPort) AuthUsecase {
-	return &authService{repo: repo}
+func NewUsecases(repo APIKeyRepositoryPort) *Usecases {
+	return &Usecases{repo: repo}
 }
 
-func (s *authService) ResolvePrincipal(ctx context.Context, apiKeyHash string) (domain.Principal, error) {
-	principal, _, err := s.repo.FindPrincipalByAPIKeyHash(ctx, apiKeyHash)
+func (u *Usecases) ResolvePrincipal(ctx context.Context, apiKeyHash string) (domain.Principal, error) {
+	principal, _, err := u.repo.FindPrincipalByAPIKeyHash(ctx, apiKeyHash)
 	return principal, err
 }

@@ -9,6 +9,6 @@ import (
 var AuditSet = wire.NewSet(
 	audit.NewRepository,
 	wire.Bind(new(audit.RepositoryPort), new(*audit.Repository)),
-	audit.NewService,
+	audit.NewUsecases,
 	audit.NewHandler,
 )

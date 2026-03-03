@@ -23,7 +23,7 @@ type Runner struct {
 	worker   Worker
 }
 
-func NewRunner(eventService opseventstore.Service, worker Worker, batchSize int, pollInterval time.Duration) *Runner {
+func NewRunner(eventService *opseventstore.Usecases, worker Worker, batchSize int, pollInterval time.Duration) *Runner {
 	onIdle := func(context.Context) error { return nil }
 	if iw, ok := worker.(IdleWorker); ok {
 		lastTick := time.Time{}

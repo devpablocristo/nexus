@@ -7,17 +7,16 @@ import (
 	"nexus-core/internal/gateway"
 )
 
-// GatewayAdapter adapts the approval.Service to the gateway.ApprovalPort interface.
 type GatewayAdapter struct {
-	svc *Service
+	uc *Usecases
 }
 
-func NewGatewayAdapter(svc *Service) *GatewayAdapter {
-	return &GatewayAdapter{svc: svc}
+func NewGatewayAdapter(uc *Usecases) *GatewayAdapter {
+	return &GatewayAdapter{uc: uc}
 }
 
 func (a *GatewayAdapter) RequestApproval(ctx context.Context, req gateway.ApprovalRequest) (string, error) {
-	pa, err := a.svc.RequestApproval(ctx, domain.CreateRequest{
+	pa, err := a.uc.RequestApproval(ctx, domain.CreateRequest{
 		OrgID:           req.OrgID,
 		ToolID:          req.ToolID,
 		RequestID:       req.RequestID,

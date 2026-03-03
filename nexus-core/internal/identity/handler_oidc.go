@@ -29,7 +29,7 @@ type OIDCHandler struct {
 	cfg       OIDCConfig
 	discovery *identityoidc.DiscoveryClient
 	exchanger *identityoidc.TokenExchanger
-	idSvc     Service
+	idSvc     *Usecases
 
 	mu           sync.Mutex
 	pendingFlows map[string]*oidcFlowState
@@ -42,7 +42,7 @@ type oidcFlowState struct {
 }
 
 // NewOIDCHandler creates a new handler for OIDC auth endpoints.
-func NewOIDCHandler(cfg OIDCConfig, discovery *identityoidc.DiscoveryClient, exchanger *identityoidc.TokenExchanger, idSvc Service) *OIDCHandler {
+func NewOIDCHandler(cfg OIDCConfig, discovery *identityoidc.DiscoveryClient, exchanger *identityoidc.TokenExchanger, idSvc *Usecases) *OIDCHandler {
 	h := &OIDCHandler{
 		cfg:          cfg,
 		discovery:    discovery,

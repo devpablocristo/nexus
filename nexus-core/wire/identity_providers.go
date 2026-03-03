@@ -53,7 +53,7 @@ func NewOIDCTokenExchanger(cfg identity.OIDCConfig, discovery *identityoidc.Disc
 	return identityoidc.NewTokenExchanger(discovery, cfg.ClientID, cfg.ClientSecret, cfg.RedirectURL)
 }
 
-func NewOIDCHandler(cfg identity.OIDCConfig, discovery *identityoidc.DiscoveryClient, exchanger *identityoidc.TokenExchanger, idSvc identity.Service) *identity.OIDCHandler {
+func NewOIDCHandler(cfg identity.OIDCConfig, discovery *identityoidc.DiscoveryClient, exchanger *identityoidc.TokenExchanger, idSvc *identity.Usecases) *identity.OIDCHandler {
 	return identity.NewOIDCHandler(cfg, discovery, exchanger, idSvc)
 }
 
@@ -74,7 +74,7 @@ var IdentitySet = wire.NewSet(
 	NewIdentityConfig,
 	NewJWKSVerifier,
 	wire.Bind(new(identity.TokenVerifierPort), new(*identityjwks.Verifier)),
-	identity.NewService,
+	identity.NewUsecases,
 	NewOIDCConfig,
 	NewOIDCDiscoveryClient,
 	NewOIDCTokenExchanger,

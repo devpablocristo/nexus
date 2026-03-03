@@ -18,7 +18,7 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
 const (
@@ -33,8 +33,8 @@ type worldEventsEnvelope struct {
 	NextSeq int64             `json:"next_seq"`
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -53,7 +53,7 @@ func (h *Handler) listRuns(c *gin.Context) {
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
 	cursor := strings.TrimSpace(c.Query("cursor"))
-	out, err := h.svc.ListRuns(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), limit, cursor)
+	out, err := h.uc.ListRuns(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), limit, cursor)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -80,7 +80,7 @@ func (h *Handler) state(c *gin.Context) {
 		}
 		stepID = &v
 	}
-	out, err := h.svc.GetState(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), runID, stepID)
+	out, err := h.uc.GetState(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), runID, stepID)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -108,7 +108,7 @@ func (h *Handler) events(c *gin.Context) {
 		httperr.BadRequest(c, err.Error())
 		return
 	}
-	out, err := h.svc.GetEvents(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), runID, fromSeq, limit)
+	out, err := h.uc.GetEvents(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), runID, fromSeq, limit)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -159,7 +159,7 @@ func (h *Handler) eventsStream(c *gin.Context) {
 	orgID := mustOrgID(c)
 
 	streamOnce := func() error {
-		out, err := h.svc.GetEvents(c.Request.Context(), orgID, requestID, runID, fromSeq, limit)
+		out, err := h.uc.GetEvents(c.Request.Context(), orgID, requestID, runID, fromSeq, limit)
 		if err != nil {
 			_ = writeSSE(c, "error", map[string]any{"message": err.Error()})
 			return err
@@ -221,7 +221,7 @@ func (h *Handler) createRun(c *gin.Context) {
 	if payload == nil {
 		payload = map[string]any{}
 	}
-	out, err := h.svc.CreateRun(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), payload)
+	out, err := h.uc.CreateRun(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), payload)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -242,7 +242,7 @@ func (h *Handler) replay(c *gin.Context) {
 	if payload == nil {
 		payload = map[string]any{}
 	}
-	out, err := h.svc.Replay(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), payload)
+	out, err := h.uc.Replay(c.Request.Context(), mustOrgID(c), ginmw.RequestIDFromContext(c), payload)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return

@@ -13,7 +13,7 @@ import (
 )
 
 // handleIdempotencyReplayCompleted devuelve la respuesta cacheada cuando existe un registro completed.
-func (s *service) handleIdempotencyReplayCompleted(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState, existing *gwdomain.IdempotencyRecord) *gwdomain.RunResponse {
+func (u *Usecases) handleIdempotencyReplayCompleted(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState, existing *gwdomain.IdempotencyRecord) *gwdomain.RunResponse {
 	st.idemMeta.Outcome = gwdomain.IdempotencyReplay
 	latency := time.Since(st.start).Milliseconds()
 	var result any
@@ -42,7 +42,7 @@ func (s *service) handleIdempotencyReplayCompleted(ctx context.Context, orgID uu
 			}
 		}
 	}
-	_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
+	_ = u.auditRepo.Create(ctx, auditdomain.AuditEvent{
 		OrgID: orgID, ToolID: st.tool.ID, ToolName: st.tool.Name, RequestID: st.requestID,
 		Actor: req.Actor, ActorRole: req.Role, ActorScopes: req.Scopes,
 		InputRedacted: utils.Redact(st.input), ContextRedacted: utils.Redact(st.contextMap),
@@ -52,7 +52,7 @@ func (s *service) handleIdempotencyReplayCompleted(ctx context.Context, orgID uu
 		IdempotencyPresent: st.idemMeta.Present, IdempotencyOutcome: string(st.idemMeta.Outcome),
 		TimeoutMS: intPtr(req.TimeoutMS),
 	})
-	s.observeRun(ctx, st.tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
+	u.observeRun(ctx, st.tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
 	httpStatus := http.StatusOK
 	if status == gwdomain.RunStatusError {
 		httpStatus = http.StatusBadGateway
@@ -68,7 +68,7 @@ func (s *service) handleIdempotencyReplayCompleted(ctx context.Context, orgID uu
 }
 
 // handleIdempotencyReplayFailed devuelve la respuesta cuando existe un registro failed (replay del error).
-func (s *service) handleIdempotencyReplayFailed(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState, existing *gwdomain.IdempotencyRecord) *gwdomain.RunResponse {
+func (u *Usecases) handleIdempotencyReplayFailed(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState, existing *gwdomain.IdempotencyRecord) *gwdomain.RunResponse {
 	st.idemMeta.Outcome = gwdomain.IdempotencyReplay
 	latency := time.Since(st.start).Milliseconds()
 	code := types.ErrCodeInternal
@@ -104,7 +104,7 @@ func (s *service) handleIdempotencyReplayFailed(ctx context.Context, orgID uuid.
 	}
 	errCode := code
 	errMsg := msg
-	_ = s.auditRepo.Create(ctx, auditdomain.AuditEvent{
+	_ = u.auditRepo.Create(ctx, auditdomain.AuditEvent{
 		OrgID: orgID, ToolID: st.tool.ID, ToolName: st.tool.Name, RequestID: st.requestID,
 		Actor: req.Actor, ActorRole: req.Role, ActorScopes: req.Scopes,
 		InputRedacted: utils.Redact(st.input), ContextRedacted: utils.Redact(st.contextMap),
@@ -113,7 +113,7 @@ func (s *service) handleIdempotencyReplayFailed(ctx context.Context, orgID uuid.
 		LatencyMS: int(latency), IdempotencyPresent: st.idemMeta.Present, IdempotencyOutcome: string(st.idemMeta.Outcome),
 		TimeoutMS: intPtr(req.TimeoutMS),
 	})
-	s.observeRun(ctx, st.tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
+	u.observeRun(ctx, st.tool.Name, string(decision), string(status), time.Duration(latency)*time.Millisecond)
 	return &gwdomain.RunResponse{
 		RequestID: st.requestID, Decision: decision, ToolName: st.tool.Name, Status: status,
 		Reason: reason, ErrorCode: &errCode, ErrorMsg: &errMsg, LatencyMS: latency,

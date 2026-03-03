@@ -35,7 +35,7 @@ func (r *repoStub) ListAdminActivityEvents(_ context.Context, _ uuid.UUID, _ int
 }
 
 func TestUpsertTenantSettingsRequiresWritePermission(t *testing.T) {
-	svc := NewService(&repoStub{})
+	svc := NewUsecases(&repoStub{})
 	orgID := uuid.New()
 	_, err := svc.UpsertTenantSettings(context.Background(), orgID, nil, nil, []string{"admin:console:read"}, UpsertTenantSettingsRequest{PlanCode: "growth"})
 	if err == nil {
@@ -45,7 +45,7 @@ func TestUpsertTenantSettingsRequiresWritePermission(t *testing.T) {
 
 func TestBootstrapWithAdminScope(t *testing.T) {
 	repo := &repoStub{}
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 	orgID := uuid.New()
 	resp, err := svc.GetBootstrap(context.Background(), orgID, nil, nil, []string{"admin:console:read"}, "api_key")
 	if err != nil {
@@ -60,7 +60,7 @@ func TestBootstrapWithAdminScope(t *testing.T) {
 }
 
 func TestGetTenantSettingsRequiresReadPermission(t *testing.T) {
-	svc := NewService(&repoStub{})
+	svc := NewUsecases(&repoStub{})
 	orgID := uuid.New()
 	_, err := svc.GetTenantSettings(context.Background(), orgID, nil, nil, []string{"tools:read"})
 	if err == nil {
@@ -69,7 +69,7 @@ func TestGetTenantSettingsRequiresReadPermission(t *testing.T) {
 }
 
 func TestListActivityRequiresReadPermission(t *testing.T) {
-	svc := NewService(&repoStub{})
+	svc := NewUsecases(&repoStub{})
 	orgID := uuid.New()
 	_, err := svc.ListActivity(context.Background(), orgID, nil, nil, []string{"tools:read"}, 10)
 	if err == nil {

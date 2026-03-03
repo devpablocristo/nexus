@@ -24,6 +24,6 @@ func ProvideAssistantConfig() assistant.Config {
 
 var AssistantSet = wire.NewSet(
 	ProvideAssistantConfig,
-	assistant.NewService,
+	assistant.NewUsecases,
 	assistant.NewHandler,
 )

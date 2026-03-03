@@ -15,10 +15,6 @@ type TokenVerifierPort interface {
 	VerifyToken(ctx context.Context, token string) (map[string]any, error)
 }
 
-type Service interface {
-	ResolvePrincipal(ctx context.Context, bearerToken string) (identitydomain.Principal, error)
-}
-
 type Config struct {
 	Issuer      string
 	Audience    string
@@ -28,47 +24,47 @@ type Config struct {
 	ActorClaim  string
 }
 
-type service struct {
+type Usecases struct {
 	verifier TokenVerifierPort
 	cfg      Config
 }
 
-func NewService(verifier TokenVerifierPort, cfg Config) Service {
-	return &service{
+func NewUsecases(verifier TokenVerifierPort, cfg Config) *Usecases {
+	return &Usecases{
 		verifier: verifier,
 		cfg:      cfg,
 	}
 }
 
-func (s *service) ResolvePrincipal(ctx context.Context, bearerToken string) (identitydomain.Principal, error) {
-	claims, err := s.verifier.VerifyToken(ctx, bearerToken)
+func (u *Usecases) ResolvePrincipal(ctx context.Context, bearerToken string) (identitydomain.Principal, error) {
+	claims, err := u.verifier.VerifyToken(ctx, bearerToken)
 	if err != nil {
 		return identitydomain.Principal{}, types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid bearer token")
 	}
 
-	if s.cfg.Issuer != "" && toString(claims["iss"]) != s.cfg.Issuer {
+	if u.cfg.Issuer != "" && toString(claims["iss"]) != u.cfg.Issuer {
 		return identitydomain.Principal{}, types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid token issuer")
 	}
-	if s.cfg.Audience != "" && !audienceMatches(claims["aud"], s.cfg.Audience) {
+	if u.cfg.Audience != "" && !audienceMatches(claims["aud"], u.cfg.Audience) {
 		return identitydomain.Principal{}, types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid token audience")
 	}
 
-	orgRaw, ok := claims[s.cfg.OrgClaim]
+	orgRaw, ok := claims[u.cfg.OrgClaim]
 	if !ok || toString(orgRaw) == "" {
-		return identitydomain.Principal{}, types.NewHTTPError(401, types.ErrCodeUnauthorized, fmt.Sprintf("missing %s claim", s.cfg.OrgClaim))
+		return identitydomain.Principal{}, types.NewHTTPError(401, types.ErrCodeUnauthorized, fmt.Sprintf("missing %s claim", u.cfg.OrgClaim))
 	}
 	orgID, err := uuid.Parse(toString(orgRaw))
 	if err != nil {
 		return identitydomain.Principal{}, types.NewHTTPError(401, types.ErrCodeUnauthorized, "invalid org_id claim")
 	}
 
-	actorClaim := s.cfg.ActorClaim
+	actorClaim := u.cfg.ActorClaim
 	if actorClaim == "" {
 		actorClaim = "sub"
 	}
 	actor := strings.TrimSpace(toString(claims[actorClaim]))
-	role := strings.TrimSpace(toString(claims[s.cfg.RoleClaim]))
-	scopes := parseScopes(claims[s.cfg.ScopesClaim])
+	role := strings.TrimSpace(toString(claims[u.cfg.RoleClaim]))
+	scopes := parseScopes(claims[u.cfg.ScopesClaim])
 
 	return identitydomain.Principal{
 		OrgID:  orgID,

@@ -16,11 +16,11 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -35,7 +35,7 @@ func (h *Handler) bootstrap(c *gin.Context) {
 	actor := actorFromCtx(c)
 	role := roleFromCtx(c)
 	scopes := scopesFromCtx(c)
-	resp, err := h.svc.GetBootstrap(c.Request.Context(), orgID, actor, role, scopes, authMethodFromCtx(c))
+	resp, err := h.uc.GetBootstrap(c.Request.Context(), orgID, actor, role, scopes, authMethodFromCtx(c))
 	if err != nil {
 		errors.WriteFrom(c, err)
 		return
@@ -57,7 +57,7 @@ func (h *Handler) getTenantSettings(c *gin.Context) {
 	actor := actorFromCtx(c)
 	role := roleFromCtx(c)
 	scopes := scopesFromCtx(c)
-	settings, err := h.svc.GetTenantSettings(c.Request.Context(), orgID, actor, role, scopes)
+	settings, err := h.uc.GetTenantSettings(c.Request.Context(), orgID, actor, role, scopes)
 	if err != nil {
 		errors.WriteFrom(c, err)
 		return
@@ -75,7 +75,7 @@ func (h *Handler) upsertTenantSettings(c *gin.Context) {
 		errors.BadRequest(c, "invalid json")
 		return
 	}
-	settings, err := h.svc.UpsertTenantSettings(c.Request.Context(), orgID, actor, role, scopes, UpsertTenantSettingsRequest{
+	settings, err := h.uc.UpsertTenantSettings(c.Request.Context(), orgID, actor, role, scopes, UpsertTenantSettingsRequest{
 		PlanCode:   req.PlanCode,
 		HardLimits: req.HardLimits,
 	})
@@ -92,7 +92,7 @@ func (h *Handler) listActivity(c *gin.Context) {
 	role := roleFromCtx(c)
 	scopes := scopesFromCtx(c)
 	limit := parseLimit(c.Query("limit"))
-	items, err := h.svc.ListActivity(c.Request.Context(), orgID, actor, role, scopes, limit)
+	items, err := h.uc.ListActivity(c.Request.Context(), orgID, actor, role, scopes, limit)
 	if err != nil {
 		errors.WriteFrom(c, err)
 		return

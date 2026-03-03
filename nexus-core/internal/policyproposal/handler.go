@@ -16,11 +16,11 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -41,7 +41,7 @@ func (h *Handler) create(c *gin.Context) {
 		httperr.BadRequest(c, "invalid json")
 		return
 	}
-	out, err := h.svc.Create(c.Request.Context(), mustOrgID(c), actorFromCtx(c), CreateRequest{
+	out, err := h.uc.Create(c.Request.Context(), mustOrgID(c), actorFromCtx(c), CreateRequest{
 		Status:         req.Status,
 		Diff:           req.Diff,
 		Rationale:      req.Rationale,
@@ -61,7 +61,7 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	items, err := h.svc.List(c.Request.Context(), mustOrgID(c), c.Query("status"), limit)
+	items, err := h.uc.List(c.Request.Context(), mustOrgID(c), c.Query("status"), limit)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -90,11 +90,11 @@ func (h *Handler) decide(c *gin.Context, kind string) {
 	var out proposaldomain.Proposal
 	switch kind {
 	case "approve":
-		out, err = h.svc.Approve(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
+		out, err = h.uc.Approve(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
 	case "reject":
-		out, err = h.svc.Reject(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
+		out, err = h.uc.Reject(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
 	default:
-		out, err = h.svc.Shadow(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
+		out, err = h.uc.Shadow(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
 	}
 	if err != nil {
 		httperr.WriteFrom(c, err)

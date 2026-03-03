@@ -1,6 +1,7 @@
 package a2a
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,12 +16,16 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Handler struct {
-	svc Service
+type a2aUsecase interface {
+	CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+type Handler struct {
+	uc a2aUsecase
+}
+
+func NewHandler(uc a2aUsecase) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -47,7 +52,7 @@ func (h *Handler) call(c *gin.Context) {
 		idempotencyKey = strings.TrimSpace(c.GetHeader("Idempotency-Key"))
 	}
 
-	resp, err := h.svc.CallTool(c.Request.Context(), mustOrgID(c), gwdomain.RunRequest{
+	resp, err := h.uc.CallTool(c.Request.Context(), mustOrgID(c), gwdomain.RunRequest{
 		RequestID:      req.RequestID,
 		ToolName:       req.ToolName,
 		Input:          req.Input,

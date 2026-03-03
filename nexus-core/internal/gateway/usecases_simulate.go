@@ -25,7 +25,7 @@ type simulateState struct {
 	start      time.Time
 }
 
-func (s *service) initSimulateState(req gwdomain.RunRequest) simulateState {
+func (u *Usecases) initSimulateState(req gwdomain.RunRequest) simulateState {
 	requestID := req.RequestID
 	if requestID == "" {
 		requestID = uuid.NewString()
@@ -48,7 +48,7 @@ func (s *service) initSimulateState(req gwdomain.RunRequest) simulateState {
 }
 
 // simulateDeny construye SimulateResponse para decisión deny.
-func (s *service) simulateDeny(st simulateState, tool tooldomain.Tool, reason string, code string, httpStatus int, stage string) gwdomain.SimulateResponse {
+func (u *Usecases) simulateDeny(st simulateState, tool tooldomain.Tool, reason string, code string, httpStatus int, stage string) gwdomain.SimulateResponse {
 	if stage != "" {
 		st.explain["stage"] = stage
 	}
@@ -67,7 +67,7 @@ func (s *service) simulateDeny(st simulateState, tool tooldomain.Tool, reason st
 }
 
 // simulateAllow construye SimulateResponse para decisión allow.
-func (s *service) simulateAllow(st simulateState, tool tooldomain.Tool, matchReason string) gwdomain.SimulateResponse {
+func (u *Usecases) simulateAllow(st simulateState, tool tooldomain.Tool, matchReason string) gwdomain.SimulateResponse {
 	return gwdomain.SimulateResponse{
 		RequestID:  st.requestID,
 		Decision:   gwdomain.DecisionAllow,
@@ -81,7 +81,7 @@ func (s *service) simulateAllow(st simulateState, tool tooldomain.Tool, matchRea
 }
 
 // simulateEnrichContext añade actor, role, scopes al context (compartido con Run).
-func (s *service) simulateEnrichContext(req gwdomain.RunRequest, st *simulateState) {
+func (u *Usecases) simulateEnrichContext(req gwdomain.RunRequest, st *simulateState) {
 	if req.Actor != nil && *req.Actor != "" {
 		st.contextMap["actor"] = *req.Actor
 	}
@@ -98,26 +98,26 @@ func (s *service) simulateEnrichContext(req gwdomain.RunRequest, st *simulateSta
 }
 
 // simulateSchemaCheck valida schema de entrada; devuelve deny response si falla.
-func (s *service) simulateSchemaCheck(ctx context.Context, st *simulateState, tool tooldomain.Tool) *gwdomain.SimulateResponse {
-	inSchema, err := s.cache.Compile(ctx, tool.ID.String()+":in", tool.InputSchemaJSON)
+func (u *Usecases) simulateSchemaCheck(ctx context.Context, st *simulateState, tool tooldomain.Tool) *gwdomain.SimulateResponse {
+	inSchema, err := u.cache.Compile(ctx, tool.ID.String()+":in", tool.InputSchemaJSON)
 	if err != nil {
-		resp := s.simulateDeny(*st, tool, "tool input schema invalid", types.ErrCodeSchemaInvalid, http.StatusForbidden, "schema_compile")
+		resp := u.simulateDeny(*st, tool, "tool input schema invalid", types.ErrCodeSchemaInvalid, http.StatusForbidden, "schema_compile")
 		return &resp
 	}
 	if err := jsonschema.Validate(inSchema, st.input); err != nil {
-		resp := s.simulateDeny(*st, tool, "input does not match schema", types.ErrCodeValidation, http.StatusBadRequest, "schema_validate")
+		resp := u.simulateDeny(*st, tool, "input does not match schema", types.ErrCodeValidation, http.StatusBadRequest, "schema_validate")
 		return &resp
 	}
 	return nil
 }
 
 // simulatePoliciesAndLimits evalúa políticas y límites de tamaño.
-func (s *service) simulatePoliciesAndLimits(ctx context.Context, orgID uuid.UUID, st *simulateState, tool tooldomain.Tool) (decision gwdomain.Decision, matchReason string, policyID *uuid.UUID) {
-	policies, err := s.policyRepo.ListByToolID(ctx, orgID, tool.ID)
+func (u *Usecases) simulatePoliciesAndLimits(ctx context.Context, orgID uuid.UUID, st *simulateState, tool tooldomain.Tool) (decision gwdomain.Decision, matchReason string, policyID *uuid.UUID) {
+	policies, err := u.policyRepo.ListByToolID(ctx, orgID, tool.ID)
 	if err != nil {
 		return gwdomain.DecisionDeny, "policy lookup failed", nil
 	}
-	match, matchReason, limits, err := s.firstMatch(policies, st.input, st.contextMap, tool)
+	match, matchReason, limits, err := u.firstMatch(policies, st.input, st.contextMap, tool)
 	if err != nil {
 		return gwdomain.DecisionDeny, "policy evaluation failed", nil
 	}
@@ -140,7 +140,7 @@ func (s *service) simulatePoliciesAndLimits(ctx context.Context, orgID uuid.UUID
 		st.explain["default_decision"] = "allow"
 	}
 	if decision == gwdomain.DecisionAllow {
-		if maxIn := limits.maxBytesInput(s.cfg.MaxBytesInputDefault); maxIn > 0 {
+		if maxIn := limits.maxBytesInput(u.cfg.MaxBytesInputDefault); maxIn > 0 {
 			n, _ := utils.JSONSize(st.input)
 			st.explain["input_bytes"] = n
 			st.explain["max_bytes_input"] = maxIn
@@ -149,7 +149,7 @@ func (s *service) simulatePoliciesAndLimits(ctx context.Context, orgID uuid.UUID
 				matchReason = "input too large"
 			}
 		}
-		if maxCtx := limits.maxBytesContext(s.cfg.MaxBytesContextDefault); maxCtx > 0 {
+		if maxCtx := limits.maxBytesContext(u.cfg.MaxBytesContextDefault); maxCtx > 0 {
 			n, _ := utils.JSONSize(st.contextMap)
 			st.explain["context_bytes"] = n
 			st.explain["max_bytes_context"] = maxCtx
@@ -163,14 +163,14 @@ func (s *service) simulatePoliciesAndLimits(ctx context.Context, orgID uuid.UUID
 }
 
 // simulateEgressCheck verifica egress allowlist.
-func (s *service) simulateEgressCheck(ctx context.Context, orgID uuid.UUID, st *simulateState, tool tooldomain.Tool) (allowed bool, err error) {
-	u, parseErr := url.Parse(tool.URL)
-	if parseErr != nil || u.Hostname() == "" {
+func (u *Usecases) simulateEgressCheck(ctx context.Context, orgID uuid.UUID, st *simulateState, tool tooldomain.Tool) (allowed bool, err error) {
+	parsed, parseErr := url.Parse(tool.URL)
+	if parseErr != nil || parsed.Hostname() == "" {
 		return false, nil
 	}
-	host := strings.ToLower(u.Hostname())
+	host := strings.ToLower(parsed.Hostname())
 	st.explain["egress_host"] = host
-	allowed, err = s.egress.IsHostAllowed(ctx, orgID, tool.ID, host)
+	allowed, err = u.egress.IsHostAllowed(ctx, orgID, tool.ID, host)
 	if err != nil {
 		return false, err
 	}

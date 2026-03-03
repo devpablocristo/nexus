@@ -9,11 +9,12 @@ import (
 
 func ProvideToolTenantLimits(r *admin.Repository) tool.TenantLimitsPort { return r }
 
+func ProvideToolHandler(uc *tool.Usecases) *tool.Handler { return tool.NewHandler(uc) }
+
 var ToolSet = wire.NewSet(
 	tool.NewRepository,
 	wire.Bind(new(tool.RepositoryPort), new(*tool.Repository)),
 	ProvideToolTenantLimits,
-	tool.NewService,
-	wire.Bind(new(tool.Service), new(*tool.ServiceImpl)),
-	tool.NewHandler,
+	tool.NewUsecases,
+	ProvideToolHandler,
 )

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -14,12 +15,18 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Handler struct {
-	svc Service
+type policyUsecase interface {
+	CreateForTool(ctx context.Context, orgID uuid.UUID, toolName string, req CreateRequest) (policydomain.Policy, error)
+	ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]policydomain.Policy, error)
+	UpdateByID(ctx context.Context, orgID uuid.UUID, policyID uuid.UUID, patch PolicyPatch) (policydomain.Policy, error)
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+type Handler struct {
+	uc policyUsecase
+}
+
+func NewHandler(uc policyUsecase) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -40,7 +47,7 @@ func (h *Handler) createForTool(c *gin.Context) {
 		httperr.BadRequest(c, "invalid json")
 		return
 	}
-	created, err := h.svc.CreateForTool(c.Request.Context(), orgID, toolName, req)
+	created, err := h.uc.CreateForTool(c.Request.Context(), orgID, toolName, req)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -55,7 +62,7 @@ func (h *Handler) listForTool(c *gin.Context) {
 	}
 	orgID := mustOrgID(c)
 	toolName := c.Param("name")
-	items, err := h.svc.ListForTool(c.Request.Context(), orgID, toolName)
+	items, err := h.uc.ListForTool(c.Request.Context(), orgID, toolName)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -91,7 +98,7 @@ func (h *Handler) updateByID(c *gin.Context) {
 		httperr.BadRequest(c, "invalid json")
 		return
 	}
-	updated, err := h.svc.UpdateByID(c.Request.Context(), orgID, pid, PolicyPatch{
+	updated, err := h.uc.UpdateByID(c.Request.Context(), orgID, pid, PolicyPatch{
 		Effect:         req.Effect,
 		Priority:       req.Priority,
 		Conditions:     req.Conditions,

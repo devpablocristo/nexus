@@ -7,12 +7,12 @@ import (
 	"nexus-core/internal/incidents"
 )
 
-func ProvideIncidentsEventSink(s events.Service) incidents.EventSink { return s }
+func ProvideIncidentsEventSink(s *events.Usecases) incidents.EventSink { return s }
 
 var IncidentsSet = wire.NewSet(
 	incidents.NewRepository,
 	wire.Bind(new(incidents.RepositoryPort), new(*incidents.Repository)),
 	ProvideIncidentsEventSink,
-	incidents.NewService,
+	incidents.NewUsecases,
 	incidents.NewHandler,
 )

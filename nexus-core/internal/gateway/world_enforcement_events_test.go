@@ -41,7 +41,7 @@ func TestRun_WorldPolicyDenied_EmitsEnforcementEvent(t *testing.T) {
 	defer simEngine.Close()
 
 	exec := &fakeExecutor{}
-	svc := NewService(
+	svc := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:              uuid.New(),
 			OrgID:           orgID,
@@ -132,7 +132,7 @@ func TestRun_WorldRateLimited_EmitsEnforcementEvent(t *testing.T) {
 	}))
 	defer simEngine.Close()
 
-	svc := NewService(
+	svc := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:              uuid.New(),
 			OrgID:           orgID,

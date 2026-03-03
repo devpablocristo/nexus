@@ -16,11 +16,11 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -40,7 +40,7 @@ func (h *Handler) create(c *gin.Context) {
 		httperr.BadRequest(c, "invalid json")
 		return
 	}
-	out, err := h.svc.Create(c.Request.Context(), mustOrgID(c), actorFromCtx(c), CreateRequest{
+	out, err := h.uc.Create(c.Request.Context(), mustOrgID(c), actorFromCtx(c), CreateRequest{
 		Severity:         req.Severity,
 		Title:            req.Title,
 		Summary:          req.Summary,
@@ -60,7 +60,7 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	items, err := h.svc.List(c.Request.Context(), mustOrgID(c), c.Query("status"), limit)
+	items, err := h.uc.List(c.Request.Context(), mustOrgID(c), c.Query("status"), limit)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -82,7 +82,7 @@ func (h *Handler) get(c *gin.Context) {
 		httperr.BadRequest(c, "invalid id")
 		return
 	}
-	out, err := h.svc.GetByID(c.Request.Context(), mustOrgID(c), id)
+	out, err := h.uc.GetByID(c.Request.Context(), mustOrgID(c), id)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -100,7 +100,7 @@ func (h *Handler) close(c *gin.Context) {
 		httperr.BadRequest(c, "invalid id")
 		return
 	}
-	out, err := h.svc.Close(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
+	out, err := h.uc.Close(c.Request.Context(), mustOrgID(c), id, actorFromCtx(c))
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return

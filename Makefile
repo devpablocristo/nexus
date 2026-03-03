@@ -111,6 +111,10 @@ reset-nexus:
 e2e:
 	cd $(CORE_DIR) && bash scripts/e2e.sh
 
+e2e-first:
+	@# Primer caso: run echo (requiere: make up, make migrate-up, make seed)
+	bash scripts/e2e/01_run_echo.sh
+
 jwt-e2e:
 	cd $(CORE_DIR) && bash scripts/e2e_jwt.sh
 

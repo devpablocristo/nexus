@@ -1,6 +1,7 @@
 package egress
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,9 +13,15 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Handler struct{ svc Service }
+type egressUsecase interface {
+	UpsertRule(ctx context.Context, orgID uuid.UUID, toolName, host string, enabled bool) error
+	ListRules(ctx context.Context, orgID uuid.UUID, toolName string) ([]string, error)
+	DeleteRule(ctx context.Context, orgID uuid.UUID, toolName, host string) error
+}
 
-func NewHandler(svc Service) *Handler { return &Handler{svc: svc} }
+type Handler struct{ uc egressUsecase }
+
+func NewHandler(uc egressUsecase) *Handler { return &Handler{uc: uc} }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/tools/:name/egress-rules", h.upsert)
@@ -36,7 +43,7 @@ func (h *Handler) upsert(c *gin.Context) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
-	if err := h.svc.UpsertRule(c.Request.Context(), mustOrgID(c), c.Param("name"), req.Host, enabled); err != nil {
+	if err := h.uc.UpsertRule(c.Request.Context(), mustOrgID(c), c.Param("name"), req.Host, enabled); err != nil {
 		httperr.WriteFrom(c, err)
 		return
 	}
@@ -48,7 +55,7 @@ func (h *Handler) list(c *gin.Context) {
 		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeEgressRead+" scope required")
 		return
 	}
-	hosts, err := h.svc.ListRules(c.Request.Context(), mustOrgID(c), c.Param("name"))
+	hosts, err := h.uc.ListRules(c.Request.Context(), mustOrgID(c), c.Param("name"))
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -61,7 +68,7 @@ func (h *Handler) delete(c *gin.Context) {
 		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeEgressWrite+" scope required")
 		return
 	}
-	if err := h.svc.DeleteRule(c.Request.Context(), mustOrgID(c), c.Param("name"), c.Query("host")); err != nil {
+	if err := h.uc.DeleteRule(c.Request.Context(), mustOrgID(c), c.Param("name"), c.Query("host")); err != nil {
 		httperr.WriteFrom(c, err)
 		return
 	}

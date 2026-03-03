@@ -12,18 +12,14 @@ type RunPort interface {
 	Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
 }
 
-type Service interface {
-	CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
-}
-
-type service struct {
+type Usecases struct {
 	run RunPort
 }
 
-func NewService(run RunPort) Service {
-	return &service{run: run}
+func NewUsecases(run RunPort) *Usecases {
+	return &Usecases{run: run}
 }
 
-func (s *service) CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error) {
-	return s.run.Run(ctx, orgID, req)
+func (u *Usecases) CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error) {
+	return u.run.Run(ctx, orgID, req)
 }

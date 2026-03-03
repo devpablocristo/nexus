@@ -32,7 +32,7 @@ func TestRun_SimEngineInternalHeaders(t *testing.T) {
 	toolID := uuid.New()
 	exec := &captureExecutor{}
 
-	svc := NewService(
+	svc := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:              toolID,
 			OrgID:           orgID,
@@ -103,7 +103,7 @@ func TestRun_NonSimEngineDoesNotGetInternalKey(t *testing.T) {
 	toolID := uuid.New()
 	exec := &captureExecutor{}
 
-	svc := NewService(
+	svc := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:              toolID,
 			OrgID:           orgID,

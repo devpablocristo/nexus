@@ -14,11 +14,11 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	uc *Usecases
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -33,7 +33,7 @@ func (h *Handler) listPending(c *gin.Context) {
 		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeAdminConsoleRead+" scope required")
 		return
 	}
-	items, err := h.svc.ListPending(c.Request.Context(), mustOrgID(c), 100)
+	items, err := h.uc.ListPending(c.Request.Context(), mustOrgID(c), 100)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -55,7 +55,7 @@ func (h *Handler) getByID(c *gin.Context) {
 		httperr.BadRequest(c, "invalid id")
 		return
 	}
-	item, err := h.svc.GetByID(c.Request.Context(), mustOrgID(c), id)
+	item, err := h.uc.GetByID(c.Request.Context(), mustOrgID(c), id)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -84,7 +84,7 @@ func (h *Handler) approve(c *gin.Context) {
 			decidedBy = *v
 		}
 	}
-	if err := h.svc.Approve(c.Request.Context(), mustOrgID(c), id, decidedBy); err != nil {
+	if err := h.uc.Approve(c.Request.Context(), mustOrgID(c), id, decidedBy); err != nil {
 		httperr.WriteFrom(c, err)
 		return
 	}
@@ -112,7 +112,7 @@ func (h *Handler) reject(c *gin.Context) {
 			decidedBy = *v
 		}
 	}
-	if err := h.svc.Reject(c.Request.Context(), mustOrgID(c), id, decidedBy); err != nil {
+	if err := h.uc.Reject(c.Request.Context(), mustOrgID(c), id, decidedBy); err != nil {
 		httperr.WriteFrom(c, err)
 		return
 	}

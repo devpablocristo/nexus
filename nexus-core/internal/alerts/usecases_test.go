@@ -74,7 +74,7 @@ func (m *stubMetrics) RateLimitedCount(_ context.Context, _ uuid.UUID, _ *string
 func TestCreateAndList(t *testing.T) {
 	repo := &stubAlertRepo{}
 	log := zerolog.New(io.Discard)
-	svc := NewService(repo, nil, log)
+	svc := NewUsecases(repo, nil, log)
 
 	orgID := uuid.New()
 	rule, err := svc.Create(context.Background(), domain.AlertRule{
@@ -103,7 +103,7 @@ func TestCreateAndList(t *testing.T) {
 func TestDelete(t *testing.T) {
 	repo := &stubAlertRepo{}
 	log := zerolog.New(io.Discard)
-	svc := NewService(repo, nil, log)
+	svc := NewUsecases(repo, nil, log)
 
 	id := uuid.New()
 	if err := svc.Delete(context.Background(), uuid.New(), id); err != nil {
@@ -138,7 +138,7 @@ func TestEvaluateAll_FiresWebhook(t *testing.T) {
 	}
 	metrics := &stubMetrics{denyRate: 0.8}
 	log := zerolog.New(io.Discard)
-	svc := NewService(repo, metrics, log)
+	svc := NewUsecases(repo, metrics, log)
 
 	fired, err := svc.EvaluateAll(context.Background())
 	if err != nil {
@@ -165,7 +165,7 @@ func TestEvaluateAll_NilMetrics(t *testing.T) {
 		}},
 	}
 	log := zerolog.New(io.Discard)
-	svc := NewService(repo, nil, log)
+	svc := NewUsecases(repo, nil, log)
 
 	fired, err := svc.EvaluateAll(context.Background())
 	if err != nil {
@@ -190,7 +190,7 @@ func TestEvaluateAll_CooldownSkip(t *testing.T) {
 	}
 	metrics := &stubMetrics{denyRate: 0.8}
 	log := zerolog.New(io.Discard)
-	svc := NewService(repo, metrics, log)
+	svc := NewUsecases(repo, metrics, log)
 
 	fired, err := svc.EvaluateAll(context.Background())
 	if err != nil {

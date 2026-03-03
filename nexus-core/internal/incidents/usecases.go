@@ -22,13 +22,6 @@ type EventSink interface {
 	Append(ctx context.Context, orgID uuid.UUID, eventType string, payload map[string]any) (eventdomain.Event, error)
 }
 
-type Service interface {
-	Create(ctx context.Context, orgID uuid.UUID, actor *string, req CreateRequest) (incidentdomain.Incident, error)
-	List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]incidentdomain.Incident, error)
-	GetByID(ctx context.Context, orgID, id uuid.UUID) (incidentdomain.Incident, error)
-	Close(ctx context.Context, orgID, id uuid.UUID, actor *string) (incidentdomain.Incident, error)
-}
-
 type CreateRequest struct {
 	Severity         string
 	Title            string
@@ -37,16 +30,16 @@ type CreateRequest struct {
 	EvidenceRefs     []string
 }
 
-type service struct {
+type Usecases struct {
 	repo   RepositoryPort
 	events EventSink
 }
 
-func NewService(repo RepositoryPort, events EventSink) Service {
-	return &service{repo: repo, events: events}
+func NewUsecases(repo RepositoryPort, events EventSink) *Usecases {
+	return &Usecases{repo: repo, events: events}
 }
 
-func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, req CreateRequest) (incidentdomain.Incident, error) {
+func (u *Usecases) Create(ctx context.Context, orgID uuid.UUID, actor *string, req CreateRequest) (incidentdomain.Incident, error) {
 	sev := incidentdomain.Severity(req.Severity)
 	switch sev {
 	case incidentdomain.SeverityLow, incidentdomain.SeverityMed, incidentdomain.SeverityHigh, incidentdomain.SeverityCrit:
@@ -56,7 +49,7 @@ func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, re
 	if req.Title == "" || req.Summary == "" {
 		return incidentdomain.Incident{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "title and summary required")
 	}
-	created, err := s.repo.Create(ctx, incidentdomain.Incident{
+	created, err := u.repo.Create(ctx, incidentdomain.Incident{
 		OrgID:            orgID,
 		Severity:         sev,
 		Status:           incidentdomain.StatusOpen,
@@ -69,8 +62,8 @@ func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, re
 	if err != nil {
 		return incidentdomain.Incident{}, err
 	}
-	if s.events != nil {
-		_, _ = s.events.Append(ctx, orgID, "incident.opened", map[string]any{
+	if u.events != nil {
+		_, _ = u.events.Append(ctx, orgID, "incident.opened", map[string]any{
 			"incident_id":         created.ID.String(),
 			"severity":            string(created.Severity),
 			"status":              string(created.Status),
@@ -84,28 +77,28 @@ func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, re
 	return created, nil
 }
 
-func (s *service) List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]incidentdomain.Incident, error) {
-	return s.repo.List(ctx, orgID, status, limit)
+func (u *Usecases) List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]incidentdomain.Incident, error) {
+	return u.repo.List(ctx, orgID, status, limit)
 }
 
-func (s *service) GetByID(ctx context.Context, orgID, id uuid.UUID) (incidentdomain.Incident, error) {
-	return s.repo.GetByID(ctx, orgID, id)
+func (u *Usecases) GetByID(ctx context.Context, orgID, id uuid.UUID) (incidentdomain.Incident, error) {
+	return u.repo.GetByID(ctx, orgID, id)
 }
 
-func (s *service) Close(ctx context.Context, orgID, id uuid.UUID, actor *string) (incidentdomain.Incident, error) {
-	current, err := s.repo.GetByID(ctx, orgID, id)
+func (u *Usecases) Close(ctx context.Context, orgID, id uuid.UUID, actor *string) (incidentdomain.Incident, error) {
+	current, err := u.repo.GetByID(ctx, orgID, id)
 	if err != nil {
 		return incidentdomain.Incident{}, err
 	}
 	if current.Status == incidentdomain.StatusClosed {
 		return current, nil
 	}
-	closed, err := s.repo.Close(ctx, orgID, id)
+	closed, err := u.repo.Close(ctx, orgID, id)
 	if err != nil {
 		return incidentdomain.Incident{}, err
 	}
-	if s.events != nil {
-		_, _ = s.events.Append(ctx, orgID, "incident.closed", map[string]any{
+	if u.events != nil {
+		_, _ = u.events.Append(ctx, orgID, "incident.closed", map[string]any{
 			"incident_id": closed.ID.String(),
 			"closed_by":   actor,
 			"closed_at":   closed.ClosedAt,

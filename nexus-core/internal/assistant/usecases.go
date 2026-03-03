@@ -13,10 +13,6 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Service interface {
-	Query(ctx context.Context, orgID uuid.UUID, actor *string, query string) (Response, error)
-}
-
 type Config struct {
 	OperatorBaseURL string
 	OperatorAPIKey  string
@@ -41,27 +37,27 @@ type Action struct {
 	Payload    map[string]interface{}
 }
 
-type service struct {
+type Usecases struct {
 	httpClient *http.Client
 	cfg        Config
 }
 
-func NewService(cfg Config) Service {
+func NewUsecases(cfg Config) *Usecases {
 	t := cfg.Timeout
 	if t <= 0 {
 		t = 6 * time.Second
 	}
-	return &service{
+	return &Usecases{
 		httpClient: &http.Client{Timeout: t},
 		cfg:        cfg,
 	}
 }
 
-func (s *service) Query(ctx context.Context, orgID uuid.UUID, actor *string, query string) (Response, error) {
+func (u *Usecases) Query(ctx context.Context, orgID uuid.UUID, actor *string, query string) (Response, error) {
 	if strings.TrimSpace(query) == "" {
 		return Response{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "query is required")
 	}
-	if strings.TrimSpace(s.cfg.OperatorBaseURL) == "" {
+	if strings.TrimSpace(u.cfg.OperatorBaseURL) == "" {
 		return Response{}, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "operator endpoint is not configured")
 	}
 
@@ -71,15 +67,15 @@ func (s *service) Query(ctx context.Context, orgID uuid.UUID, actor *string, que
 		"actor":  actor,
 	}
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.cfg.OperatorBaseURL, "/")+"/v1/assistant/query", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(u.cfg.OperatorBaseURL, "/")+"/v1/assistant/query", bytes.NewReader(body))
 	if err != nil {
 		return Response{}, types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeInternal, "failed to build operator request")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.OperatorAPIKey != "" {
-		req.Header.Set("X-Operator-Key", s.cfg.OperatorAPIKey)
+	if u.cfg.OperatorAPIKey != "" {
+		req.Header.Set("X-Operator-Key", u.cfg.OperatorAPIKey)
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := u.httpClient.Do(req)
 	if err != nil {
 		return Response{}, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "operator is unavailable")
 	}

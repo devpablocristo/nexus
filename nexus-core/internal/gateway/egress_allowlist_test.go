@@ -17,7 +17,7 @@ import (
 func TestRun_SSRFAllowlist_AllowsSimEngineHostPort(t *testing.T) {
 	orgID := uuid.New()
 	exec := &captureExecutor{}
-	service := NewService(
+	service := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:              uuid.New(),
 			OrgID:           orgID,
@@ -70,7 +70,7 @@ func TestRun_SSRFAllowlist_AllowsSimEngineHostPort(t *testing.T) {
 func TestRun_SSRFAllowlist_BlocksPrivateHostNotAllowlisted(t *testing.T) {
 	orgID := uuid.New()
 	exec := &captureExecutor{}
-	service := NewService(
+	service := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:              uuid.New(),
 			OrgID:           orgID,

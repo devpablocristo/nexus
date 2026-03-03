@@ -64,15 +64,27 @@ type Engine interface {
 	Rollback(ctx context.Context, orgID uuid.UUID, actor *string, req EngineRequest) (EngineResult, error)
 }
 
+type engineRepoPort interface {
+	UpsertCatalog(ctx context.Context, item actiondomain.CatalogItem) error
+	GetCatalog(ctx context.Context, actionType string) (actiondomain.CatalogItem, error)
+	CreateProposal(ctx context.Context, in actiondomain.Proposal) (actiondomain.Proposal, error)
+	GetProposalByID(ctx context.Context, orgID, proposalID uuid.UUID) (actiondomain.Proposal, error)
+	GetProposalByIdempotencyKey(ctx context.Context, orgID uuid.UUID, idempotencyKey string) (actiondomain.Proposal, error)
+	UpdateProposalStatus(ctx context.Context, orgID, proposalID uuid.UUID, status actiondomain.ProposalStatus) (actiondomain.Proposal, error)
+	CreateExecution(ctx context.Context, in actiondomain.Execution) (actiondomain.Execution, error)
+	CreateApproval(ctx context.Context, in actiondomain.Approval) (actiondomain.Approval, error)
+	GetLatestApproval(ctx context.Context, orgID, proposalID uuid.UUID) (actiondomain.Approval, error)
+}
+
 type engine struct {
-	repo        Service
+	repo        engineRepoPort
 	emitter     EventEmitterPort
 	tenant      TenantPort
 	cfg         EngineConfig
 	schemaCache *jsonschema.CompilerCache
 }
 
-func NewEngine(repo Service, emitter EventEmitterPort, tenant TenantPort, cfg EngineConfig, schemaCache *jsonschema.CompilerCache) Engine {
+func NewEngine(repo engineRepoPort, emitter EventEmitterPort, tenant TenantPort, cfg EngineConfig, schemaCache *jsonschema.CompilerCache) Engine {
 	if cfg.DefaultMaxTTL <= 0 {
 		cfg.DefaultMaxTTL = 1800
 	}

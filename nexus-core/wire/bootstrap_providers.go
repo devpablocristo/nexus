@@ -76,7 +76,7 @@ func NewHTTPServer(cfg config.APIConfig, router *gin.Engine) *http.Server {
 	}
 }
 
-func NewApp(router *gin.Engine, server *http.Server, actionSvc actions.Service) *App {
+func NewApp(router *gin.Engine, server *http.Server, actionSvc *actions.Usecases) *App {
 	return &App{
 		Router:          router,
 		Server:          server,

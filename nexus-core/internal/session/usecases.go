@@ -14,29 +14,26 @@ type RepoPort interface {
 	GetBySessionID(ctx context.Context, orgID uuid.UUID, sessionID string) (domain.AgentSession, error)
 }
 
-type Service struct {
+type Usecases struct {
 	repo RepoPort
 }
 
-func NewService(repo RepoPort) *Service {
-	return &Service{repo: repo}
+func NewUsecases(repo RepoPort) *Usecases {
+	return &Usecases{repo: repo}
 }
 
-// TrackCall upserts the session and increments the call counter.
-// Returns the session state BEFORE incrementing (for limit checks).
-func (s *Service) TrackCall(ctx context.Context, orgID uuid.UUID, sessionID string, actor *string, isWrite bool, isDenial bool) (domain.AgentSession, error) {
-	sess, err := s.repo.GetOrCreate(ctx, orgID, sessionID, actor)
+func (u *Usecases) TrackCall(ctx context.Context, orgID uuid.UUID, sessionID string, actor *string, isWrite bool, isDenial bool) (domain.AgentSession, error) {
+	sess, err := u.repo.GetOrCreate(ctx, orgID, sessionID, actor)
 	if err != nil {
 		return domain.AgentSession{}, err
 	}
-	if err := s.repo.IncrementCall(ctx, orgID, sessionID, isWrite, isDenial); err != nil {
+	if err := u.repo.IncrementCall(ctx, orgID, sessionID, isWrite, isDenial); err != nil {
 		return sess, err
 	}
 	return sess, nil
 }
 
-// CheckLimits returns true if the session is within limits.
-func (s *Service) CheckLimits(sess domain.AgentSession, limits domain.SessionLimits) bool {
+func (u *Usecases) CheckLimits(sess domain.AgentSession, limits domain.SessionLimits) bool {
 	if limits.MaxCallsPerSession > 0 && sess.TotalCalls >= limits.MaxCallsPerSession {
 		return false
 	}
@@ -46,6 +43,6 @@ func (s *Service) CheckLimits(sess domain.AgentSession, limits domain.SessionLim
 	return true
 }
 
-func (s *Service) GetBySessionID(ctx context.Context, orgID uuid.UUID, sessionID string) (domain.AgentSession, error) {
-	return s.repo.GetBySessionID(ctx, orgID, sessionID)
+func (u *Usecases) GetBySessionID(ctx context.Context, orgID uuid.UUID, sessionID string) (domain.AgentSession, error) {
+	return u.repo.GetBySessionID(ctx, orgID, sessionID)
 }

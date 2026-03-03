@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,12 +16,17 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Handler struct {
-	svc Service
+type runUsecase interface {
+	Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
+	Simulate(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.SimulateResponse, error)
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+type Handler struct {
+	uc runUsecase
+}
+
+func NewHandler(uc runUsecase) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -50,7 +56,7 @@ func (h *Handler) run(c *gin.Context) {
 	scopes := scopesFromCtx(c)
 	timeoutMS := parseTimeoutMS(c.GetHeader("X-Timeout-Ms"))
 	idempotencyKey := parseIdempotencyKey(c.GetHeader("Idempotency-Key"))
-	resp, err := h.svc.Run(c.Request.Context(), orgID, gwdomain.RunRequest{
+	resp, err := h.uc.Run(c.Request.Context(), orgID, gwdomain.RunRequest{
 		RequestID:      rid,
 		ToolName:       req.ToolName,
 		Input:          req.Input,
@@ -134,7 +140,7 @@ func (h *Handler) simulate(c *gin.Context) {
 	if rid == "" {
 		rid = uuid.NewString()
 	}
-	resp, err := h.svc.Simulate(c.Request.Context(), orgID, gwdomain.RunRequest{
+	resp, err := h.uc.Simulate(c.Request.Context(), orgID, gwdomain.RunRequest{
 		RequestID:  rid,
 		ToolName:   req.ToolName,
 		Input:      req.Input,

@@ -12,11 +12,11 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -33,7 +33,7 @@ func (h *Handler) query(c *gin.Context) {
 		httperr.BadRequest(c, "invalid json")
 		return
 	}
-	out, err := h.svc.Query(c.Request.Context(), mustOrgID(c), actorFromCtx(c), req.Query)
+	out, err := h.uc.Query(c.Request.Context(), mustOrgID(c), actorFromCtx(c), req.Query)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return

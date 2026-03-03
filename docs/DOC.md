@@ -1,6 +1,6 @@
 ## ¿Qué es Nexus?
 
-En una frase: es el “portero” entre agentes de IA y herramientas reales: decide qué se ejecuta, con qué límites, y deja todo registrado.
+En una frase: es el "portero" entre agentes de IA y herramientas reales: decide qué se ejecuta, con qué límites, y deja todo registrado.
 
 **Nexus** es un **gateway de control** para que agentes de IA ejecuten herramientas (APIs HTTP) de forma segura y gobernada.
 
@@ -8,21 +8,28 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 
 ---
 
-## Las 3 piezas
+## Las 4 piezas
 
 1. **nexus-core**  
    - Recibe pedidos de ejecución (`POST /v1/run`, MCP, A2A).  
-   - Valida auth, políticas, DLP, rate limits, egress/SSRF.  
+   - Valida auth, políticas, DLP, rate limits, circuit breaker, egress/SSRF.  
+   - Puede requerir aprobación humana antes de ejecutar (HITL).
    - Ejecuta la tool HTTP si todo pasa.  
    - Audita cada intento (allow/deny) con hash-chain.
+   - Trackea sesiones de agente (calls, writes, denials).
+   - Evalúa reglas de alerta y dispara webhooks.
 
 2. **nexus-operator**  
    - Lee eventos de core (`GET /v1/events`).  
    - Si detecta muchas denegaciones (riesgo alto), aplica throttles, crea incidentes o propone políticas nuevas.
 
 3. **nexus-tower**  
-   - UI de operación: eventos, acciones, incidentes, propuestas de políticas.  
-   - Incluye simulador “Door Jam” para probar agentes en un grid.
+   - UI de supervisión: overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.  
+   - Incluye simulador "Door Jam" para probar agentes en un grid.
+
+4. **SDKs** (Python + TypeScript)
+   - Clientes tipados para toda la API.
+   - Integraciones: LangChain (`NexusTool`, `NexusToolkit`), OpenAI Agents SDK (`nexus_function_tools`).
 
 ---
 
@@ -30,6 +37,7 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 
 ### 1. Autenticación (antes de llegar al gateway)
 - **API key o JWT obligatoria**: sin key → 401; key inválida → 401.
+- **OIDC/SSO**: flujo OAuth2 + PKCE opcional.
 - **Scopes por endpoint**: sin scope → 403; excepción: admin/secops pasan siempre.
 
 ### 2. Resolución de tool
@@ -40,6 +48,7 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 - Misma key con otro payload → 409 conflict.
 - Misma key en progreso → 409 in progress.
 - Stale in-progress → se limpia y se trata como nueva.
+- Misma key con FAILED → replay terminal del error (no reintenta upstream).
 
 ### 4. Validación de tool
 - Tool deshabilitada → 403 tool disabled.
@@ -59,40 +68,64 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 - Paths: `input.*`, `context.*`, `tool.*`.
 - Operadores: exists, not_exists, eq, neq, lt, lte, gt, gte, in, contains, regex.
 - Composición: all, any, not.
-- Límites por policy: rate_limit.per_minute, max_bytes_input, max_bytes_context, require_idempotency.
+- Límites por policy: rate_limit.per_minute, max_bytes_input, max_bytes_context, require_idempotency, require_approval.
 - Default: read → allow; write → deny.
 
-### 8. Límites de tamaño (cuando policy matchea allow)
+### 8. Aprobación humana (HITL)
+- Si la policy matcheada tiene `require_approval: true`, la ejecución se bloquea con `APPROVAL_REQUIRED`.
+- Se crea un registro en `pending_approvals` con TTL configurable.
+- Un humano aprueba o rechaza vía `POST /v1/approvals/:id/approve` o `/reject`.
+- Las approvals vencidas se expiran automáticamente por el cleanup job.
+
+### 9. Límites de tamaño (cuando policy matchea allow)
 - max_bytes_input → 403 input too large.
 - max_bytes_context → 403 context too large.
 
-### 9. Action overrides (runtime)
+### 10. Action overrides (runtime)
 - Acción activa que deniega → 403 blocked by active action override.
 - Puede bajar rate limit tenant/tool.
 
-### 10. Rate limit por tenant
+### 11. Rate limit por tenant
 - Tenant supera run_rpm → 403 tenant run rate limit exceeded.
 
-### 11. Rate limit por tool
+### 12. Rate limit por tool
 - Tool supera rate limit (policy o override) → 403 rate limit exceeded.
 
-### 12. URL y egress (SSRF + allowlist)
+### 13. URL y egress (SSRF + allowlist)
 - URL no parseable → 400 invalid tool url.
 - SSRF activo: bloquea IPs privadas, loopback, link-local, metadata (169.254.169.254), IPv6 ULA.
 - Host no en egress allowlist de la tool → 403 egress host denied.
 
-### 13. Timeout budget
+### 14. Timeout budget
 - Presupuesto agotado antes de ejecutar → 408 timeout budget exhausted.
+- Se trackea por etapa (policy, egress, execution) en `stage_durations_ms`.
 
-### 14. Ejecución HTTP
+### 15. Circuit breaker
+- Per-host upstream: si el host acumula fallos consecutivos, el breaker se abre.
+- Open → requests rechazados con `CIRCUIT_BREAKER_OPEN` sin llamar a upstream.
+- Half-open → permite N requests de prueba; si pasan, cierra el breaker.
+- Configurable: `NEXUS_CB_FAILURE_THRESHOLD`, `NEXUS_CB_HALF_OPEN_MAX`, `NEXUS_CB_RESET_TIMEOUT_SEC`.
+
+### 16. Ejecución HTTP
 - Fallo → 502 con código de error (timeout, 5xx, etc.).
 - Retries: solo tools read; write no reintenta.
+- Secret injection: secretos cifrados se inyectan en headers al ejecutar.
 
-### 15. Validación de schema de salida
+### 17. Validación de schema de salida
 - Tool define output_schema y la respuesta no cumple → 502 tool output does not match schema.
 
-### 16. Auditoría
+### 18. Auditoría
 - Siempre se registra cada intento (allow/deny/error) con hash-chain, redacción de datos sensibles y DLP summary.
+- Export en CSV y JSONL.
+
+### 19. Tracking de sesión
+- Si el request incluye session context, se incrementan los contadores del agente (calls, writes, denials).
+- Consultable vía `GET /v1/sessions/:session_id`.
+
+### 20. Alertas
+- Reglas configurables por org: metric (deny_rate, error_rate, rate_limited_count), threshold, window, cooldown.
+- Cuando el valor excede el threshold, se dispara un webhook con el payload de alerta.
+- Métricas calculadas desde la tabla `audit_events`.
 
 ---
 
@@ -100,30 +133,67 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 
 | Categoría | Qué hace |
 |----------|----------|
-| Auth | API key, JWT, scopes por endpoint |
-| Idempotencia | Requerida en writes, replay, conflict, in-progress |
+| Auth | API key, JWT, OIDC/SSO, scopes por endpoint |
+| Idempotencia | Requerida en writes, replay, conflict, in-progress, terminal replay |
 | Tool | Enabled, kind, schema input/output |
 | DLP | Detección PII, expuesto en context.dlp |
 | Políticas | Condiciones + allow/deny + límites por policy |
+| Aprobación HITL | Bloqueo hasta aprobación humana, con TTL y expiración |
 | Límites | max_bytes_input, max_bytes_context, rate_limit |
 | Overrides | Deny temporal por acciones activas |
-| Rate limits | Tenant y por tool |
+| Rate limits | Tenant y por tool (in-memory o Redis) |
+| Circuit breaker | Per-host upstream, configurable |
 | Egress/SSRF | Allowlist por tool, bloqueo IPs privadas |
 | Timeout | Budget consumido por etapas |
-| Auditoría | Siempre, con hash-chain y redacción |
+| Secret injection | Vault cifrado, inyección en headers |
+| Auditoría | Siempre, con hash-chain, redacción, export CSV/JSONL |
+| Sesiones | Tracking de calls/writes/denials por agente |
+| Alertas | Webhook cuando métricas superan umbral |
+| SDKs | Python (sync + async) y TypeScript, con integraciones LangChain y OpenAI |
+
+---
+
+## Endpoints principales
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/v1/run` | POST | Ejecutar tool a través del gateway |
+| `/v1/run/simulate` | POST | Simular ejecución (sin upstream) |
+| `/v1/tools` | GET/POST | Listar/crear tools |
+| `/v1/tools/:name` | GET/PUT | Detalle/actualizar tool |
+| `/v1/tools/:name/policies` | GET/POST | Políticas por tool |
+| `/v1/tools/:name/egress-rules` | GET/POST | Reglas de egress por tool |
+| `/v1/tools/:name/secrets` | POST | Upsert secreto para tool |
+| `/v1/audit` | GET | Consultar audit trail |
+| `/v1/audit/export` | GET | Exportar audit (CSV/JSONL) |
+| `/v1/approvals` | GET | Listar approvals pendientes |
+| `/v1/approvals/:id` | GET | Detalle de approval |
+| `/v1/approvals/:id/approve` | POST | Aprobar |
+| `/v1/approvals/:id/reject` | POST | Rechazar |
+| `/v1/alert-rules` | GET/POST | Listar/crear reglas de alerta |
+| `/v1/alert-rules/:id` | DELETE | Eliminar regla de alerta |
+| `/v1/sessions/:session_id` | GET | Consultar sesión de agente |
+| `/v1/orgs` | POST | Crear org + API key (onboarding) |
+| `/v1/events` | GET | Stream de eventos operacionales |
+| `/v1/actions` | GET/POST | Acciones del operador |
+| `/v1/incidents` | GET/POST | Incidentes |
+| `/v1/policy-proposals` | GET/POST | Propuestas de políticas |
+| `/v1/assistant/query` | POST | Consulta al asistente |
+| `/mcp` | POST | Model Context Protocol (JSON-RPC) |
+| `/a2a/call` | POST | Agent-to-Agent |
+| `/v1/world/*` | GET/POST | Sim engine (Door Jam) |
 
 ---
 
 ## Estructura de directorios de nexus-core
-
 
 ### 1. `cmd/` — Entry points
 
 | Directorio | Responsabilidad |
 |------------|-----------------|
 | `cmd/api` | API HTTP principal (Gin), health, docs, rutas `/v1/*` |
-| `cmd/cleanup-idempotency` | Job para limpiar registros de idempotencia expirados |
-| `cmd/config` | Carga de configuración desde env (DB, HTTP, auth, OIDC, etc.) |
+| `cmd/cleanup-idempotency` | Job para limpiar idempotencia expirada y approvals vencidos |
+| `cmd/config` | Carga de configuración desde env (DB, HTTP, auth, OIDC, circuit breaker, etc.) |
 | `cmd/migrate` | Ejecución de migraciones SQL |
 | `cmd/mock-tools` | Servidor mock de tools para pruebas |
 | `cmd/ops-workers` | Proceso que ejecuta los agentes (sentry, diagnostician, comms, etc.) |
@@ -134,11 +204,11 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 
 | Directorio | Responsabilidad |
 |------------|-----------------|
-| `internal/gateway` | Orquestación de `POST /v1/run`: auth, tool, DLP, políticas, egress, ejecución HTTP, idempotencia, auditoría |
+| `internal/gateway` | Orquestación de `POST /v1/run`: auth, tool, DLP, políticas, approval, egress, ejecución HTTP, idempotencia, auditoría |
 | `internal/gateway/executor/http` | Ejecutor HTTP hacia upstream (timeouts, retries, circuit breaker) |
 | `internal/gateway/executor/circuitbreaker` | Circuit breaker por host upstream (closed/open/half-open) |
 | `internal/gateway/executor/ratelimit` | Rate limiting (in-memory y Redis) |
-| `internal/gateway/executor/telemetry` | Métricas de ejecución |
+| `internal/gateway/executor/telemetry` | Métricas de ejecución (OTel + Prometheus) |
 
 #### Autenticación e identidad
 
@@ -178,6 +248,14 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 | `internal/actions` | Acciones aplicadas (set_rate_limit, etc.) y su ciclo de vida |
 | `internal/incidents` | Incidentes (abrir, cerrar, evidencia) |
 
+#### Aprobaciones, alertas y sesiones
+
+| Directorio | Responsabilidad |
+|------------|-----------------|
+| `internal/approval` | Workflow de aprobación humana (HITL): crear, listar, aprobar, rechazar, expirar |
+| `internal/alerts` | Reglas de alerta con webhook: deny_rate, error_rate, rate_limited_count; métricas desde audit |
+| `internal/session` | Tracking de sesiones de agente: calls, writes, denials por session_id |
+
 #### Ops y agentes
 
 | Directorio | Responsabilidad |
@@ -203,14 +281,6 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 | `internal/agents/executive_qa` | Q&A para operadores con LLM |
 | `internal/agents/runtime` | Tests E2E del flujo de agentes |
 
-#### Aprobaciones, alertas y sesiones
-
-| Directorio | Responsabilidad |
-|------------|-----------------|
-| `internal/approval` | Workflow de aprobación humana (HITL): crear, listar, aprobar, rechazar, expirar |
-| `internal/alerts` | Reglas de alerta con webhook: deny_rate, error_rate, rate_limited_count; métricas desde audit |
-| `internal/session` | Tracking de sesiones de agente: calls, writes, denials por session_id |
-
 #### Otros módulos
 
 | Directorio | Responsabilidad |
@@ -221,7 +291,6 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 | `internal/mcp` | Endpoint MCP JSON-RPC (`tools/list`, `tools/call`) |
 | `internal/a2a` | Protocolo Agent-to-Agent |
 | `internal/world` | Integración con sim-engine (observe, move) |
-| `internal/toollab` | Módulo en preparación (toollab) |
 | `internal/shared/authz` | Permisos y scopes por endpoint |
 | `internal/shared/handlers` | Middleware de auth (API key, JWT) |
 
@@ -244,10 +313,17 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 | Directorio | Responsabilidad |
 |------------|-----------------|
 | `wire` | Inyección de dependencias (Wire) y bootstrap de rutas |
-| `migrations` | Migraciones SQL (up/down) |
-| `docs` | Documentación (ARCHITECTURE, runbooks, OpenAPI, admin UI) |
+| `migrations` | Migraciones SQL (up/down, 12 migraciones) |
+| `docs` | Documentación (OpenAPI, admin UI) |
 | `monitoring/grafana` | Dashboards y provisioning |
 | `monitoring/prometheus` | Configuración de Prometheus |
-| `scripts` | Scripts de DB, demo, e2e |
-| `testdata` | Datos de prueba (eventos, LLM) |
-| `third_party` | Código de terceros (ej. toollab-adapter-go) |
+| `scripts` | Scripts de DB, demo, e2e, seed |
+
+### 5. SDKs (`/sdks`)
+
+| Directorio | Responsabilidad |
+|------------|-----------------|
+| `sdks/python-sdk` | SDK Python: sync (`NexusClient`) + async (`AsyncNexusClient`), tipos, tests |
+| `sdks/python-sdk/nexus_sdk/integrations/langchain.py` | `NexusTool` + `NexusToolkit` para LangChain |
+| `sdks/python-sdk/nexus_sdk/integrations/openai_agents.py` | `nexus_function_tools` para OpenAI Agents SDK |
+| `sdks/typescript-sdk` | SDK TypeScript: `NexusClient`, tipos exportados |

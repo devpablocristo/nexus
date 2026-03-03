@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -12,14 +13,21 @@ import (
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
 	mcpdto "nexus-core/internal/mcp/handler/dto"
 	"nexus-core/internal/shared/authz"
+	tooldomain "nexus-core/internal/tool/usecases/domain"
 	httperr "nexus-core/pkg/http/errors"
 	ginmw "nexus-core/pkg/http/middlewares/gin"
 	"nexus-core/pkg/types"
 )
 
-type Handler struct{ svc Service }
+type mcpUsecase interface {
+	ListTools(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error)
+	GetTool(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
+	CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
+}
 
-func NewHandler(svc Service) *Handler { return &Handler{svc: svc} }
+type Handler struct{ uc mcpUsecase }
+
+func NewHandler(uc mcpUsecase) *Handler { return &Handler{uc: uc} }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/mcp", h.rpc)
@@ -38,7 +46,7 @@ func (h *Handler) rpc(c *gin.Context) {
 			h.rpcErr(c, req.ID, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeMCPRead+" scope required"))
 			return
 		}
-		items, err := h.svc.ListTools(c.Request.Context(), orgID)
+		items, err := h.uc.ListTools(c.Request.Context(), orgID)
 		if err != nil {
 			h.rpcErr(c, req.ID, err)
 			return
@@ -54,7 +62,7 @@ func (h *Handler) rpc(c *gin.Context) {
 			return
 		}
 		name, _ := req.Params["tool_name"].(string)
-		tool, err := h.svc.GetTool(c.Request.Context(), orgID, name)
+		tool, err := h.uc.GetTool(c.Request.Context(), orgID, name)
 		if err != nil {
 			h.rpcErr(c, req.ID, err)
 			return
@@ -80,7 +88,7 @@ func (h *Handler) rpc(c *gin.Context) {
 		actor := actorFromCtx(c)
 		role := roleFromCtx(c)
 		scopes := scopesFromCtx(c)
-		resp, err := h.svc.CallTool(c.Request.Context(), orgID, gwdomain.RunRequest{
+		resp, err := h.uc.CallTool(c.Request.Context(), orgID, gwdomain.RunRequest{
 			RequestID:      rid,
 			ToolName:       toolName,
 			Input:          input,

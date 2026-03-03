@@ -14,11 +14,11 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -44,7 +44,7 @@ func (h *Handler) ask(c *gin.Context) {
 		}
 		incidentID = &id
 	}
-	out, err := h.svc.Ask(c.Request.Context(), mustOrgID(c), actorFromCtx(c), AskRequest{
+	out, err := h.uc.Ask(c.Request.Context(), mustOrgID(c), actorFromCtx(c), AskRequest{
 		Question:   req.Question,
 		IncidentID: incidentID,
 	})

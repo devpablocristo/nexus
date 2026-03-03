@@ -13,28 +13,22 @@ type RepositoryPort interface {
 	ListByIncident(ctx context.Context, orgID, incidentID uuid.UUID, limit int) ([]commsdomain.Draft, error)
 }
 
-type Service interface {
-	Create(ctx context.Context, in commsdomain.Draft) (commsdomain.Draft, error)
-	MarkStatus(ctx context.Context, orgID, draftID uuid.UUID, status commsdomain.Status) (commsdomain.Draft, error)
-	ListByIncident(ctx context.Context, orgID, incidentID uuid.UUID, limit int) ([]commsdomain.Draft, error)
-}
-
-type service struct {
+type Usecases struct {
 	repo RepositoryPort
 }
 
-func NewService(repo RepositoryPort) Service {
-	return &service{repo: repo}
+func NewUsecases(repo RepositoryPort) *Usecases {
+	return &Usecases{repo: repo}
 }
 
-func (s *service) Create(ctx context.Context, in commsdomain.Draft) (commsdomain.Draft, error) {
-	return s.repo.Create(ctx, in)
+func (u *Usecases) Create(ctx context.Context, in commsdomain.Draft) (commsdomain.Draft, error) {
+	return u.repo.Create(ctx, in)
 }
 
-func (s *service) MarkStatus(ctx context.Context, orgID, draftID uuid.UUID, status commsdomain.Status) (commsdomain.Draft, error) {
-	return s.repo.MarkStatus(ctx, orgID, draftID, status)
+func (u *Usecases) MarkStatus(ctx context.Context, orgID, draftID uuid.UUID, status commsdomain.Status) (commsdomain.Draft, error) {
+	return u.repo.MarkStatus(ctx, orgID, draftID, status)
 }
 
-func (s *service) ListByIncident(ctx context.Context, orgID, incidentID uuid.UUID, limit int) ([]commsdomain.Draft, error) {
-	return s.repo.ListByIncident(ctx, orgID, incidentID, limit)
+func (u *Usecases) ListByIncident(ctx context.Context, orgID, incidentID uuid.UUID, limit int) ([]commsdomain.Draft, error) {
+	return u.repo.ListByIncident(ctx, orgID, incidentID, limit)
 }

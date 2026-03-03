@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"net/http"
@@ -17,12 +18,17 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Handler struct {
-	svc Service
+type auditUsecase interface {
+	Query(ctx context.Context, orgID uuid.UUID, q auditdomain.Query) ([]auditdomain.AuditEvent, error)
+	StreamByFilters(ctx context.Context, orgID uuid.UUID, q auditdomain.Query, limit int, fn func(auditdomain.AuditEvent) error) error
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+type Handler struct {
+	uc auditUsecase
+}
+
+func NewHandler(uc auditUsecase) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -41,7 +47,7 @@ func (h *Handler) query(c *gin.Context) {
 		httperr.WriteFrom(c, err)
 		return
 	}
-	items, err := h.svc.Query(c.Request.Context(), orgID, q)
+	items, err := h.uc.Query(c.Request.Context(), orgID, q)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -167,7 +173,7 @@ func (h *Handler) exportJSONL(c *gin.Context, orgID uuid.UUID, q auditdomain.Que
 	c.Header("Content-Type", "application/x-ndjson")
 	c.Status(http.StatusOK)
 	enc := json.NewEncoder(c.Writer)
-	err := h.svc.StreamByFilters(c.Request.Context(), orgID, q, 200, func(ev auditdomain.AuditEvent) error {
+	err := h.uc.StreamByFilters(c.Request.Context(), orgID, q, 200, func(ev auditdomain.AuditEvent) error {
 		return enc.Encode(toItem(ev))
 	})
 	if err != nil {
@@ -186,7 +192,7 @@ func (h *Handler) exportCSV(c *gin.Context, orgID uuid.UUID, q auditdomain.Query
 		"timeout_ms", "budget_remaining_ms_at_execute", "stage_durations_ms", "dlp_summary",
 		"input", "context", "output", "prev_event_hash", "event_hash", "hash_algo",
 	})
-	err := h.svc.StreamByFilters(c.Request.Context(), orgID, q, 200, func(ev auditdomain.AuditEvent) error {
+	err := h.uc.StreamByFilters(c.Request.Context(), orgID, q, 200, func(ev auditdomain.AuditEvent) error {
 		item := toItem(ev)
 		scopesJSON, _ := json.Marshal(item.Scopes)
 		stageJSON, _ := json.Marshal(item.StageDurationsMS)

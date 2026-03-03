@@ -20,7 +20,7 @@ Tower never calls `sim-engine` directly. Tower reads world data from Core:
 ## Data plane and control plane
 
 1. Tower/agents call Core.
-2. Core enforces authz, policy, SSRF/egress guard, rate limiting, audit.
+2. Core enforces authz, policy, SSRF/egress guard, rate limiting, circuit breaker, approval, audit.
 3. Core executes tool upstream call to `http://sim-engine:8087/tools/*`.
 4. Core adds internal headers:
    - `X-Nexus-Request-Id`

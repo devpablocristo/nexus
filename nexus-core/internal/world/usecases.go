@@ -26,31 +26,23 @@ type Config struct {
 	Timeout     time.Duration
 }
 
-type Service interface {
-	ListRuns(ctx context.Context, orgID uuid.UUID, requestID string, limit int, cursor string) (any, error)
-	GetState(ctx context.Context, orgID uuid.UUID, requestID, runID string, stepID *int64) (any, error)
-	GetEvents(ctx context.Context, orgID uuid.UUID, requestID, runID string, fromSeq int64, limit int) (any, error)
-	CreateRun(ctx context.Context, orgID uuid.UUID, requestID string, payload map[string]any) (any, error)
-	Replay(ctx context.Context, orgID uuid.UUID, requestID string, payload map[string]any) (any, error)
-}
-
-type service struct {
+type Usecases struct {
 	client *http.Client
 	cfg    Config
 }
 
-func NewService(cfg Config) Service {
+func NewUsecases(cfg Config) *Usecases {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 6 * time.Second
 	}
-	return &service{
+	return &Usecases{
 		client: &http.Client{Timeout: timeout},
 		cfg:    cfg,
 	}
 }
 
-func (s *service) ListRuns(ctx context.Context, orgID uuid.UUID, requestID string, limit int, cursor string) (any, error) {
+func (u *Usecases) ListRuns(ctx context.Context, orgID uuid.UUID, requestID string, limit int, cursor string) (any, error) {
 	q := url.Values{}
 	q.Set("org_id", orgID.String())
 	if limit > 0 {
@@ -59,20 +51,20 @@ func (s *service) ListRuns(ctx context.Context, orgID uuid.UUID, requestID strin
 	if strings.TrimSpace(cursor) != "" {
 		q.Set("cursor", cursor)
 	}
-	return s.call(ctx, requestID, http.MethodGet, "/admin/run/runs", q, nil)
+	return u.call(ctx, requestID, http.MethodGet, "/admin/run/runs", q, nil)
 }
 
-func (s *service) GetState(ctx context.Context, orgID uuid.UUID, requestID, runID string, stepID *int64) (any, error) {
+func (u *Usecases) GetState(ctx context.Context, orgID uuid.UUID, requestID, runID string, stepID *int64) (any, error) {
 	q := url.Values{}
 	q.Set("org_id", orgID.String())
 	q.Set("run_id", runID)
 	if stepID != nil {
 		q.Set("step_id", strconv.FormatInt(*stepID, 10))
 	}
-	return s.call(ctx, requestID, http.MethodGet, "/admin/run/state", q, nil)
+	return u.call(ctx, requestID, http.MethodGet, "/admin/run/state", q, nil)
 }
 
-func (s *service) GetEvents(ctx context.Context, orgID uuid.UUID, requestID, runID string, fromSeq int64, limit int) (any, error) {
+func (u *Usecases) GetEvents(ctx context.Context, orgID uuid.UUID, requestID, runID string, fromSeq int64, limit int) (any, error) {
 	q := url.Values{}
 	q.Set("org_id", orgID.String())
 	q.Set("run_id", runID)
@@ -82,23 +74,23 @@ func (s *service) GetEvents(ctx context.Context, orgID uuid.UUID, requestID, run
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	return s.call(ctx, requestID, http.MethodGet, "/admin/run/events", q, nil)
+	return u.call(ctx, requestID, http.MethodGet, "/admin/run/events", q, nil)
 }
 
-func (s *service) CreateRun(ctx context.Context, orgID uuid.UUID, requestID string, payload map[string]any) (any, error) {
+func (u *Usecases) CreateRun(ctx context.Context, orgID uuid.UUID, requestID string, payload map[string]any) (any, error) {
 	body := cloneMap(payload)
 	body["org_id"] = orgID.String()
-	return s.call(ctx, requestID, http.MethodPost, "/admin/run/create", nil, body)
+	return u.call(ctx, requestID, http.MethodPost, "/admin/run/create", nil, body)
 }
 
-func (s *service) Replay(ctx context.Context, orgID uuid.UUID, requestID string, payload map[string]any) (any, error) {
+func (u *Usecases) Replay(ctx context.Context, orgID uuid.UUID, requestID string, payload map[string]any) (any, error) {
 	body := cloneMap(payload)
 	body["org_id"] = orgID.String()
-	return s.call(ctx, requestID, http.MethodPost, "/admin/run/replay", nil, body)
+	return u.call(ctx, requestID, http.MethodPost, "/admin/run/replay", nil, body)
 }
 
-func (s *service) call(ctx context.Context, requestID, method, path string, query url.Values, payload map[string]any) (any, error) {
-	base := strings.TrimRight(strings.TrimSpace(s.cfg.BaseURL), "/")
+func (u *Usecases) call(ctx context.Context, requestID, method, path string, query url.Values, payload map[string]any) (any, error) {
+	base := strings.TrimRight(strings.TrimSpace(u.cfg.BaseURL), "/")
 	if base == "" {
 		return nil, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "sim-engine endpoint is not configured")
 	}
@@ -126,11 +118,11 @@ func (s *service) call(ctx context.Context, requestID, method, path string, quer
 	if strings.TrimSpace(requestID) != "" {
 		req.Header.Set(requestIDHeader, requestID)
 	}
-	if strings.TrimSpace(s.cfg.InternalKey) != "" {
-		req.Header.Set(internalKeyHeader, s.cfg.InternalKey)
+	if strings.TrimSpace(u.cfg.InternalKey) != "" {
+		req.Header.Set(internalKeyHeader, u.cfg.InternalKey)
 	}
 
-	resp, err := s.client.Do(req)
+	resp, err := u.client.Do(req)
 	if err != nil {
 		return nil, types.NewHTTPError(http.StatusServiceUnavailable, types.ErrCodeNetworkError, "sim-engine unavailable")
 	}

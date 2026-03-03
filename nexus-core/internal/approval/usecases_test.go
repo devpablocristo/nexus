@@ -58,7 +58,7 @@ func (r *stubRepo) ExpireOld(_ context.Context) (int64, error) {
 
 func TestRequestApproval_DefaultTTL(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 
 	pa, err := svc.RequestApproval(context.Background(), domain.CreateRequest{
 		OrgID:    uuid.New(),
@@ -77,7 +77,7 @@ func TestRequestApproval_DefaultTTL(t *testing.T) {
 
 func TestApproveReject(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 
 	id := uuid.New()
 	orgID := uuid.New()
@@ -100,7 +100,7 @@ func TestApproveReject(t *testing.T) {
 
 func TestListPending(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 
 	orgID := uuid.New()
 	items, err := svc.ListPending(context.Background(), orgID, 50)
@@ -114,7 +114,7 @@ func TestListPending(t *testing.T) {
 
 func TestGatewayAdapter(t *testing.T) {
 	repo := &stubRepo{}
-	svc := NewService(repo)
+	svc := NewUsecases(repo)
 	adapter := NewGatewayAdapter(svc)
 
 	idStr, err := adapter.RequestApproval(context.Background(), gateway.ApprovalRequest{

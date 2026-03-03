@@ -14,7 +14,7 @@ import (
 func TestService_AskCreatesActionProposalViaEngine(t *testing.T) {
 	t.Parallel()
 	orgID := uuid.MustParse("996e9e43-7bab-4e68-a831-0a766befbf54")
-	svc := NewService(llmQAStub{}, actionEngineStub{})
+	svc := NewUsecases(llmQAStub{}, actionEngineStub{})
 
 	out, err := svc.Ask(context.Background(), orgID, ptr("alice"), AskRequest{
 		Question: "How do we stabilize this incident?",
@@ -30,7 +30,7 @@ func TestService_AskCreatesActionProposalViaEngine(t *testing.T) {
 func TestService_AskReturnsUnknownOnInvalidLLMOutput(t *testing.T) {
 	t.Parallel()
 	orgID := uuid.MustParse("996e9e43-7bab-4e68-a831-0a766befbf54")
-	svc := NewService(llmQABrokenStub{}, actionEngineStub{})
+	svc := NewUsecases(llmQABrokenStub{}, actionEngineStub{})
 
 	out, err := svc.Ask(context.Background(), orgID, ptr("alice"), AskRequest{
 		Question: "Any update?",

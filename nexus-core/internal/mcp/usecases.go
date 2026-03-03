@@ -18,29 +18,23 @@ type RunPort interface {
 	Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
 }
 
-type Service interface {
-	ListTools(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error)
-	GetTool(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
-	CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
-}
-
-type service struct {
+type Usecases struct {
 	tool ToolPort
 	run  RunPort
 }
 
-func NewService(tool ToolPort, run RunPort) Service {
-	return &service{tool: tool, run: run}
+func NewUsecases(tool ToolPort, run RunPort) *Usecases {
+	return &Usecases{tool: tool, run: run}
 }
 
-func (s *service) ListTools(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error) {
-	return s.tool.List(ctx, orgID)
+func (u *Usecases) ListTools(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error) {
+	return u.tool.List(ctx, orgID)
 }
 
-func (s *service) GetTool(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error) {
-	return s.tool.GetByName(ctx, orgID, name)
+func (u *Usecases) GetTool(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error) {
+	return u.tool.GetByName(ctx, orgID, name)
 }
 
-func (s *service) CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error) {
-	return s.run.Run(ctx, orgID, req)
+func (u *Usecases) CallTool(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error) {
+	return u.run.Run(ctx, orgID, req)
 }

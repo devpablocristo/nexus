@@ -24,14 +24,7 @@ type RepositoryPort interface {
 	ListAdminActivityEvents(ctx context.Context, orgID uuid.UUID, limit int) ([]admindomain.AdminActivityEvent, error)
 }
 
-type Service interface {
-	GetBootstrap(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, authMethod string) (BootstrapResponse, error)
-	GetTenantSettings(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string) (admindomain.TenantSettings, error)
-	UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, req UpsertTenantSettingsRequest) (admindomain.TenantSettings, error)
-	ListActivity(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, limit int) ([]admindomain.AdminActivityEvent, error)
-}
-
-type service struct {
+type Usecases struct {
 	repo RepositoryPort
 }
 
@@ -51,20 +44,20 @@ type UpsertTenantSettingsRequest struct {
 	HardLimits map[string]any
 }
 
-func NewService(repo RepositoryPort) Service {
-	return &service{repo: repo}
+func NewUsecases(repo RepositoryPort) *Usecases {
+	return &Usecases{repo: repo}
 }
 
-func (s *service) GetBootstrap(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, authMethod string) (BootstrapResponse, error) {
+func (u *Usecases) GetBootstrap(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, authMethod string) (BootstrapResponse, error) {
 	canRead, canWrite := adminCapabilities(role, scopes)
 	if !canRead {
 		return BootstrapResponse{}, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console read permission required")
 	}
-	settings, err := s.getOrDefaultSettings(ctx, orgID)
+	settings, err := u.getOrDefaultSettings(ctx, orgID)
 	if err != nil {
 		return BootstrapResponse{}, err
 	}
-	_ = s.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
 		OrgID:        orgID,
 		Actor:        actor,
 		Action:       "admin.bootstrap.read",
@@ -86,16 +79,16 @@ func (s *service) GetBootstrap(ctx context.Context, orgID uuid.UUID, actor, role
 	}, nil
 }
 
-func (s *service) GetTenantSettings(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string) (admindomain.TenantSettings, error) {
+func (u *Usecases) GetTenantSettings(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string) (admindomain.TenantSettings, error) {
 	canRead, _ := adminCapabilities(role, scopes)
 	if !canRead {
 		return admindomain.TenantSettings{}, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console read permission required")
 	}
-	settings, err := s.getOrDefaultSettings(ctx, orgID)
+	settings, err := u.getOrDefaultSettings(ctx, orgID)
 	if err != nil {
 		return admindomain.TenantSettings{}, err
 	}
-	_ = s.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
 		OrgID:        orgID,
 		Actor:        actor,
 		Action:       "tenant_settings.read",
@@ -104,7 +97,7 @@ func (s *service) GetTenantSettings(ctx context.Context, orgID uuid.UUID, actor,
 	return settings, nil
 }
 
-func (s *service) UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, req UpsertTenantSettingsRequest) (admindomain.TenantSettings, error) {
+func (u *Usecases) UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, req UpsertTenantSettingsRequest) (admindomain.TenantSettings, error) {
 	_, canWrite := adminCapabilities(role, scopes)
 	if !canWrite {
 		return admindomain.TenantSettings{}, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console write permission required")
@@ -115,7 +108,7 @@ func (s *service) UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, act
 	if req.HardLimits == nil {
 		req.HardLimits = defaultHardLimits(req.PlanCode)
 	}
-	settings, err := s.repo.UpsertTenantSettings(ctx, admindomain.TenantSettings{
+	settings, err := u.repo.UpsertTenantSettings(ctx, admindomain.TenantSettings{
 		OrgID:      orgID,
 		PlanCode:   req.PlanCode,
 		HardLimits: req.HardLimits,
@@ -125,7 +118,7 @@ func (s *service) UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, act
 	if err != nil {
 		return admindomain.TenantSettings{}, err
 	}
-	_ = s.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
 		OrgID:        orgID,
 		Actor:        actor,
 		Action:       "tenant_settings.upsert",
@@ -138,16 +131,16 @@ func (s *service) UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, act
 	return settings, nil
 }
 
-func (s *service) ListActivity(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, limit int) ([]admindomain.AdminActivityEvent, error) {
+func (u *Usecases) ListActivity(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, limit int) ([]admindomain.AdminActivityEvent, error) {
 	canRead, _ := adminCapabilities(role, scopes)
 	if !canRead {
 		return nil, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console read permission required")
 	}
-	items, err := s.repo.ListAdminActivityEvents(ctx, orgID, limit)
+	items, err := u.repo.ListAdminActivityEvents(ctx, orgID, limit)
 	if err != nil {
 		return nil, err
 	}
-	_ = s.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
 		OrgID:        orgID,
 		Actor:        actor,
 		Action:       "admin.activity.read",
@@ -166,8 +159,8 @@ func adminCapabilities(role *string, scopes []string) (bool, bool) {
 	return canRead, canWrite
 }
 
-func (s *service) getOrDefaultSettings(ctx context.Context, orgID uuid.UUID) (admindomain.TenantSettings, error) {
-	settings, ok, err := s.repo.GetTenantSettings(ctx, orgID)
+func (u *Usecases) getOrDefaultSettings(ctx context.Context, orgID uuid.UUID) (admindomain.TenantSettings, error) {
+	settings, ok, err := u.repo.GetTenantSettings(ctx, orgID)
 	if err != nil {
 		return admindomain.TenantSettings{}, err
 	}
@@ -178,7 +171,7 @@ func (s *service) getOrDefaultSettings(ctx context.Context, orgID uuid.UUID) (ad
 		return settings, nil
 	}
 	defaults := defaultHardLimits("starter")
-	stored, err := s.repo.UpsertTenantSettings(ctx, admindomain.TenantSettings{
+	stored, err := u.repo.UpsertTenantSettings(ctx, admindomain.TenantSettings{
 		OrgID:      orgID,
 		PlanCode:   "starter",
 		HardLimits: defaults,

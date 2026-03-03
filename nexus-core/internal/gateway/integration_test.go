@@ -105,8 +105,8 @@ func TestIntegration_RunTransferPoliciesAndAuditRedaction(t *testing.T) {
 	policyR := policy.NewRepository(gdb)
 
 	schemaCache := jsonschema.NewCompilerCache()
-	toolSvc := tool.NewService(toolR, nil, schemaCache)
-	policySvc := policy.NewService(policyR, toolSvc)
+	toolSvc := tool.NewUsecases(toolR, nil, schemaCache)
+	policySvc := policy.NewUsecases(policyR, toolSvc)
 
 	orgID, err := orgR.UpsertOrgByName(ctx, "demo")
 	if err != nil {

@@ -14,11 +14,11 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	uc *Usecases
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -32,7 +32,7 @@ func (h *Handler) list(c *gin.Context) {
 		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeAdminConsoleRead+" scope required")
 		return
 	}
-	rules, err := h.svc.ListByOrg(c.Request.Context(), mustOrgID(c))
+	rules, err := h.uc.ListByOrg(c.Request.Context(), mustOrgID(c))
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -65,7 +65,7 @@ func (h *Handler) create(c *gin.Context) {
 		CooldownSeconds: req.CooldownSeconds,
 		Enabled:         req.Enabled,
 	}
-	created, err := h.svc.Create(c.Request.Context(), rule)
+	created, err := h.uc.Create(c.Request.Context(), rule)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -83,7 +83,7 @@ func (h *Handler) delete(c *gin.Context) {
 		httperr.BadRequest(c, "invalid id")
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), mustOrgID(c), id); err != nil {
+	if err := h.uc.Delete(c.Request.Context(), mustOrgID(c), id); err != nil {
 		httperr.WriteFrom(c, err)
 		return
 	}

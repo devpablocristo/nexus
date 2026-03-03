@@ -16,37 +16,37 @@ type RepoPort interface {
 	ExpireOld(ctx context.Context) (int64, error)
 }
 
-type Service struct {
+type Usecases struct {
 	repo RepoPort
 }
 
-func NewService(repo RepoPort) *Service {
-	return &Service{repo: repo}
+func NewUsecases(repo RepoPort) *Usecases {
+	return &Usecases{repo: repo}
 }
 
-func (s *Service) RequestApproval(ctx context.Context, req domain.CreateRequest) (domain.PendingApproval, error) {
+func (u *Usecases) RequestApproval(ctx context.Context, req domain.CreateRequest) (domain.PendingApproval, error) {
 	if req.TTLSeconds <= 0 {
 		req.TTLSeconds = 3600
 	}
-	return s.repo.Create(ctx, req)
+	return u.repo.Create(ctx, req)
 }
 
-func (s *Service) ListPending(ctx context.Context, orgID uuid.UUID, limit int) ([]domain.PendingApproval, error) {
-	return s.repo.ListPending(ctx, orgID, limit)
+func (u *Usecases) ListPending(ctx context.Context, orgID uuid.UUID, limit int) ([]domain.PendingApproval, error) {
+	return u.repo.ListPending(ctx, orgID, limit)
 }
 
-func (s *Service) GetByID(ctx context.Context, orgID, id uuid.UUID) (domain.PendingApproval, error) {
-	return s.repo.GetByID(ctx, orgID, id)
+func (u *Usecases) GetByID(ctx context.Context, orgID, id uuid.UUID) (domain.PendingApproval, error) {
+	return u.repo.GetByID(ctx, orgID, id)
 }
 
-func (s *Service) Approve(ctx context.Context, orgID, id uuid.UUID, decidedBy string) error {
-	return s.repo.Decide(ctx, orgID, id, domain.StatusApproved, decidedBy)
+func (u *Usecases) Approve(ctx context.Context, orgID, id uuid.UUID, decidedBy string) error {
+	return u.repo.Decide(ctx, orgID, id, domain.StatusApproved, decidedBy)
 }
 
-func (s *Service) Reject(ctx context.Context, orgID, id uuid.UUID, decidedBy string) error {
-	return s.repo.Decide(ctx, orgID, id, domain.StatusRejected, decidedBy)
+func (u *Usecases) Reject(ctx context.Context, orgID, id uuid.UUID, decidedBy string) error {
+	return u.repo.Decide(ctx, orgID, id, domain.StatusRejected, decidedBy)
 }
 
-func (s *Service) ExpireOld(ctx context.Context) (int64, error) {
-	return s.repo.ExpireOld(ctx)
+func (u *Usecases) ExpireOld(ctx context.Context) (int64, error) {
+	return u.repo.ExpireOld(ctx)
 }

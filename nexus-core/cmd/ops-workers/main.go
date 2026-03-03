@@ -48,13 +48,13 @@ func main() {
 	sqlDB, _ := db.DB()
 	defer func() { _ = sqlDB.Close() }()
 
-	opsEventSvc := opseventstore.NewService(
+	opsEventSvc := opseventstore.NewUsecases(
 		opseventstore.NewRepository(db),
 		opseventstore.NewSchemaValidator(jsonschema.NewCompilerCache(), ""),
 	)
 	opsEmitter := opseventstore.NewEmitter(opsEventSvc)
-	opsTenantSvc := opstenant.NewService(opstenant.NewRepository(db))
-	opsActionSvc := opsaction.NewService(opsaction.NewRepository(db))
+	opsTenantSvc := opstenant.NewUsecases(opstenant.NewRepository(db))
+	opsActionSvc := opsaction.NewUsecases(opsaction.NewRepository(db))
 	actionEngine := opsaction.NewEngine(
 		opsActionSvc,
 		opsEmitter,
@@ -63,8 +63,8 @@ func main() {
 		jsonschema.NewCompilerCache(),
 	)
 
-	opsDiagSvc := opsdiagnosis.NewService(opsdiagnosis.NewRepository(db))
-	opsCommsSvc := opscomms.NewService(opscomms.NewRepository(db))
+	opsDiagSvc := opsdiagnosis.NewUsecases(opsdiagnosis.NewRepository(db))
+	opsCommsSvc := opscomms.NewUsecases(opscomms.NewRepository(db))
 
 	llmClient := opsllm.NewClient(opsllm.Config{
 		Provider:      cfg.Service.LLMProvider,
@@ -74,8 +74,8 @@ func main() {
 		CloudAPIKey:   cfg.Service.LLMCloudAPIKey,
 	}, jsonschema.NewCompilerCache())
 
-	legacyEventsSvc := events.NewService(events.NewRepository(db))
-	incidentSvc := incidents.NewService(incidents.NewRepository(db), legacyEventsSvc)
+	legacyEventsSvc := events.NewUsecases(events.NewRepository(db))
+	incidentSvc := incidents.NewUsecases(incidents.NewRepository(db), legacyEventsSvc)
 
 	workers := []agentruntime.Worker{
 		sentry.NewWorker(

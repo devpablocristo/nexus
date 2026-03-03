@@ -109,7 +109,7 @@ func TestRun_IdempotencyReplayDoesNotExecute(t *testing.T) {
 	}
 
 	exec := &fakeExecutor{}
-	svc := NewService(
+	svc := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:         toolID,
 			OrgID:      orgID,
@@ -175,7 +175,7 @@ func TestRun_IdempotencyConflict(t *testing.T) {
 	toolID := uuid.New()
 	actor := "bot-1"
 	role := "bot"
-	svc := NewService(
+	svc := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:         toolID,
 			OrgID:      orgID,
@@ -243,7 +243,7 @@ func TestRun_IdempotencyFailedReplayReturnsCachedError(t *testing.T) {
 	}
 
 	exec := &fakeExecutor{}
-	svc := NewService(
+	svc := NewUsecases(
 		fakeToolRepo{tool: tooldomain.Tool{
 			ID:         toolID,
 			OrgID:      orgID,

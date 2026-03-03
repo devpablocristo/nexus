@@ -24,14 +24,6 @@ type EventSink interface {
 	Append(ctx context.Context, orgID uuid.UUID, eventType string, payload map[string]any) (eventdomain.Event, error)
 }
 
-type Service interface {
-	Create(ctx context.Context, orgID uuid.UUID, actor *string, req CreateRequest) (proposaldomain.Proposal, error)
-	List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]proposaldomain.Proposal, error)
-	Approve(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error)
-	Reject(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error)
-	Shadow(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error)
-}
-
 type CreateRequest struct {
 	Status         string
 	Diff           map[string]any
@@ -40,16 +32,16 @@ type CreateRequest struct {
 	RollbackPlan   string
 }
 
-type service struct {
+type Usecases struct {
 	repo   RepositoryPort
 	events EventSink
 }
 
-func NewService(repo RepositoryPort, events EventSink) Service {
-	return &service{repo: repo, events: events}
+func NewUsecases(repo RepositoryPort, events EventSink) *Usecases {
+	return &Usecases{repo: repo, events: events}
 }
 
-func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, req CreateRequest) (proposaldomain.Proposal, error) {
+func (u *Usecases) Create(ctx context.Context, orgID uuid.UUID, actor *string, req CreateRequest) (proposaldomain.Proposal, error) {
 	st := proposaldomain.Status(req.Status)
 	if st == "" {
 		st = proposaldomain.StatusDraft
@@ -62,7 +54,7 @@ func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, re
 	if req.Diff == nil {
 		req.Diff = map[string]any{}
 	}
-	created, err := s.repo.Create(ctx, proposaldomain.Proposal{
+	created, err := u.repo.Create(ctx, proposaldomain.Proposal{
 		OrgID:          orgID,
 		Status:         st,
 		Diff:           req.Diff,
@@ -74,8 +66,8 @@ func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, re
 	if err != nil {
 		return proposaldomain.Proposal{}, err
 	}
-	if s.events != nil {
-		_, _ = s.events.Append(ctx, orgID, "proposal.created", map[string]any{
+	if u.events != nil {
+		_, _ = u.events.Append(ctx, orgID, "proposal.created", map[string]any{
 			"proposal_id": created.ID.String(),
 			"status":      string(created.Status),
 			"created_by":  created.CreatedBy,
@@ -85,37 +77,37 @@ func (s *service) Create(ctx context.Context, orgID uuid.UUID, actor *string, re
 	return created, nil
 }
 
-func (s *service) List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]proposaldomain.Proposal, error) {
-	return s.repo.List(ctx, orgID, status, limit)
+func (u *Usecases) List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]proposaldomain.Proposal, error) {
+	return u.repo.List(ctx, orgID, status, limit)
 }
 
-func (s *service) Approve(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error) {
-	return s.decide(ctx, orgID, id, actor, proposaldomain.StatusApproved, "proposal.approved", "enforced")
+func (u *Usecases) Approve(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error) {
+	return u.decide(ctx, orgID, id, actor, proposaldomain.StatusApproved, "proposal.approved", "enforced")
 }
 
-func (s *service) Reject(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error) {
-	return s.decide(ctx, orgID, id, actor, proposaldomain.StatusRejected, "proposal.rejected", "")
+func (u *Usecases) Reject(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error) {
+	return u.decide(ctx, orgID, id, actor, proposaldomain.StatusRejected, "proposal.rejected", "")
 }
 
-func (s *service) Shadow(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error) {
-	return s.decide(ctx, orgID, id, actor, proposaldomain.StatusShadow, "proposal.shadow_started", "shadow")
+func (u *Usecases) Shadow(ctx context.Context, orgID, id uuid.UUID, actor *string) (proposaldomain.Proposal, error) {
+	return u.decide(ctx, orgID, id, actor, proposaldomain.StatusShadow, "proposal.shadow_started", "shadow")
 }
 
-func (s *service) decide(ctx context.Context, orgID, id uuid.UUID, actor *string, status proposaldomain.Status, evType string, versionMode string) (proposaldomain.Proposal, error) {
-	if _, err := s.repo.GetByID(ctx, orgID, id); err != nil {
+func (u *Usecases) decide(ctx context.Context, orgID, id uuid.UUID, actor *string, status proposaldomain.Status, evType string, versionMode string) (proposaldomain.Proposal, error) {
+	if _, err := u.repo.GetByID(ctx, orgID, id); err != nil {
 		return proposaldomain.Proposal{}, err
 	}
 	now := time.Now().UTC()
-	updated, err := s.repo.UpdateDecision(ctx, orgID, id, status, actor, now)
+	updated, err := u.repo.UpdateDecision(ctx, orgID, id, status, actor, now)
 	if err != nil {
 		return proposaldomain.Proposal{}, err
 	}
 	if versionMode != "" {
 		label := string(status) + "-" + now.Format("20060102T150405Z")
-		_ = s.repo.CreateVersion(ctx, orgID, &updated.ID, label, updated.Diff, versionMode, actor)
+		_ = u.repo.CreateVersion(ctx, orgID, &updated.ID, label, updated.Diff, versionMode, actor)
 	}
-	if s.events != nil {
-		_, _ = s.events.Append(ctx, orgID, evType, map[string]any{
+	if u.events != nil {
+		_, _ = u.events.Append(ctx, orgID, evType, map[string]any{
 			"proposal_id": updated.ID.String(),
 			"status":      string(updated.Status),
 			"decided_by":  actor,

@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -14,12 +15,19 @@ import (
 	"nexus-core/pkg/types"
 )
 
-type Handler struct {
-	svc Service
+type toolUsecase interface {
+	Create(ctx context.Context, orgID uuid.UUID, req CreateRequest) (tooldomain.Tool, error)
+	List(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error)
+	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
+	UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch ToolPatch) (tooldomain.Tool, error)
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+type Handler struct {
+	uc toolUsecase
+}
+
+func NewHandler(uc toolUsecase) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -55,7 +63,7 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 	orgID := mustOrgID(c)
-	created, err := h.svc.Create(c.Request.Context(), orgID, CreateRequest{
+	created, err := h.uc.Create(c.Request.Context(), orgID, CreateRequest{
 		Name:           req.Name,
 		Kind:           req.Kind,
 		Description:    req.Description,
@@ -82,7 +90,7 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 	orgID := mustOrgID(c)
-	items, err := h.svc.List(c.Request.Context(), orgID)
+	items, err := h.uc.List(c.Request.Context(), orgID)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -101,7 +109,7 @@ func (h *Handler) get(c *gin.Context) {
 	}
 	orgID := mustOrgID(c)
 	name := c.Param("name")
-	t, err := h.svc.GetByName(c.Request.Context(), orgID, name)
+	t, err := h.uc.GetByName(c.Request.Context(), orgID, name)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -138,7 +146,7 @@ func (h *Handler) update(c *gin.Context) {
 	if req.Description != nil {
 		desc = &req.Description
 	}
-	updated, err := h.svc.UpdateByName(c.Request.Context(), orgID, name, ToolPatch{
+	updated, err := h.uc.UpdateByName(c.Request.Context(), orgID, name, ToolPatch{
 		Description:    desc,
 		Method:         req.Method,
 		URL:            req.URL,

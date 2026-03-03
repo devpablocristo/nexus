@@ -4,10 +4,11 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 
 ## Architecture
 
-- **nexus-core**: deterministic backend — gateway, policies, DLP, rate-limits, audit, approvals, alerts, sessions.
+- **nexus-core**: deterministic backend — gateway, policies, DLP, rate-limits, circuit breaker, HITL approval, audit, alerts, sessions.
 - **nexus-operator**: AI-operated service — signals, risk scoring, reversible actions, policy proposals.
 - **nexus-tower**: supervision UI — overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.
-- **sdks/**: Python and TypeScript SDKs with LangChain and OpenAI Agents integrations.
+- **sim-engine**: deterministic simulation engine for Door Jam demo.
+- **sdks/**: Python (sync + async) and TypeScript SDKs with LangChain and OpenAI Agents integrations.
 
 ## Core Features
 
@@ -121,10 +122,22 @@ const resp = await client.run('echo', { hello: 'world' });
 Shared contracts under `shared/`:
 - `shared/contracts/openapi.nexus-core.snapshot.yaml`
 - `shared/contracts/events.schema.json`
+- `shared/contracts/world-events.schema.json`
 - `shared/contracts/error-codes.json`
 
 ## Agent-Operated Model
 
 - Operator **never** writes to DB directly.
 - Operator consumes `GET /v1/events` and acts through: `POST /v1/actions/apply`, `POST /v1/incidents`, `POST /v1/policy-proposals`.
+- HITL: policies with `require_approval` block execution until a human approves/rejects.
 - Tower does not call LLM directly — routes through `nexus-core /v1/assistant/query`.
+
+## Docs
+
+- [`docs/DOC.md`](docs/DOC.md) — Full technical reference (pipeline, endpoints, directory structure, SDKs).
+- [`docs/AGENT_OPERATED_MODEL.md`](docs/AGENT_OPERATED_MODEL.md) — Agent-operated model and HITL flow.
+- [`docs/NAMING_AND_BOUNDARIES.md`](docs/NAMING_AND_BOUNDARIES.md) — Names, headers, compatibility.
+- [`docs/architecture/viewer.md`](docs/architecture/viewer.md) — Sim Engine / Viewer architecture.
+- [`docs/testing/sim_engine_regression.md`](docs/testing/sim_engine_regression.md) — Determinism and regression tests.
+- [`docs/runbooks/sim_engine_ops.md`](docs/runbooks/sim_engine_ops.md) — Sim Engine ops runbook.
+- [`docs/demo/door_jam.md`](docs/demo/door_jam.md) — Door Jam demo instructions.

@@ -90,19 +90,19 @@ func NewRouter(
 	onboardGroup := r.Group("/v1")
 	orgH.Register(onboardGroup)
 
-	worldH := world.NewHandler(world.NewService(world.Config{
+	worldH := world.NewHandler(world.NewUsecases(world.Config{
 		BaseURL:     cfg.SimEngineBaseURL,
 		InternalKey: cfg.SimEngineInternalKey,
 		Timeout:     6 * time.Second,
 	}))
 	opsEventRepo := opseventstore.NewRepository(db)
-	opsEventSvc := opseventstore.NewService(
+	opsEventSvc := opseventstore.NewUsecases(
 		opsEventRepo,
 		opseventstore.NewSchemaValidator(jsonschema.NewCompilerCache(), ""),
 	)
 	opsEmitter := opseventstore.NewEmitter(opsEventSvc)
-	opsTenantSvc := opstenant.NewService(opstenant.NewRepository(db))
-	opsActionSvc := actionengine.NewService(actionengine.NewRepository(db))
+	opsTenantSvc := opstenant.NewUsecases(opstenant.NewRepository(db))
+	opsActionSvc := actionengine.NewUsecases(actionengine.NewRepository(db))
 	opsActionEngine := actionengine.NewEngine(
 		opsActionSvc,
 		opsEmitter,
@@ -119,7 +119,7 @@ func NewRouter(
 		CloudBaseURL:  cfg.LLMCloudBaseURL,
 		CloudAPIKey:   cfg.LLMCloudAPIKey,
 	}, jsonschema.NewCompilerCache())
-	execQAH := executive_qa.NewHandler(executive_qa.NewService(llmClient, opsActionEngine))
+	execQAH := executive_qa.NewHandler(executive_qa.NewUsecases(llmClient, opsActionEngine))
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)

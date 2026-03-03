@@ -9,6 +9,6 @@ import (
 var OrgSet = wire.NewSet(
 	org.NewRepository,
 	wire.Bind(new(org.APIKeyRepositoryPort), new(*org.Repository)),
-	org.NewAuthUsecase,
+	org.NewUsecases,
 	org.NewHandler,
 )

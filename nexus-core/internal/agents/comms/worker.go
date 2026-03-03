@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	commsmod "nexus-core/internal/ops/comms"
 	commsdomain "nexus-core/internal/ops/comms/usecases/domain"
 	opseventstore "nexus-core/internal/ops/eventstore"
 	opsdomain "nexus-core/internal/ops/eventstore/usecases/domain"
@@ -16,13 +15,19 @@ type EventEmitter interface {
 	Emit(ctx context.Context, in opseventstore.EmitInput) (opsdomain.StoredEvent, error)
 }
 
+type commsPort interface {
+	Create(ctx context.Context, in commsdomain.Draft) (commsdomain.Draft, error)
+	MarkStatus(ctx context.Context, orgID, draftID uuid.UUID, status commsdomain.Status) (commsdomain.Draft, error)
+	ListByIncident(ctx context.Context, orgID, incidentID uuid.UUID, limit int) ([]commsdomain.Draft, error)
+}
+
 type Worker struct {
 	llmClient llm.Client
-	comms     commsmod.Service
+	comms     commsPort
 	emitter   EventEmitter
 }
 
-func NewWorker(llmClient llm.Client, commsSvc commsmod.Service, emitter EventEmitter) *Worker {
+func NewWorker(llmClient llm.Client, commsSvc commsPort, emitter EventEmitter) *Worker {
 	return &Worker{
 		llmClient: llmClient,
 		comms:     commsSvc,

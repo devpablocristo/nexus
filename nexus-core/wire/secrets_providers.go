@@ -7,12 +7,12 @@ import (
 	"nexus-core/internal/tool"
 )
 
-func ProvideSecretsToolLookup(s tool.Service) secrets.ToolLookupPort { return s }
+func ProvideSecretsToolLookup(s *tool.Usecases) secrets.ToolLookupPort { return s }
 
 var SecretsSet = wire.NewSet(
 	secrets.NewRepository,
 	wire.Bind(new(secrets.RepositoryPort), new(*secrets.Repository)),
 	ProvideSecretsToolLookup,
-	secrets.NewService,
+	secrets.NewUsecases,
 	secrets.NewHandler,
 )

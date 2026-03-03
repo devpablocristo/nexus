@@ -22,23 +22,17 @@ type ToolLookupPort interface {
 	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
 }
 
-type Service interface {
-	UpsertForTool(ctx context.Context, orgID uuid.UUID, toolName, secretType, keyName, value string, enabled bool) (secretdomain.ToolSecret, error)
-	ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]secretdomain.ToolSecret, error)
-	DeleteForTool(ctx context.Context, orgID uuid.UUID, toolName, keyName string) error
-}
-
-type service struct {
+type Usecases struct {
 	repo RepositoryPort
 	tool ToolLookupPort
 }
 
-func NewService(repo RepositoryPort, tool ToolLookupPort) Service {
-	return &service{repo: repo, tool: tool}
+func NewUsecases(repo RepositoryPort, tool ToolLookupPort) *Usecases {
+	return &Usecases{repo: repo, tool: tool}
 }
 
-func (s *service) UpsertForTool(ctx context.Context, orgID uuid.UUID, toolName, secretType, keyName, value string, enabled bool) (secretdomain.ToolSecret, error) {
-	t, err := s.tool.GetByName(ctx, orgID, toolName)
+func (u *Usecases) UpsertForTool(ctx context.Context, orgID uuid.UUID, toolName, secretType, keyName, value string, enabled bool) (secretdomain.ToolSecret, error) {
+	t, err := u.tool.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return secretdomain.ToolSecret{}, err
 	}
@@ -52,7 +46,7 @@ func (s *service) UpsertForTool(ctx context.Context, orgID uuid.UUID, toolName, 
 	if strings.TrimSpace(value) == "" {
 		return secretdomain.ToolSecret{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "value required")
 	}
-	return s.repo.UpsertForTool(ctx, orgID, t.ID, secretdomain.ToolSecret{
+	return u.repo.UpsertForTool(ctx, orgID, t.ID, secretdomain.ToolSecret{
 		OrgID:          orgID,
 		ToolID:         t.ID,
 		SecretType:     secretType,
@@ -62,18 +56,18 @@ func (s *service) UpsertForTool(ctx context.Context, orgID uuid.UUID, toolName, 
 	})
 }
 
-func (s *service) ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]secretdomain.ToolSecret, error) {
-	t, err := s.tool.GetByName(ctx, orgID, toolName)
+func (u *Usecases) ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]secretdomain.ToolSecret, error) {
+	t, err := u.tool.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListForTool(ctx, orgID, t.ID)
+	return u.repo.ListForTool(ctx, orgID, t.ID)
 }
 
-func (s *service) DeleteForTool(ctx context.Context, orgID uuid.UUID, toolName, keyName string) error {
-	t, err := s.tool.GetByName(ctx, orgID, toolName)
+func (u *Usecases) DeleteForTool(ctx context.Context, orgID uuid.UUID, toolName, keyName string) error {
+	t, err := u.tool.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return err
 	}
-	return s.repo.DeleteForTool(ctx, orgID, t.ID, keyName)
+	return u.repo.DeleteForTool(ctx, orgID, t.ID, keyName)
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -8,8 +9,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"nexus-core/cmd/config"
-	"nexus-core/internal/identity"
-	"nexus-core/internal/org"
+	identitydomain "nexus-core/internal/identity/usecases/domain"
+	orgdomain "nexus-core/internal/org/usecases/domain"
 	httperr "nexus-core/pkg/http/errors"
 	"nexus-core/pkg/types"
 	"nexus-core/pkg/utils"
@@ -22,7 +23,15 @@ const (
 	HeaderScopes = "X-NEXUS-SCOPES"
 )
 
-func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth org.AuthUsecase, idAuth identity.Service) gin.HandlerFunc {
+type orgAuthPort interface {
+	ResolvePrincipal(ctx context.Context, apiKeyHash string) (orgdomain.Principal, error)
+}
+
+type identityAuthPort interface {
+	ResolvePrincipal(ctx context.Context, bearerToken string) (identitydomain.Principal, error)
+}
+
+func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth orgAuthPort, idAuth identityAuthPort) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cfg.AuthEnableJWT {
 			if token := bearerToken(c.GetHeader("Authorization")); token != "" {

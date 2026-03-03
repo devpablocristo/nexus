@@ -12,10 +12,10 @@ import (
 	"nexus-core/internal/gateway"
 )
 
-func ProvideActionsEventSink(s events.Service) actions.EventSink { return s }
+func ProvideActionsEventSink(s *events.Usecases) actions.EventSink { return s }
 
 type gatewayActionOverridesAdapter struct {
-	svc actions.Service
+	svc *actions.Usecases
 }
 
 func (a gatewayActionOverridesAdapter) ResolveRuntimeOverrides(ctx context.Context, orgID uuid.UUID, toolName string) (gateway.RuntimeActionOverrides, error) {
@@ -35,7 +35,7 @@ func mapRuntimeOverrides(ov actiondomain.RuntimeOverrides) gateway.RuntimeAction
 	}
 }
 
-func ProvideGatewayActionOverrides(s actions.Service) gateway.ActionOverridesPort {
+func ProvideGatewayActionOverrides(s *actions.Usecases) gateway.ActionOverridesPort {
 	return gatewayActionOverridesAdapter{svc: s}
 }
 
@@ -43,7 +43,7 @@ var ActionsSet = wire.NewSet(
 	actions.NewRepository,
 	wire.Bind(new(actions.RepositoryPort), new(*actions.Repository)),
 	ProvideActionsEventSink,
-	actions.NewService,
+	actions.NewUsecases,
 	actions.NewHandler,
 	ProvideGatewayActionOverrides,
 )

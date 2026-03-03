@@ -24,12 +24,6 @@ type ToolLookupPort interface {
 	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
 }
 
-type Service interface {
-	CreateForTool(ctx context.Context, orgID uuid.UUID, toolName string, req CreateRequest) (policydomain.Policy, error)
-	ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]policydomain.Policy, error)
-	UpdateByID(ctx context.Context, orgID uuid.UUID, policyID uuid.UUID, patch PolicyPatch) (policydomain.Policy, error)
-}
-
 type CreateRequest struct {
 	Effect         string         `json:"effect"`
 	Priority       int            `json:"priority"`
@@ -48,17 +42,17 @@ type PolicyPatch struct {
 	Enabled        *bool
 }
 
-type service struct {
+type Usecases struct {
 	repo     PolicyRepositoryPort
 	toolLook ToolLookupPort
 }
 
-func NewService(repo PolicyRepositoryPort, toolLook ToolLookupPort) Service {
-	return &service{repo: repo, toolLook: toolLook}
+func NewUsecases(repo PolicyRepositoryPort, toolLook ToolLookupPort) *Usecases {
+	return &Usecases{repo: repo, toolLook: toolLook}
 }
 
-func (s *service) CreateForTool(ctx context.Context, orgID uuid.UUID, toolName string, req CreateRequest) (policydomain.Policy, error) {
-	tool, err := s.toolLook.GetByName(ctx, orgID, toolName)
+func (u *Usecases) CreateForTool(ctx context.Context, orgID uuid.UUID, toolName string, req CreateRequest) (policydomain.Policy, error) {
+	tool, err := u.toolLook.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return policydomain.Policy{}, err
 	}
@@ -80,18 +74,18 @@ func (s *service) CreateForTool(ctx context.Context, orgID uuid.UUID, toolName s
 		ReasonTemplate: req.ReasonTemplate,
 		Enabled:        req.Enabled,
 	}
-	return s.repo.Create(ctx, orgID, p)
+	return u.repo.Create(ctx, orgID, p)
 }
 
-func (s *service) ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]policydomain.Policy, error) {
-	tool, err := s.toolLook.GetByName(ctx, orgID, toolName)
+func (u *Usecases) ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]policydomain.Policy, error) {
+	tool, err := u.toolLook.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListByToolID(ctx, orgID, tool.ID)
+	return u.repo.ListByToolID(ctx, orgID, tool.ID)
 }
 
-func (s *service) UpdateByID(ctx context.Context, orgID uuid.UUID, policyID uuid.UUID, patch PolicyPatch) (policydomain.Policy, error) {
+func (u *Usecases) UpdateByID(ctx context.Context, orgID uuid.UUID, policyID uuid.UUID, patch PolicyPatch) (policydomain.Policy, error) {
 	if patch.Effect != nil {
 		if *patch.Effect != string(policydomain.EffectAllow) && *patch.Effect != string(policydomain.EffectDeny) {
 			return policydomain.Policy{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "effect must be allow|deny")
@@ -107,7 +101,7 @@ func (s *service) UpdateByID(ctx context.Context, orgID uuid.UUID, policyID uuid
 			return policydomain.Policy{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "limits invalid")
 		}
 	}
-	_, err := s.repo.GetByID(ctx, orgID, policyID)
+	_, err := u.repo.GetByID(ctx, orgID, policyID)
 	if err != nil {
 		var he types.HTTPError
 		if errors.As(err, &he) {
@@ -115,7 +109,7 @@ func (s *service) UpdateByID(ctx context.Context, orgID uuid.UUID, policyID uuid
 		}
 		return policydomain.Policy{}, err
 	}
-	return s.repo.Update(ctx, orgID, policyID, patch)
+	return u.repo.Update(ctx, orgID, policyID, patch)
 }
 
 func orEmptyObj(m map[string]any) map[string]any {

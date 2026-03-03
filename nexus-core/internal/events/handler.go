@@ -15,11 +15,11 @@ import (
 )
 
 type Handler struct {
-	svc Service
+	uc *Usecases
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(uc *Usecases) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
@@ -33,7 +33,7 @@ func (h *Handler) list(c *gin.Context) {
 	}
 	cursor, _ := strconv.ParseInt(c.DefaultQuery("cursor", "0"), 10, 64)
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	items, next, err := h.svc.ListByCursor(c.Request.Context(), mustOrgID(c), cursor, limit)
+	items, next, err := h.uc.ListByCursor(c.Request.Context(), mustOrgID(c), cursor, limit)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return

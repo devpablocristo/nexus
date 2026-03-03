@@ -15,15 +15,21 @@ type ConsumerConfig struct {
 	OnIdle       func(ctx context.Context) error
 }
 
+type consumerPort interface {
+	ListGlobalAfterSequence(ctx context.Context, afterSequence int64, limit int) ([]opsdomain.StoredEvent, error)
+	GetConsumerOffset(ctx context.Context, consumerGroup string) (int64, error)
+	Ack(ctx context.Context, consumerGroup string, sequence int64) error
+}
+
 type Consumer struct {
-	service       Service
+	service       consumerPort
 	consumerGroup string
 	batchSize     int
 	pollInterval  time.Duration
 	onIdle        func(ctx context.Context) error
 }
 
-func NewConsumer(service Service, consumerGroup string, cfg ConsumerConfig) *Consumer {
+func NewConsumer(service consumerPort, consumerGroup string, cfg ConsumerConfig) *Consumer {
 	batch := cfg.BatchSize
 	if batch <= 0 {
 		batch = 100

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	diagnosismod "nexus-core/internal/ops/diagnosis"
 	diagnosisdomain "nexus-core/internal/ops/diagnosis/usecases/domain"
 	opseventstore "nexus-core/internal/ops/eventstore"
 	opsdomain "nexus-core/internal/ops/eventstore/usecases/domain"
@@ -16,15 +15,20 @@ type EventEmitter interface {
 	Emit(ctx context.Context, in opseventstore.EmitInput) (opsdomain.StoredEvent, error)
 }
 
+type diagnosisPort interface {
+	Create(ctx context.Context, in diagnosisdomain.Report) (diagnosisdomain.Report, error)
+	ListByIncident(ctx context.Context, orgID uuid.UUID, incidentID uuid.UUID, limit int) ([]diagnosisdomain.Report, error)
+}
+
 type Worker struct {
 	llmClient  llm.Client
-	diagnosis  diagnosismod.Service
+	diagnosis  diagnosisPort
 	emitter    EventEmitter
 	provider   string
 	model      string
 }
 
-func NewWorker(llmClient llm.Client, diagnosis diagnosismod.Service, emitter EventEmitter, provider, model string) *Worker {
+func NewWorker(llmClient llm.Client, diagnosis diagnosisPort, emitter EventEmitter, provider, model string) *Worker {
 	return &Worker{
 		llmClient: llmClient,
 		diagnosis: diagnosis,

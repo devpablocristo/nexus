@@ -7,7 +7,7 @@ import (
 	"nexus-core/internal/tool"
 )
 
-func ProvidePolicyToolLookup(s tool.Service) policy.ToolLookupPort {
+func ProvidePolicyToolLookup(s *tool.Usecases) policy.ToolLookupPort {
 	return s
 }
 
@@ -16,6 +16,6 @@ var PolicySet = wire.NewSet(
 	wire.Bind(new(policy.PolicyRepositoryPort), new(*policy.Repository)),
 	ProvidePolicyToolLookup,
 	policy.NewEvaluator,
-	policy.NewService,
+	policy.NewUsecases,
 	policy.NewHandler,
 )

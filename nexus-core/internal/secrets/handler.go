@@ -1,20 +1,29 @@
 package secrets
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"nexus-core/internal/secrets/handler/dto"
+	secretdomain "nexus-core/internal/secrets/usecases/domain"
 	"nexus-core/internal/shared/authz"
 	httperr "nexus-core/pkg/http/errors"
 	"nexus-core/pkg/types"
 )
 
-type Handler struct {
-	svc Service
+type secretsUsecase interface {
+	UpsertForTool(ctx context.Context, orgID uuid.UUID, toolName, secretType, keyName, value string, enabled bool) (secretdomain.ToolSecret, error)
+	ListForTool(ctx context.Context, orgID uuid.UUID, toolName string) ([]secretdomain.ToolSecret, error)
+	DeleteForTool(ctx context.Context, orgID uuid.UUID, toolName, keyName string) error
 }
 
-func NewHandler(svc Service) *Handler { return &Handler{svc: svc} }
+type Handler struct {
+	uc secretsUsecase
+}
+
+func NewHandler(uc secretsUsecase) *Handler { return &Handler{uc: uc} }
 
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/tools/:name/secrets", h.upsert)
@@ -37,7 +46,7 @@ func (h *Handler) upsert(c *gin.Context) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
-	created, err := h.svc.UpsertForTool(c.Request.Context(), orgID, c.Param("name"), req.SecretType, req.KeyName, req.Value, enabled)
+	created, err := h.uc.UpsertForTool(c.Request.Context(), orgID, c.Param("name"), req.SecretType, req.KeyName, req.Value, enabled)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -51,7 +60,7 @@ func (h *Handler) list(c *gin.Context) {
 		return
 	}
 	orgID := mustOrgID(c)
-	items, err := h.svc.ListForTool(c.Request.Context(), orgID, c.Param("name"))
+	items, err := h.uc.ListForTool(c.Request.Context(), orgID, c.Param("name"))
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -69,7 +78,7 @@ func (h *Handler) delete(c *gin.Context) {
 		return
 	}
 	orgID := mustOrgID(c)
-	if err := h.svc.DeleteForTool(c.Request.Context(), orgID, c.Param("name"), c.Query("key_name")); err != nil {
+	if err := h.uc.DeleteForTool(c.Request.Context(), orgID, c.Param("name"), c.Query("key_name")); err != nil {
 		httperr.WriteFrom(c, err)
 		return
 	}

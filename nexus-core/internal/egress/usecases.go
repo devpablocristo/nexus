@@ -23,24 +23,17 @@ type ToolLookupPort interface {
 	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
 }
 
-type Service interface {
-	UpsertRule(ctx context.Context, orgID uuid.UUID, toolName, host string, enabled bool) error
-	ListRules(ctx context.Context, orgID uuid.UUID, toolName string) ([]string, error)
-	DeleteRule(ctx context.Context, orgID uuid.UUID, toolName, host string) error
-	IsHostAllowed(ctx context.Context, orgID, toolID uuid.UUID, host string) (bool, error)
-}
-
-type service struct {
+type Usecases struct {
 	repo RepositoryPort
 	tool ToolLookupPort
 }
 
-func NewService(repo RepositoryPort, tool ToolLookupPort) Service {
-	return &service{repo: repo, tool: tool}
+func NewUsecases(repo RepositoryPort, tool ToolLookupPort) *Usecases {
+	return &Usecases{repo: repo, tool: tool}
 }
 
-func (s *service) UpsertRule(ctx context.Context, orgID uuid.UUID, toolName, host string, enabled bool) error {
-	t, err := s.tool.GetByName(ctx, orgID, toolName)
+func (u *Usecases) UpsertRule(ctx context.Context, orgID uuid.UUID, toolName, host string, enabled bool) error {
+	t, err := u.tool.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return err
 	}
@@ -48,35 +41,35 @@ func (s *service) UpsertRule(ctx context.Context, orgID uuid.UUID, toolName, hos
 	if host == "" {
 		return types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "host required")
 	}
-	return s.repo.Upsert(ctx, orgID, t.ID, host, enabled)
+	return u.repo.Upsert(ctx, orgID, t.ID, host, enabled)
 }
 
-func (s *service) ListRules(ctx context.Context, orgID uuid.UUID, toolName string) ([]string, error) {
-	t, err := s.tool.GetByName(ctx, orgID, toolName)
+func (u *Usecases) ListRules(ctx context.Context, orgID uuid.UUID, toolName string) ([]string, error) {
+	t, err := u.tool.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.List(ctx, orgID, t.ID)
+	return u.repo.List(ctx, orgID, t.ID)
 }
 
-func (s *service) DeleteRule(ctx context.Context, orgID uuid.UUID, toolName, host string) error {
-	t, err := s.tool.GetByName(ctx, orgID, toolName)
+func (u *Usecases) DeleteRule(ctx context.Context, orgID uuid.UUID, toolName, host string) error {
+	t, err := u.tool.GetByName(ctx, orgID, toolName)
 	if err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, orgID, t.ID, normalizeHost(host))
+	return u.repo.Delete(ctx, orgID, t.ID, normalizeHost(host))
 }
 
-func (s *service) IsHostAllowed(ctx context.Context, orgID, toolID uuid.UUID, host string) (bool, error) {
+func (u *Usecases) IsHostAllowed(ctx context.Context, orgID, toolID uuid.UUID, host string) (bool, error) {
 	host = normalizeHost(host)
-	hasAny, err := s.repo.HasAny(ctx, orgID, toolID)
+	hasAny, err := u.repo.HasAny(ctx, orgID, toolID)
 	if err != nil {
 		return false, err
 	}
 	if !hasAny {
 		return false, nil // default-deny: no rules means no egress allowed
 	}
-	return s.repo.ExistsHost(ctx, orgID, toolID, host)
+	return u.repo.ExistsHost(ctx, orgID, toolID, host)
 }
 
 func normalizeHost(host string) string {
