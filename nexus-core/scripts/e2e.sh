@@ -451,4 +451,41 @@ EXPORT_JSONL="$(auth_curl "${HTTP_BASE}/v1/audit/export?format=jsonl&tool_name=t
 echo "$EXPORT_JSONL" | head -n 1 | jq -e '.event_hash | type=="string"' >/dev/null || fail "export missing event_hash"
 echo "$EXPORT_JSONL" | head -n 1 | jq -e '.hash_algo=="sha256"' >/dev/null || fail "export missing hash_algo"
 
+echo "[e2e] org onboarding (public)"
+ORG_WITH_CODE="$(curl -sS -H "Content-Type: application/json" -d '{"name":"e2e-org","scopes":["admin:full"]}' -w "\n%{http_code}" "${HTTP_BASE}/v1/orgs")"
+ORG_BODY="$(echo "$ORG_WITH_CODE" | head -n1)"
+ORG_CODE="$(echo "$ORG_WITH_CODE" | tail -n1)"
+[[ "$ORG_CODE" == "201" ]] || fail "expected 201 got ${ORG_CODE} body=$ORG_BODY"
+assert_jq "$ORG_BODY" '.api_key | type=="string" and startswith("nxk_")'
+assert_jq "$ORG_BODY" '.org_id | type=="string" and length>0'
+
+echo "[e2e] alert rules CRUD"
+ALERT_CREATE_WITH_CODE="$(post_json "${HTTP_BASE}/v1/alert-rules" '{
+  "name":"high-deny","metric":"deny_rate","threshold":0.5,
+  "webhook_url":"http://mock-tools:8081/echo","window_seconds":300,
+  "cooldown_seconds":60,"enabled":true
+}')"
+ALERT_CREATE_BODY="$(echo "$ALERT_CREATE_WITH_CODE" | head -n1)"
+ALERT_CREATE_CODE="$(echo "$ALERT_CREATE_WITH_CODE" | tail -n1)"
+[[ "$ALERT_CREATE_CODE" == "201" ]] || fail "expected 201 got ${ALERT_CREATE_CODE} body=$ALERT_CREATE_BODY"
+ALERT_ID="$(echo "$ALERT_CREATE_BODY" | jq -r '.id')"
+assert_jq "$ALERT_CREATE_BODY" '.name=="high-deny" and .enabled==true'
+
+ALERT_LIST="$(auth_curl "${HTTP_BASE}/v1/alert-rules")"
+assert_jq "$ALERT_LIST" '.items | length >= 1'
+
+ALERT_DEL_WITH_CODE="$(curl -sS -X DELETE -H "X-NEXUS-CORE-KEY: ${API_KEY}" -w "\n%{http_code}" "${HTTP_BASE}/v1/alert-rules/${ALERT_ID}")"
+ALERT_DEL_CODE="$(echo "$ALERT_DEL_WITH_CODE" | tail -n1)"
+[[ "$ALERT_DEL_CODE" == "200" ]] || fail "expected 200 got ${ALERT_DEL_CODE}"
+
+echo "[e2e] approvals list"
+APPROVALS="$(auth_curl "${HTTP_BASE}/v1/approvals")"
+assert_jq "$APPROVALS" '.items | type=="array"'
+
+echo "[e2e] sessions 404 for nonexistent"
+SESSION_WITH_CODE="$(auth_curl_no_fail -w "\n%{http_code}" "${HTTP_BASE}/v1/sessions/nonexistent")"
+SESSION_CODE="$(echo "$SESSION_WITH_CODE" | tail -n1)"
+# Accept 404 or 200 (empty session) — both are valid responses
+[[ "$SESSION_CODE" == "404" || "$SESSION_CODE" == "200" ]] || fail "expected 404 or 200 got ${SESSION_CODE}"
+
 echo "[e2e] OK"

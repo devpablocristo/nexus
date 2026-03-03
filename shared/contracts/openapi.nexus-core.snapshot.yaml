@@ -27,6 +27,10 @@ tags:
   - name: Egress
   - name: MCP
   - name: A2A
+  - name: Approvals
+  - name: AlertRules
+  - name: Sessions
+  - name: Orgs
 
 paths:
   /healthz:
@@ -1433,6 +1437,179 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssistantQueryResponse"
+  /v1/approvals:
+    get:
+      tags: [Approvals]
+      summary: List pending approvals
+      security: [{ NexusApiKey: [] }]
+      responses:
+        "200":
+          description: List of pending approvals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApprovalItem" }
+
+  /v1/approvals/{id}:
+    get:
+      tags: [Approvals]
+      summary: Get approval by ID
+      security: [{ NexusApiKey: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Approval detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApprovalItem" }
+
+  /v1/approvals/{id}/approve:
+    post:
+      tags: [Approvals]
+      summary: Approve a pending approval
+      security: [{ NexusApiKey: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decided_by: { type: string }
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+  /v1/approvals/{id}/reject:
+    post:
+      tags: [Approvals]
+      summary: Reject a pending approval
+      security: [{ NexusApiKey: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decided_by: { type: string }
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+  /v1/alert-rules:
+    get:
+      tags: [AlertRules]
+      summary: List alert rules
+      security: [{ NexusApiKey: [] }]
+      responses:
+        "200":
+          description: Alert rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AlertRuleItem" }
+    post:
+      tags: [AlertRules]
+      summary: Create an alert rule
+      security: [{ NexusApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAlertRuleRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlertRuleItem" }
+
+  /v1/alert-rules/{id}:
+    delete:
+      tags: [AlertRules]
+      summary: Delete an alert rule
+      security: [{ NexusApiKey: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+  /v1/sessions/{session_id}:
+    get:
+      tags: [Sessions]
+      summary: Get agent session by ID
+      security: [{ NexusApiKey: [] }]
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Session detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionItem" }
+
+  /v1/orgs:
+    post:
+      tags: [Orgs]
+      summary: Create a new org with API key (onboarding)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrgRequest" }
+      responses:
+        "201":
+          description: Org created with API key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateOrgResponse" }
+
 components:
   securitySchemes:
     NexusApiKey:
@@ -2628,3 +2805,79 @@ components:
           type: string
           nullable: true
       required: [answer]
+
+    ApprovalItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        request_id: { type: string }
+        tool_name: { type: string }
+        actor: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        input_redacted: { type: object }
+        context_redacted: { type: object }
+        reason: { type: string }
+        status: { type: string, enum: [pending, approved, rejected, expired] }
+        decided_by: { type: string, nullable: true }
+        decided_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+      required: [id, request_id, tool_name, status, expires_at, created_at]
+
+    AlertRuleItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        metric: { type: string, enum: [deny_rate, error_rate, latency_p95, rate_limited_count] }
+        threshold: { type: number }
+        window_seconds: { type: integer }
+        tool_name: { type: string, nullable: true }
+        webhook_url: { type: string }
+        cooldown_seconds: { type: integer }
+        enabled: { type: boolean }
+        last_fired_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+      required: [id, name, metric, threshold, webhook_url, enabled, created_at]
+
+    CreateAlertRuleRequest:
+      type: object
+      properties:
+        name: { type: string }
+        metric: { type: string, enum: [deny_rate, error_rate, latency_p95, rate_limited_count] }
+        threshold: { type: number }
+        window_seconds: { type: integer, default: 300 }
+        tool_name: { type: string }
+        webhook_url: { type: string }
+        cooldown_seconds: { type: integer, default: 600 }
+        enabled: { type: boolean, default: true }
+      required: [name, metric, threshold, webhook_url]
+
+    SessionItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        session_id: { type: string }
+        actor: { type: string, nullable: true }
+        total_calls: { type: integer }
+        total_writes: { type: integer }
+        total_denials: { type: integer }
+        metadata: { type: object }
+        created_at: { type: string, format: date-time }
+        last_call_at: { type: string, format: date-time }
+      required: [id, session_id, total_calls, total_writes, total_denials]
+
+    CreateOrgRequest:
+      type: object
+      properties:
+        name: { type: string }
+        scopes: { type: array, items: { type: string } }
+      required: [name]
+
+    CreateOrgResponse:
+      type: object
+      properties:
+        org_id: { type: string, format: uuid }
+        api_key: { type: string }
+        name: { type: string }
+      required: [org_id, api_key, name]

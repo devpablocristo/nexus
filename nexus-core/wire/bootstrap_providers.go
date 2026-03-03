@@ -37,8 +37,7 @@ func NewLogger(cfg config.ServiceConfig) zerolog.Logger {
 	return zerolog.New(os.Stdout).Level(lvl).With().Timestamp().Logger()
 }
 
-func NewGormConfig(l zerolog.Logger) *gorm.Config {
-	_ = l
+func NewGormConfig(_ zerolog.Logger) *gorm.Config {
 	return &gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Warn)}
 }
 

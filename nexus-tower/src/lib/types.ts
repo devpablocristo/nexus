@@ -7,14 +7,27 @@ export type EventItem = {
 
 export type AuditEventItem = {
   request_id: string;
+  org_id?: string;
   tool_name: string;
+  actor?: string;
+  role?: string;
+  scopes?: string[];
   decision: 'allow' | 'deny';
   status: 'success' | 'error' | 'blocked';
-  policy_id?: string;
   reason?: string;
   latency_ms: number;
+  idempotency_present?: boolean;
+  idempotency_outcome?: string;
+  timeout_ms?: number;
+  budget_remaining_ms_at_execute?: number;
+  stage_durations_ms?: Record<string, number>;
+  prev_event_hash?: string;
+  event_hash?: string;
+  hash_algo?: string;
   created_at: string;
   input?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  dlp_summary?: Record<string, unknown>;
   output?: Record<string, unknown>;
   error?: {
     code?: string;
@@ -138,4 +151,46 @@ export type WorldReplayResponse = {
   run_id: string;
   replayed_moves: number;
   state_hash: string;
+};
+
+export type ApprovalItem = {
+  id: string;
+  request_id: string;
+  tool_name: string;
+  actor?: string;
+  role?: string;
+  input_redacted: Record<string, unknown>;
+  context_redacted: Record<string, unknown>;
+  reason: string;
+  status: string;
+  decided_by?: string;
+  decided_at?: string;
+  expires_at: string;
+  created_at: string;
+};
+
+export type AlertRuleItem = {
+  id: string;
+  name: string;
+  metric: string;
+  threshold: number;
+  window_seconds: number;
+  tool_name?: string;
+  webhook_url: string;
+  cooldown_seconds: number;
+  enabled: boolean;
+  last_fired_at?: string;
+  created_at: string;
+};
+
+export type SessionItem = {
+  id: string;
+  session_id: string;
+  actor?: string;
+  total_calls: number;
+  total_writes: number;
+  total_denials: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  last_call_at: string;
 };

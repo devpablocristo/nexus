@@ -8,7 +8,8 @@ CORE_SERVICE := nexus-core
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test operator-test tower-test tower-qa qa e2e jwt-e2e quickstart-admin \
-	core-dev operator-dev tower-dev qa-sim-engine migrate-sim-engine demo-doorjam replay reset-nexus logs-tail
+	core-dev operator-dev tower-dev qa-sim-engine migrate-sim-engine demo-doorjam replay reset-nexus logs-tail \
+	sdk-test-python sdk-test
 
 up:
 	docker compose up -d --remove-orphans
@@ -124,3 +125,12 @@ operator-dev:
 
 tower-dev:
 	cd $(TOWER_DIR) && npm run dev
+
+sdk-test-python:
+	cd sdks/python-sdk && \
+		if [ ! -d .venv ]; then python3 -m venv .venv; fi && \
+		. .venv/bin/activate && \
+		pip install -q -e '.[dev]' && \
+		pytest -q
+
+sdk-test: sdk-test-python

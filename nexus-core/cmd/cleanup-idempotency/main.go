@@ -34,5 +34,13 @@ func main() {
 		os.Exit(1)
 	}
 	n, _ := res.RowsAffected()
-	fmt.Printf("deleted=%d\n", n)
+	fmt.Printf("idempotency_deleted=%d\n", n)
+
+	res2, err := db.ExecContext(ctx, "update pending_approvals set status = 'expired' where status = 'pending' and expires_at < now()")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "approval expire: %s\n", err.Error())
+	} else {
+		n2, _ := res2.RowsAffected()
+		fmt.Printf("approvals_expired=%d\n", n2)
+	}
 }

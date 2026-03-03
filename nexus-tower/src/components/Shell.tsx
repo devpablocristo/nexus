@@ -3,8 +3,12 @@ import { Link, useLocation } from 'react-router-dom';
 const navItems = [
   { to: '/', label: 'Overview' },
   { to: '/viewer', label: 'Viewer' },
+  { to: '/run-explorer', label: 'Run Explorer' },
   { to: '/timeline', label: 'Timeline' },
   { to: '/policies', label: 'Policies' },
+  { to: '/approvals', label: 'Approvals' },
+  { to: '/alerts', label: 'Alerts' },
+  { to: '/sessions', label: 'Sessions' },
   { to: '/ask-agent', label: 'Ask Agent' },
   { to: '/exports', label: 'Exports' },
 ];

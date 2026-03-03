@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +14,8 @@ import (
 	"nexus-core/internal/actions"
 	"nexus-core/internal/admin"
 	"nexus-core/internal/agents/executive_qa"
+	"nexus-core/internal/alerts"
+	"nexus-core/internal/approval"
 	"nexus-core/internal/assistant"
 	"nexus-core/internal/audit"
 	"nexus-core/internal/egress"
@@ -24,8 +25,8 @@ import (
 	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
 	"nexus-core/internal/ops/actionengine"
-	opscomms "nexus-core/internal/ops/comms"
-	opsdiagnosis "nexus-core/internal/ops/diagnosis"
+	"nexus-core/internal/org"
+	"nexus-core/internal/session"
 	opseventstore "nexus-core/internal/ops/eventstore"
 	opsllm "nexus-core/internal/ops/llm"
 	opstenant "nexus-core/internal/ops/tenant"
@@ -60,6 +61,10 @@ func NewRouter(
 	mcpH *mcp.Handler,
 	a2aH *a2a.Handler,
 	oidcH *identity.OIDCHandler,
+	approvalH *approval.Handler,
+	alertsH *alerts.Handler,
+	sessionH *session.Handler,
+	orgH *org.Handler,
 ) *gin.Engine {
 	r := ginserver.NewEngine(
 		ginserver.EngineOptions{},
@@ -75,46 +80,15 @@ func NewRouter(
 	prom := ginprometheus.NewPrometheus("nexus_gateway")
 	prom.Use(r)
 
-	r.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusFound, "/docs")
-	})
-	r.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-	r.GET("/readyz", func(c *gin.Context) {
-		sqlDB, err := db.DB()
-		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false})
-			return
-		}
-		if err := sqlDB.PingContext(c.Request.Context()); err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"ok": true})
-	})
-
-	r.GET("/openapi.yaml", func(c *gin.Context) {
-		c.File("docs/openapi.yaml")
-	})
-
-	r.GET("/docs", func(c *gin.Context) {
-		_ = l
-		if cfg.SwaggerCDN {
-			c.Header("Content-Type", "text/html; charset=utf-8")
-			c.String(http.StatusOK, swaggerHTMLCDN)
-			return
-		}
-		c.Header("Content-Type", "text/html; charset=utf-8")
-		c.String(http.StatusOK, swaggerHTMLOfflineNote)
-	})
-	r.Static("/admin/assets", "docs/admin/assets")
-	r.StaticFile("/admin", "docs/admin/index.html")
+	registerHealthAndDocs(r, db, serviceConfigForRoutes{SwaggerCDN: cfg.SwaggerCDN})
 
 	// OIDC endpoints are public (no auth middleware) because they are
 	// the entry point for authentication itself.
 	oidcGroup := r.Group("/v1")
 	oidcH.Register(oidcGroup)
+
+	onboardGroup := r.Group("/v1")
+	orgH.Register(onboardGroup)
 
 	worldH := world.NewHandler(world.NewService(world.Config{
 		BaseURL:     cfg.SimEngineBaseURL,
@@ -138,10 +112,6 @@ func NewRouter(
 	)
 	opsActionH := actionengine.NewHandler(opsActionEngine)
 
-	opsDiagSvc := opsdiagnosis.NewService(opsdiagnosis.NewRepository(db))
-	opsCommsSvc := opscomms.NewService(opscomms.NewRepository(db))
-	_ = opsDiagSvc
-	_ = opsCommsSvc
 	llmClient := opsllm.NewClient(opsllm.Config{
 		Provider:      cfg.LLMProvider,
 		Model:         cfg.LLMModel,
@@ -168,6 +138,9 @@ func NewRouter(
 	secretH.Register(v1)
 	egressH.Register(v1)
 	worldH.Register(v1)
+	approvalH.Register(v1)
+	alertsH.Register(v1)
+	sessionH.Register(v1)
 
 	mcpGroup := r.Group("")
 	mcpGroup.Use(authMw)

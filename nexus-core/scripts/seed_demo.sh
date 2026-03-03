@@ -245,6 +245,11 @@ if [[ "$seeded_count" != "2" ]]; then
   exit 1
 fi
 
+echo "Seeding demo alert rule..."
+curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Content-Type: application/json" \
+  -d '{"name":"high-deny-rate","metric":"deny_rate","threshold":0.3,"webhook_url":"http://mock-tools:8081/echo","window_seconds":300,"cooldown_seconds":600,"enabled":true}' \
+  "http://localhost:${HTTP_PORT}/v1/alert-rules" >/dev/null 2>&1 || true
+
 echo "NEXUS_DEMO_API_KEY=$API_KEY"
 
 echo "NEXUS_OPERATOR_API_KEY=$OPERATOR_API_KEY"

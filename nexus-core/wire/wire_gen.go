@@ -24,6 +24,9 @@ import (
 	"nexus-core/internal/policy"
 	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
+	"nexus-core/internal/alerts"
+	"nexus-core/internal/approval"
+	"nexus-core/internal/session"
 	"nexus-core/internal/tool"
 )
 
@@ -41,6 +44,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	httpServerConfig := ProvideHTTPServerConfig(cfg)
 	repository := org.NewRepository(db)
 	authUsecase := org.NewAuthUsecase(repository)
+	orgHandler := org.NewHandler(repository)
 	verifier := NewJWKSVerifier(serviceConfig)
 	identityConfig := NewIdentityConfig(serviceConfig)
 	service := identity.NewService(verifier, identityConfig)
@@ -109,7 +113,18 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	evaluator := policy.NewEvaluator()
 	detector := NewDLPDetector()
 	gatewayConfig := ProvideGatewayConfig(serviceConfig)
-	gatewayService := gateway.NewService(toolRepoPort, policyRepoPort, auditRepoPort, secretRepoPort, egressPort, rateLimiterPort, httpExecutorPort, idempotencyPort, gatewayTenantLimitsPort, actionOverridesPort, runMetricsPort, compilerCache, evaluator, detector, gatewayConfig, logger)
+	approvalRepo := approval.NewRepository(db)
+	approvalSvc := approval.NewService(approvalRepo)
+	approvalAdapter := approval.NewGatewayAdapter(approvalSvc)
+	approvalHandler := approval.NewHandler(approvalSvc)
+	alertsRepo := alerts.NewRepository(db)
+	alertsMetrics := alerts.NewAuditMetricsSource(db)
+	alertsSvc := alerts.NewService(alertsRepo, alertsMetrics, logger)
+	alertsHandler := alerts.NewHandler(alertsSvc)
+	sessionRepo := session.NewRepository(db)
+	sessionSvc := session.NewService(sessionRepo)
+	sessionHandler := session.NewHandler(sessionSvc)
+	gatewayService := gateway.NewService(toolRepoPort, policyRepoPort, auditRepoPort, secretRepoPort, egressPort, rateLimiterPort, httpExecutorPort, idempotencyPort, gatewayTenantLimitsPort, actionOverridesPort, approvalAdapter, runMetricsPort, compilerCache, evaluator, detector, gatewayConfig, logger)
 	gatewayHandler := gateway.NewHandler(gatewayService)
 	secretsToolLookupPort := ProvideSecretsToolLookup(serviceImpl)
 	secretsService := secrets.NewService(secretsRepository, secretsToolLookupPort)
@@ -126,7 +141,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	discoveryClient := NewOIDCDiscoveryClient(oidcConfig)
 	tokenExchanger := NewOIDCTokenExchanger(oidcConfig, discoveryClient)
 	oidcHandler := NewOIDCHandler(oidcConfig, discoveryClient, tokenExchanger, service)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, adminHandler, eventsHandler, actionsHandler, incidentsHandler, policyproposalHandler, assistantHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler, a2aHandler, oidcHandler)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, adminHandler, eventsHandler, actionsHandler, incidentsHandler, policyproposalHandler, assistantHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler, a2aHandler, oidcHandler, approvalHandler, alertsHandler, sessionHandler, orgHandler)
 	apiConfig := ProvideAPIConfig(cfg)
 	server := NewHTTPServer(apiConfig, engine)
 	app := NewApp(engine, server, actionsService)

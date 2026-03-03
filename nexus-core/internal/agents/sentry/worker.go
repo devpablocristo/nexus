@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"nexus-core/internal/incidents"
@@ -108,22 +107,11 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	if err != nil {
 		return err
 	}
-	if baseline.SampleCount <= 0 {
-		baseline.EWMA = sample
-	} else {
-		baseline.EWMA = w.cfg.Alpha*sample + (1-w.cfg.Alpha)*baseline.EWMA
-	}
-	baseline.OrgID = orgID
-	baseline.ToolName = toolName
-	baseline.Metric = metric
-	baseline.SampleCount++
-	if err := w.state.UpsertBaseline(ctx, baseline); err != nil {
+	baseline, err = w.updateBaseline(ctx, orgID, toolName, metric, sample, baseline)
+	if err != nil {
 		return err
 	}
 
-	if sample == 0 {
-		return nil
-	}
 	threshold := w.cfg.ErrorThreshold
 	if thresholdOverride > 0 {
 		threshold = thresholdOverride
@@ -132,16 +120,12 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	if observedOverride > 0 {
 		observed = observedOverride
 	}
-	minSamples := w.cfg.MinSamples
-	if event.Envelope.EventType != "tool_call.finished" {
-		minSamples = 1
-	}
-	if !forceAnomaly && (baseline.SampleCount < minSamples || baseline.EWMA < threshold) {
+	if !w.isAnomaly(event, baseline, sample, forceAnomaly, observedOverride, thresholdOverride) {
 		return nil
 	}
 
 	fingerprint := fmt.Sprintf("fp:%s:%s:%s", orgID.String(), toolName, signal)
-	_ = w.emit(ctx, orgID, "anomaly.detected", map[string]any{
+	w.emitOrLog(ctx, orgID, "anomaly.detected", map[string]any{
 		"fingerprint":     fingerprint,
 		"signal":          signal,
 		"tool_name":       toolName,
@@ -158,42 +142,7 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	if fpState.IncidentID != nil && strings.EqualFold(fpState.State, "open") {
 		return nil
 	}
-	if w.incidents == nil {
-		return nil
-	}
-
-	actorID := "agents.sentry"
-	inc, err := w.incidents.Create(ctx, orgID, &actorID, incidents.CreateRequest{
-		Severity: "HIGH",
-		Title:    "Anomaly detected by sentry",
-		Summary:  "Error rate spike detected for " + toolName,
-		EvidenceRefs: []string{
-			"event_store:" + fmt.Sprintf("%d", event.Sequence),
-			"fingerprint:" + fingerprint,
-		},
-	})
-	if err != nil {
-		return err
-	}
-	fpState = FingerprintState{
-		OrgID:       orgID,
-		Fingerprint: fingerprint,
-		IncidentID:  &inc.ID,
-		State:       "open",
-	}
-	if err := w.state.UpsertFingerprint(ctx, fpState); err != nil {
-		return err
-	}
-	_ = w.emit(ctx, orgID, "incident.opened", map[string]any{
-		"incident_id": inc.ID.String(),
-		"severity":    string(inc.Severity),
-		"state":       "OPEN",
-		"title":       inc.Title,
-		"summary":     inc.Summary,
-		"fingerprint": fingerprint,
-		"opened_at":   time.Now().UTC().Format(time.RFC3339),
-	})
-	return nil
+	return w.createIncidentAndEmit(ctx, orgID, fingerprint, event)
 }
 
 func (w *Worker) measurementFor(event opsdomain.StoredEvent) (metric, signal string, sample float64, forceAnomaly bool, observedOverride, thresholdOverride float64) {

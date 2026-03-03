@@ -92,46 +92,53 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 		if approvalRequired {
 			status = commsdomain.StatusAwaitingApproval
 		}
-		created, createErr := w.comms.Create(ctx, commsdomain.Draft{
-			OrgID:            event.Envelope.OrgID,
-			IncidentID:       incidentID,
-			Channel:          channel,
-			Audience:         strings.TrimSpace(asString(draftMap["audience"])),
-			Status:           status,
-			RequiresApproval: approvalRequired,
-			Content: map[string]any{
-				"subject": asString(draftMap["subject"]),
-				"body":    asString(draftMap["body"]),
-				"summary": asString(plan["summary"]),
-			},
-			CreatedBy: ptr("agents.comms"),
-		})
+		created, createErr := w.createDraft(ctx, event.Envelope.OrgID, incidentID, draftMap, plan, channel, approvalRequired, status)
 		if createErr != nil {
 			return createErr
 		}
-		_ = w.emit(ctx, event.Envelope.OrgID, incidentID, "comms.draft_created", map[string]any{
-			"draft_id":    created.ID.String(),
-			"incident_id": incidentID.String(),
-			"channel":     created.Channel,
-			"audience":    created.Audience,
-			"content":     created.Content["body"],
-		})
-		if approvalRequired {
-			_ = w.emit(ctx, event.Envelope.OrgID, incidentID, "comms.awaiting_approval", map[string]any{
-				"draft_id":       created.ID.String(),
-				"incident_id":    incidentID.String(),
-				"approval_scope": "external_comms",
-			})
-		} else {
-			_ = w.emit(ctx, event.Envelope.OrgID, incidentID, "comms.sent_internal", map[string]any{
-				"draft_id":    created.ID.String(),
-				"incident_id": incidentID.String(),
-				"channel":     "internal",
-				"sent_at":     created.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-			})
-		}
+		w.emitDraftEvents(ctx, event.Envelope.OrgID, incidentID, created, approvalRequired)
 	}
 	return nil
+}
+
+// createDraft crea un draft a partir del plan LLM.
+func (w *Worker) createDraft(ctx context.Context, orgID uuid.UUID, incidentID *uuid.UUID, draftMap map[string]any, plan map[string]any, channel string, approvalRequired bool, status commsdomain.Status) (commsdomain.Draft, error) {
+	return w.comms.Create(ctx, commsdomain.Draft{
+		OrgID:            orgID,
+		IncidentID:       incidentID,
+		Channel:          channel,
+		Audience:         strings.TrimSpace(asString(draftMap["audience"])),
+		Status:           status,
+		RequiresApproval: approvalRequired,
+		Content: map[string]any{
+			"subject": asString(draftMap["subject"]),
+			"body":    asString(draftMap["body"]),
+			"summary": asString(plan["summary"]),
+		},
+		CreatedBy: ptr("agents.comms"),
+	})
+}
+
+// emitDraftEvents emite eventos de draft creado / awaiting approval / sent.
+func (w *Worker) emitDraftEvents(ctx context.Context, orgID uuid.UUID, incidentID *uuid.UUID, created commsdomain.Draft, approvalRequired bool) {
+	w.emitOrLog(ctx, orgID, incidentID, "comms.draft_created", map[string]any{
+		"draft_id": created.ID.String(), "incident_id": incidentID.String(),
+		"channel": created.Channel, "audience": created.Audience, "content": created.Content["body"],
+	})
+	if approvalRequired {
+		w.emitOrLog(ctx, orgID, incidentID, "comms.awaiting_approval", map[string]any{
+			"draft_id": created.ID.String(), "incident_id": incidentID.String(), "approval_scope": "external_comms",
+		})
+	} else {
+		w.emitOrLog(ctx, orgID, incidentID, "comms.sent_internal", map[string]any{
+			"draft_id": created.ID.String(), "incident_id": incidentID.String(),
+			"channel": "internal", "sent_at": created.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+}
+
+func (w *Worker) emitOrLog(ctx context.Context, orgID uuid.UUID, incidentID *uuid.UUID, eventType string, payload map[string]any) {
+	_ = w.emit(ctx, orgID, incidentID, eventType, payload)
 }
 
 func (w *Worker) emit(ctx context.Context, orgID uuid.UUID, incidentID *uuid.UUID, eventType string, payload map[string]any) error {

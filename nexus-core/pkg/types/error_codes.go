@@ -28,5 +28,6 @@ const (
 	ErrCodeExportRangeInvalid  = "EXPORT_RANGE_INVALID"
 	ErrCodeToolClassInvalid    = "TOOL_CLASSIFICATION_INVALID"
 	ErrCodeToolSensitivity     = "TOOL_SENSITIVITY_INVALID"
+	ErrCodeCircuitOpen         = "CIRCUIT_BREAKER_OPEN"
 	ErrCodeInternal            = "INTERNAL"
 )

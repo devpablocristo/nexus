@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"nexus-core/internal/gateway/executor/circuitbreaker"
 	"nexus-core/pkg/types"
 )
 
@@ -19,6 +20,7 @@ type Executor struct {
 	client       *nethttp.Client
 	maxRespBytes int64
 	retries      int
+	cbRegistry   *circuitbreaker.Registry
 }
 
 type Options struct {
@@ -29,6 +31,7 @@ type Options struct {
 	Transport nethttp.RoundTripper
 	// CheckRedirect overrides the default redirect policy. When nil, follows redirects.
 	CheckRedirect func(req *nethttp.Request, via []*nethttp.Request) error
+	CircuitBreaker circuitbreaker.Config
 }
 
 func NewExecutor(opts Options) *Executor {
@@ -43,21 +46,33 @@ func NewExecutor(opts Options) *Executor {
 		client:       c,
 		maxRespBytes: opts.MaxResponseBytes,
 		retries:      opts.Retries,
+		cbRegistry:   circuitbreaker.NewRegistry(opts.CircuitBreaker),
 	}
 }
 
 func (e *Executor) Execute(ctx context.Context, method, rawURL string, input map[string]any, headers map[string]string, maxRetries int) (any, int, *types.HTTPError) {
+	cbKey := cbKeyFromURL(rawURL)
+	cb := e.cbRegistry.Get(cbKey)
+
+	if !cb.Allow() {
+		return nil, 0, &types.HTTPError{Status: 0, Code: types.ErrCodeCircuitOpen, Message: "circuit breaker open for upstream"}
+	}
+
 	var lastErr *types.HTTPError
 	backoff := 200 * time.Millisecond
 	attempts := 1 + maxRetries
 	for i := 0; i < attempts; i++ {
 		res, status, he := e.executeOnce(ctx, method, rawURL, input, headers)
 		if he == nil {
+			cb.RecordSuccess()
 			return res, status, nil
 		}
 		lastErr = he
 
 		retryable := he.Code == types.ErrCodeNetworkError || he.Code == types.ErrCodeUpstream5xx
+		if retryable {
+			cb.RecordFailure()
+		}
 		if !retryable || i == attempts-1 {
 			return nil, status, he
 		}
@@ -70,6 +85,14 @@ func (e *Executor) Execute(ctx context.Context, method, rawURL string, input map
 		backoff *= 2
 	}
 	return nil, 0, lastErr
+}
+
+func cbKeyFromURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	return u.Host
 }
 
 func (e *Executor) executeOnce(ctx context.Context, method, rawURL string, input map[string]any, headers map[string]string) (any, int, *types.HTTPError) {

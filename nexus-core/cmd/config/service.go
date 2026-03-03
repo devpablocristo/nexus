@@ -39,6 +39,11 @@ type ServiceConfig struct {
 	CORSAllowedMethods     string
 	CORSAllowedHeaders     string
 
+	// Circuit breaker
+	CBFailureThreshold int
+	CBHalfOpenMax      int
+	CBResetTimeoutSec  int
+
 	// OIDC/SSO configuration
 	OIDCEnabled      bool
 	OIDCIssuerURL    string

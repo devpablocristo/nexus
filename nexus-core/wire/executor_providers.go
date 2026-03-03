@@ -7,6 +7,7 @@ import (
 	"github.com/google/wire"
 
 	"nexus-core/cmd/config"
+	"nexus-core/internal/gateway/executor/circuitbreaker"
 	exechttp "nexus-core/internal/gateway/executor/http"
 	"nexus-core/internal/gateway/executor/ratelimit"
 	"nexus-core/pkg/utils"
@@ -33,6 +34,11 @@ func NewHTTPExecutor(cfg config.ServiceConfig) *exechttp.Executor {
 		Timeout:          time.Duration(cfg.HTTPTimeoutMS) * time.Millisecond,
 		MaxResponseBytes: cfg.HTTPMaxResponseBytes,
 		Retries:          1,
+		CircuitBreaker: circuitbreaker.Config{
+			FailureThreshold: max(cfg.CBFailureThreshold, 1),
+			HalfOpenMax:      max(cfg.CBHalfOpenMax, 1),
+			ResetTimeout:     time.Duration(max(cfg.CBResetTimeoutSec, 5)) * time.Second,
+		},
 	}
 	if !cfg.DisableSSRFProtection {
 		opts.Transport = utils.SafeTransportWithAllowlist(cfg.EgressAllowlist)
