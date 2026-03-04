@@ -139,10 +139,10 @@ services:
       dockerfile: nexus-tower/Dockerfile
       args:
         VITE_NEXUS_CORE_URL: "${VITE_NEXUS_CORE_URL}"
-        VITE_NEXUS_OPERATOR_URL: "${VITE_NEXUS_OPERATOR_URL}"
+        VITE_NEXUS_AI_OPERATORS_URL: "${VITE_NEXUS_AI_OPERATORS_URL}"
         VITE_NEXUS_API_KEY: "${VITE_NEXUS_API_KEY}"
         VITE_NEXUS_SCOPES: "${VITE_NEXUS_SCOPES}"
-        VITE_OPERATOR_ACTION_KEY: "${VITE_OPERATOR_ACTION_KEY}"
+        VITE_AI_OPERATORS_ACTION_KEY: "${VITE_AI_OPERATORS_ACTION_KEY}"
     depends_on:
       nexus-core:
         condition: service_healthy

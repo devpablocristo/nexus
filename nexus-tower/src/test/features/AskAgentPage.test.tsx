@@ -32,7 +32,7 @@ describe('AskAgentPage', () => {
 
     expect(screen.getByText('Ask Agent')).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toHaveValue('Summarize the latest risk posture.');
-    expect(screen.getByRole('button', { name: 'Query Operator' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Query AI Operators' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Trigger Tick' })).toBeInTheDocument();
   });
 
@@ -52,7 +52,7 @@ describe('AskAgentPage', () => {
 
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: 'Query Operator' }));
+    await user.click(screen.getByRole('button', { name: 'Query AI Operators' }));
 
     await waitFor(() => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
@@ -83,7 +83,7 @@ describe('AskAgentPage', () => {
 
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: 'Query Operator' }));
+    await user.click(screen.getByRole('button', { name: 'Query AI Operators' }));
 
     await waitFor(() => {
       expect(screen.getByText('Summary')).toBeInTheDocument();
@@ -116,7 +116,7 @@ describe('AskAgentPage', () => {
 
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: 'Query Operator' }));
+    await user.click(screen.getByRole('button', { name: 'Query AI Operators' }));
 
     await waitFor(() => {
       expect(screen.getByText('Active Incidents')).toBeInTheDocument();
@@ -137,7 +137,7 @@ describe('AskAgentPage', () => {
 
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: 'Query Operator' }));
+    await user.click(screen.getByRole('button', { name: 'Query AI Operators' }));
 
     await waitFor(() => {
       expect(screen.getByText('Query failed')).toBeInTheDocument();
@@ -160,7 +160,7 @@ describe('AskAgentPage', () => {
     const textarea = screen.getByRole('textbox');
     await user.clear(textarea);
     await user.type(textarea, 'List all open incidents');
-    await user.click(screen.getByRole('button', { name: 'Query Operator' }));
+    await user.click(screen.getByRole('button', { name: 'Query AI Operators' }));
 
     await waitFor(() => {
       const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
@@ -182,7 +182,7 @@ describe('AskAgentPage', () => {
 
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: 'Query Operator' }));
+    await user.click(screen.getByRole('button', { name: 'Query AI Operators' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Querying...' })).toBeInTheDocument();
@@ -221,7 +221,7 @@ describe('AskAgentPage', () => {
     await user.click(screen.getByRole('button', { name: 'Trigger Tick' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Operator tick completed.')).toBeInTheDocument();
+      expect(screen.getByText('AI operators tick completed.')).toBeInTheDocument();
     });
   });
 });

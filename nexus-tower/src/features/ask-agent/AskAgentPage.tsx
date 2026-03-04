@@ -2,7 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 
 import { Card } from '../../components/Card';
-import { operatorTick, queryAssistant } from '../../lib/api';
+import { aiOperatorsTick, queryAssistant } from '../../lib/api';
 
 export function AskAgentPage() {
   const [query, setQuery] = useState('Summarize the latest risk posture.');
@@ -12,7 +12,7 @@ export function AskAgentPage() {
   });
 
   const tick = useMutation({
-    mutationFn: operatorTick,
+    mutationFn: aiOperatorsTick,
   });
 
   const onSubmit = (event: FormEvent) => {
@@ -26,7 +26,7 @@ export function AskAgentPage() {
         <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={5} />
         <div className="button-row">
           <button type="submit" disabled={ask.isPending}>
-            {ask.isPending ? 'Querying...' : 'Query Operator'}
+            {ask.isPending ? 'Querying...' : 'Query AI Operators'}
           </button>
           <button type="button" className="ghost" disabled={tick.isPending} onClick={() => tick.mutate()}>
             {tick.isPending ? 'Running...' : 'Trigger Tick'}
@@ -48,7 +48,7 @@ export function AskAgentPage() {
         </div>
       )}
 
-      {tick.isSuccess && <p className="success-msg">Operator tick completed.</p>}
+      {tick.isSuccess && <p className="success-msg">AI operators tick completed.</p>}
 
       {ask.data && (
         <section className="agent-answer">

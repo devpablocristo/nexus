@@ -302,5 +302,5 @@ secrets:
   ANTHROPIC_API_KEY: ""
   # Tower build-time keys baked into the SPA - override via image build args
   VITE_NEXUS_API_KEY: ""
-  VITE_OPERATOR_ACTION_KEY: "operator-internal-key"
+  VITE_AI_OPERATORS_ACTION_KEY: "operator-internal-key"
   VITE_NEXUS_SCOPES: "admin:console:read,admin:console:write,audit:read"

@@ -128,10 +128,10 @@ export async function getSession(sessionId: string): Promise<SessionItem> {
   return call(`/v1/sessions/${sessionId}`);
 }
 
-export async function operatorTick(): Promise<{ status: string }> {
-  const operatorBase = import.meta.env.VITE_NEXUS_OPERATOR_URL || 'http://localhost:8000';
-  const key = import.meta.env.VITE_OPERATOR_ACTION_KEY || '';
-  const res = await fetch(`${operatorBase}/v1/internal/tick`, {
+export async function aiOperatorsTick(): Promise<{ status: string }> {
+  const aiOperatorsBase = import.meta.env.VITE_NEXUS_AI_OPERATORS_URL || 'http://localhost:8000';
+  const key = import.meta.env.VITE_AI_OPERATORS_ACTION_KEY || '';
+  const res = await fetch(`${aiOperatorsBase}/v1/internal/tick`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -139,7 +139,7 @@ export async function operatorTick(): Promise<{ status: string }> {
     },
   });
   if (!res.ok) {
-    throw new Error(`Operator ${res.status}`);
+    throw new Error(`AI operators ${res.status}`);
   }
   return res.json() as Promise<{ status: string }>;
 }

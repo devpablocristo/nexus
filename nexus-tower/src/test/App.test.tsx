@@ -41,7 +41,7 @@ describe('App', () => {
     renderApp('/');
 
     expect(screen.getByRole('link', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Viewer' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Run Explorer' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Timeline' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Policies' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ask Agent' })).toBeInTheDocument();
@@ -73,14 +73,14 @@ describe('App', () => {
     expect(screen.getByText('Operational Timeline')).toBeInTheDocument();
   });
 
-  it('shows Viewer page when navigating to /viewer', async () => {
+  it('shows Run Explorer page when navigating to /run-explorer', async () => {
     mockFetchSuccess();
-    renderApp('/viewer');
+    renderApp('/run-explorer');
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('link', { name: 'Viewer' }));
+    await user.click(screen.getByRole('link', { name: 'Run Explorer' }));
 
-    expect(screen.getByText('Viewer 3D')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Run Explorer' })).toBeInTheDocument();
   });
 
   it('shows PoliciesPage when navigating to /policies', async () => {
@@ -101,7 +101,7 @@ describe('App', () => {
     await user.click(screen.getByRole('link', { name: 'Ask Agent' }));
 
     expect(screen.getByRole('heading', { name: 'Ask Agent' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Query Operator' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Query AI Operators' })).toBeInTheDocument();
   });
 
   it('shows ExportsPage when navigating to /exports', async () => {
