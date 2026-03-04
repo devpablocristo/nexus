@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 )
@@ -23,7 +25,7 @@ type Runner struct {
 	worker   Worker
 }
 
-func NewRunner(eventService *opseventstore.Usecases, worker Worker, batchSize int, pollInterval time.Duration) *Runner {
+func NewRunner(eventService *opseventstore.Usecases, worker Worker, batchSize int, pollInterval time.Duration, log zerolog.Logger) *Runner {
 	onIdle := func(context.Context) error { return nil }
 	if iw, ok := worker.(IdleWorker); ok {
 		lastTick := time.Time{}
@@ -45,7 +47,7 @@ func NewRunner(eventService *opseventstore.Usecases, worker Worker, batchSize in
 			BatchSize:    batchSize,
 			PollInterval: pollInterval,
 			OnIdle:       onIdle,
-		}),
+		}, log),
 		worker: worker,
 	}
 }

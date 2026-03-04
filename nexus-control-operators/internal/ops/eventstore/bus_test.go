@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 )
 
@@ -20,7 +22,7 @@ func TestConsumer_AckAdvancesOffset(t *testing.T) {
 			{Sequence: 2, Envelope: opsdomain.Envelope{ID: uuid.New()}},
 		},
 	}
-	consumer := NewConsumer(mock, "workers.sentry", ConsumerConfig{BatchSize: 10, PollInterval: 1 * time.Millisecond})
+	consumer := NewConsumer(mock, "workers.sentry", ConsumerConfig{BatchSize: 10, PollInterval: 1 * time.Millisecond}, zerolog.Nop())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -51,7 +53,7 @@ func TestConsumer_AckAdvancesOffset(t *testing.T) {
 	}
 }
 
-func TestConsumer_StopsOnHandlerErrorWithoutAckingFailedEvent(t *testing.T) {
+func TestConsumer_SkipsNonRetryableHandlerErrorAndContinues(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockEventService{
@@ -60,19 +62,38 @@ func TestConsumer_StopsOnHandlerErrorWithoutAckingFailedEvent(t *testing.T) {
 			{Sequence: 11, Envelope: opsdomain.Envelope{ID: uuid.New()}},
 		},
 	}
-	consumer := NewConsumer(mock, "workers.coordinator", ConsumerConfig{BatchSize: 10, PollInterval: 1 * time.Millisecond})
+	consumer := NewConsumer(mock, "workers.coordinator", ConsumerConfig{BatchSize: 10, PollInterval: 1 * time.Millisecond}, zerolog.Nop())
 
-	err := consumer.Run(context.Background(), func(_ context.Context, ev opsdomain.StoredEvent) error {
-		if ev.Sequence == 11 {
-			return errors.New("boom")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handled := 0
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- consumer.Run(ctx, func(_ context.Context, ev opsdomain.StoredEvent) error {
+			handled++
+			if ev.Sequence == 11 {
+				cancel()
+				return errors.New("boom")
+			}
+			return nil
+		})
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("unexpected consumer error: %v", err)
 		}
-		return nil
-	})
-	if err == nil {
-		t.Fatalf("expected handler error")
+	case <-time.After(2 * time.Second):
+		t.Fatalf("consumer timeout")
 	}
-	if got := mock.lastAck(); got != 10 {
-		t.Fatalf("unexpected ack sequence: got=%d want=10", got)
+
+	if handled < 2 {
+		t.Fatalf("expected both events handled, got=%d", handled)
+	}
+	if got := mock.lastAck(); got != 11 {
+		t.Fatalf("unexpected ack sequence: got=%d want=11 (skipped error, still acked)", got)
 	}
 }
 

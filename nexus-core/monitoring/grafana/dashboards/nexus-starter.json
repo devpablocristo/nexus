@@ -161,8 +161,8 @@
       "title": "HTTP Requests/s (all endpoints)",
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
       "targets": [
-        {"expr": "sum(rate(nexus_gateway_req_count{code!~\"5..\"}[5m]))", "refId": "A", "legendFormat": "2xx/4xx"},
-        {"expr": "sum(rate(nexus_gateway_req_count{code=~\"5..\"}[5m]))", "refId": "B", "legendFormat": "5xx"}
+        {"expr": "sum(rate(nexus_gateway_requests_total{code!~\"5..\"}[5m]))", "refId": "A", "legendFormat": "2xx/4xx"},
+        {"expr": "sum(rate(nexus_gateway_requests_total{code=~\"5..\"}[5m]))", "refId": "B", "legendFormat": "5xx"}
       ]
     },
     {

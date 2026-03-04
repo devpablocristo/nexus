@@ -89,7 +89,7 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 			SuccessCount:       0,
 			MonitoringDeadline: eventTime.Add(w.monitoringWindow),
 		}
-		ttlSeconds := recoveryworker.AsInt(event.Envelope.Payload["ttl_seconds"])
+		ttlSeconds := recoveryworker.AsInt(event.Envelope.Payload["ttl_seconds"], 0)
 		if ttlSeconds > 0 {
 			deadline := eventTime.Add(time.Duration(ttlSeconds) * time.Second)
 			track.TTLDeadline = &deadline

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+
 	"nexus-control-operators/internal/agents/sentry/worker"
 	"nexus-control-operators/internal/incidents"
 	incidentdomain "nexus-control-operators/internal/incidents/usecases/domain"
@@ -57,9 +59,10 @@ type Worker struct {
 	incidents IncidentPort
 	emitter   EventEmitter
 	cfg       Config
+	log       zerolog.Logger
 }
 
-func NewWorker(state StateRepository, incidents IncidentPort, emitter EventEmitter, cfg Config) *Worker {
+func NewWorker(state StateRepository, incidents IncidentPort, emitter EventEmitter, cfg Config, log zerolog.Logger) *Worker {
 	if cfg.Alpha <= 0 || cfg.Alpha > 1 {
 		cfg.Alpha = 0.30
 	}
@@ -80,6 +83,7 @@ func NewWorker(state StateRepository, incidents IncidentPort, emitter EventEmitt
 		incidents: incidents,
 		emitter:   emitter,
 		cfg:       cfg,
+		log:       log.With().Str("worker", "sentry").Logger(),
 	}
 }
 
@@ -266,9 +270,8 @@ func (w *Worker) createIncidentAndEmit(ctx context.Context, orgID uuid.UUID, fin
 	return nil
 }
 
-// emitOrLog emite el evento; si falla, loguea (evita _ = ignorando errores).
 func (w *Worker) emitOrLog(ctx context.Context, orgID uuid.UUID, eventType string, payload map[string]any) {
 	if err := w.emit(ctx, orgID, eventType, payload); err != nil {
-		_ = err
+		w.log.Warn().Err(err).Str("event_type", eventType).Msg("failed to emit event")
 	}
 }

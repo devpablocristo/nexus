@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+
 	"nexus-control-operators/internal/incidents"
 	incidentdomain "nexus-control-operators/internal/incidents/usecases/domain"
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
@@ -24,7 +26,7 @@ func TestSentryWorker_EmitsAnomalyAndIncident(t *testing.T) {
 		Alpha:          1.0,
 		ErrorThreshold: 0.5,
 		MinSamples:     1,
-	})
+	}, zerolog.Nop())
 
 	err := w.Handle(context.Background(), opsdomain.StoredEvent{
 		Sequence: 12,
@@ -65,7 +67,7 @@ func TestSentryWorker_ConsumesPolicyQuotaAndDegradedSignals(t *testing.T) {
 		ErrorThreshold: 0.5,
 		MinSamples:     5,
 		P95LatencyMS:   1200,
-	})
+	}, zerolog.Nop())
 
 	cases := []opsdomain.StoredEvent{
 		{

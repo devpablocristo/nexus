@@ -5,9 +5,12 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+
 	"nexus-control-operators/internal/agents/coordinator/worker"
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
+	"nexus-control-operators/internal/shared/eventutil"
 )
 
 type EventEmitter interface {
@@ -16,13 +19,15 @@ type EventEmitter interface {
 
 type Worker struct {
 	emitter EventEmitter
+	log     zerolog.Logger
 	mu      sync.Mutex
 	states  map[string]string
 }
 
-func NewWorker(emitter EventEmitter) *Worker {
+func NewWorker(emitter EventEmitter, log zerolog.Logger) *Worker {
 	return &Worker{
 		emitter: emitter,
+		log:     log.With().Str("worker", "coordinator").Logger(),
 		states:  map[string]string{},
 	}
 }
@@ -39,15 +44,15 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	var target string
 	switch event.Envelope.EventType {
 	case "incident.opened":
-		target = "DIAGNOSING"
+		target = eventutil.StateDiagnosing
 	case "diagnosis.created", "recommended_actions.created":
-		target = "MITIGATING"
+		target = eventutil.StateMitigating
 	case "action.applied":
-		target = "MONITORING"
+		target = eventutil.StateMonitoring
 	case "action.failed":
-		target = "ESCALATED"
+		target = eventutil.StateEscalated
 	case "action.rolled_back":
-		target = "OPEN"
+		target = eventutil.StateOpen
 	default:
 		return nil
 	}
@@ -55,7 +60,7 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	w.mu.Lock()
 	current := w.states[incidentID]
 	if current == "" {
-		current = "OPEN"
+		current = eventutil.StateOpen
 	}
 	if current == target {
 		w.mu.Unlock()
@@ -64,7 +69,15 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	w.states[incidentID] = target
 	w.mu.Unlock()
 
-	return w.emitStateChange(ctx, event.Envelope.OrgID, incidentID, current, target, "coordinator_transition")
+	err := w.emitStateChange(ctx, event.Envelope.OrgID, incidentID, current, target, "coordinator_transition")
+
+	if target == eventutil.StateResolved || target == eventutil.StateEscalated {
+		w.mu.Lock()
+		delete(w.states, incidentID)
+		w.mu.Unlock()
+	}
+
+	return err
 }
 
 func (w *Worker) emitStateChange(ctx context.Context, orgID uuid.UUID, incidentID, fromState, toState, reason string) error {
@@ -94,4 +107,3 @@ func (w *Worker) emitStateChange(ctx context.Context, orgID uuid.UUID, incidentI
 	})
 	return err
 }
-

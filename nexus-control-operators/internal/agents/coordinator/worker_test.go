@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 )
@@ -16,7 +18,7 @@ func TestCoordinatorWorker_TransitionsIncidentState(t *testing.T) {
 	orgID := uuid.MustParse("996e9e43-7bab-4e68-a831-0a766befbf54")
 	incidentID := "f503f46f-c137-4165-b9ca-999d0d6f328f"
 	em := &emitRecorder{}
-	w := NewWorker(em)
+	w := NewWorker(em, zerolog.Nop())
 
 	for _, evType := range []string{"incident.opened", "diagnosis.created", "action.applied"} {
 		if err := w.Handle(context.Background(), opsdomain.StoredEvent{

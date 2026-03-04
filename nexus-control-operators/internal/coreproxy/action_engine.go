@@ -2,6 +2,9 @@ package coreproxy
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
@@ -25,7 +28,7 @@ func NewCoreActionEngine(client *Client) *CoreActionEngine {
 }
 
 func (e *CoreActionEngine) DryRun(ctx context.Context, orgID uuid.UUID, actor *string, req opsaction.EngineRequest) (opsaction.EngineResult, error) {
-	proposalID := uuid.New()
+	proposalID := deterministicProposalID(req)
 	approvalRequired := req.ActionType == "quarantine_tenant"
 	proposal := actiondomain.Proposal{
 		ID:               proposalID,
@@ -96,7 +99,6 @@ func (e *CoreActionEngine) Apply(ctx context.Context, orgID uuid.UUID, actor *st
 }
 
 func (e *CoreActionEngine) Rollback(ctx context.Context, orgID uuid.UUID, actor *string, req opsaction.EngineRequest) (opsaction.EngineResult, error) {
-	// Recovery worker emits rollback events directly; no dedicated rollback endpoint required.
 	id := proposalIDOrNew(req.ProposalID)
 	return opsaction.EngineResult{
 		Proposal: actiondomain.Proposal{
@@ -109,6 +111,18 @@ func (e *CoreActionEngine) Rollback(ctx context.Context, orgID uuid.UUID, actor 
 		},
 		IdempotencyKey: id.String(),
 	}, nil
+}
+
+// deterministicProposalID generates a reproducible UUID from the request
+// so retries of the same event produce the same proposal, ensuring idempotency.
+func deterministicProposalID(req opsaction.EngineRequest) uuid.UUID {
+	incidentPart := ""
+	if req.IncidentID != nil {
+		incidentPart = req.IncidentID.String()
+	}
+	scopeRaw, _ := json.Marshal(req.Scope)
+	seed := fmt.Sprintf("%s|%s|%x", incidentPart, req.ActionType, sha256.Sum256(scopeRaw))
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(seed))
 }
 
 func proposalIDOrNew(id *uuid.UUID) uuid.UUID {

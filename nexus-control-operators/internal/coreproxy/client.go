@@ -10,15 +10,20 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
+
+	"nexus-control-operators/internal/shared/coreerr"
 )
 
 type Client struct {
 	baseURL string
 	apiKey  string
 	http    *http.Client
+	log     zerolog.Logger
 }
 
-func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
+func NewClient(baseURL, apiKey string, timeout time.Duration, log zerolog.Logger) *Client {
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
@@ -26,6 +31,7 @@ func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		apiKey:  strings.TrimSpace(apiKey),
 		http:    &http.Client{Timeout: timeout},
+		log:     log.With().Str("component", "coreproxy").Logger(),
 	}
 }
 
@@ -58,7 +64,12 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, reqBody any, o
 		return err
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("core proxy %s %s failed with status=%d", method, path, resp.StatusCode)
+		return &coreerr.CoreError{
+			StatusCode: resp.StatusCode,
+			Method:     method,
+			Path:       path,
+			Body:       string(payload),
+		}
 	}
 	if out != nil && len(payload) > 0 {
 		if err := json.Unmarshal(payload, out); err != nil {
