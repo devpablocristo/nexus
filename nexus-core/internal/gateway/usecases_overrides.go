@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
@@ -13,6 +14,59 @@ import (
 	"nexus/pkg/types"
 	"nexus/pkg/utils"
 )
+
+// checkActionOverridesAndTenantCaps consulta SaaS en paralelo para reducir latencia
+// en el hot path de /v1/run. Mantiene el mismo contrato de errores que los checks
+// individuales: solo falla si los puertos devuelven error explícito.
+func (u *Usecases) checkActionOverridesAndTenantCaps(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
+	st.runtimeOverrides = RuntimeActionOverrides{}
+	st.tenantRunRPM = 0
+
+	var (
+		overrides RuntimeActionOverrides
+		tenantRPM int
+		ovErr     error
+		capsErr   error
+		wg        sync.WaitGroup
+	)
+
+	if u.actionOverrides != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			overrides, ovErr = u.actionOverrides.ResolveRuntimeOverrides(ctx, orgID, st.tool.Name)
+		}()
+	}
+	if u.tenantCaps != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tenantRPM, capsErr = u.tenantCaps.GetRunRPM(ctx, orgID)
+		}()
+	}
+	wg.Wait()
+
+	if ovErr != nil {
+		return nil, ovErr
+	}
+	if capsErr != nil {
+		return nil, capsErr
+	}
+
+	st.runtimeOverrides = overrides
+	st.tenantRunRPM = tenantRPM
+
+	if !st.runtimeOverrides.Deny {
+		return nil, nil
+	}
+	reason := st.runtimeOverrides.DenyReason
+	if strings.TrimSpace(reason) == "" {
+		reason = "blocked by active action override"
+	}
+	resp := u.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, reason, types.ErrCodePolicyDenied, http.StatusForbidden, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+	u.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+	return &resp, nil
+}
 
 // checkActionOverrides aplica overrides de runtime; devuelve respuesta si hay deny.
 func (u *Usecases) checkActionOverrides(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
@@ -39,14 +93,7 @@ func (u *Usecases) checkActionOverrides(ctx context.Context, orgID uuid.UUID, re
 
 // checkTenantRateLimit verifica rate limit por tenant.
 func (u *Usecases) checkTenantRateLimit(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
-	tenantRunRPM := 0
-	if u.tenantCaps != nil {
-		var err error
-		tenantRunRPM, err = u.tenantCaps.GetRunRPM(ctx, orgID)
-		if err != nil {
-			return nil, err
-		}
-	}
+	tenantRunRPM := st.tenantRunRPM
 	if st.runtimeOverrides.TenantRPMOverride != nil && *st.runtimeOverrides.TenantRPMOverride > 0 {
 		if tenantRunRPM <= 0 || *st.runtimeOverrides.TenantRPMOverride < tenantRunRPM {
 			tenantRunRPM = *st.runtimeOverrides.TenantRPMOverride

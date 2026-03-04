@@ -7,9 +7,12 @@ import (
 
 // loadDB carga configuración de base de datos.
 func loadDB(cfg *Config) error {
-	cfg.DB.DatabaseURL = os.Getenv("NEXUS_DATABASE_URL")
+	cfg.DB.DatabaseURL = os.Getenv("NEXUS_SAAS_DATABASE_URL")
 	if cfg.DB.DatabaseURL == "" {
-		return errors.New("NEXUS_DATABASE_URL required")
+		cfg.DB.DatabaseURL = os.Getenv("NEXUS_DATABASE_URL")
+	}
+	if cfg.DB.DatabaseURL == "" {
+		return errors.New("NEXUS_SAAS_DATABASE_URL required (or fallback NEXUS_DATABASE_URL)")
 	}
 	return nil
 }

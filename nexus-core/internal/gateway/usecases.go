@@ -132,6 +132,7 @@ type runState struct {
 	policyID              *uuid.UUID
 	limits                parsedLimits
 	runtimeOverrides      RuntimeActionOverrides
+	tenantRunRPM          int
 	headers               map[string]string
 	remainingBeforeExec   int
 	latency               int64
@@ -513,7 +514,7 @@ func (u *Usecases) runPoliciesAndDecision(ctx context.Context, orgID uuid.UUID, 
 // 10. Action overrides, 11. Rate limit tenant, 12. Rate limit tool,
 // 13. URL y egress (SSRF, allowlist), 14. Secretos (headers/bearer)
 func (u *Usecases) runOverridesRateLimitsEgressSecrets(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, st *runState) (*gwdomain.RunResponse, error) {
-	if resp, err := u.checkActionOverrides(ctx, orgID, req, st); err != nil || resp != nil {
+	if resp, err := u.checkActionOverridesAndTenantCaps(ctx, orgID, req, st); err != nil || resp != nil {
 		return resp, err
 	}
 	if resp, err := u.checkTenantRateLimit(ctx, orgID, req, st); err != nil || resp != nil {
