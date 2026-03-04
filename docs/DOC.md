@@ -32,7 +32,10 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
 4. **nexus-tower**  
    - UI de supervisión: overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.
 
-5. **SDKs** (Python + TypeScript)
+5. **sim-engine**  
+   - Simulador de eventos para QA y demos. Migraciones y scripts de replay.
+
+6. **SDKs** (Python + TypeScript)
    - Clientes tipados para toda la API.
    - Integraciones: LangChain (`NexusTool`, `NexusToolkit`), OpenAI Agents SDK (`nexus_function_tools`).
 
@@ -48,7 +51,7 @@ El pipeline completo solo aplica a `POST /v1/run` y `POST /v1/run/simulate`. Otr
 4. **Validación** — Context, DLP (PII) y schema del input.
 5. **Políticas** — Evalúa condiciones (first-match) y decide allow/deny.
 6. **Approval (HITL)** — Si la política exige aprobación humana, bloquea hasta que se apruebe.
-7. **Controles** — Rate limits, egress (hosts permitidos), secrets, action overrides (operator).
+7. **Controles** — Rate limits, egress (hosts permitidos), secrets, action overrides (control operators).
 8. **Ejecución** — Si allow y no requiere approval: llama por HTTP al upstream (respetando timeout budget).
 9. **Respuesta** — Valida output schema, escribe auditoría y devuelve el resultado.
 
@@ -222,6 +225,8 @@ En local, el seed crea el tool **echo** que apunta a `http://mock-tools:8081/ech
 
 ## Estructura de directorios de nexus-core
 
+**nexus-core** es el gateway (data plane): solo recibe requests, aplica controles síncronos y ejecuta. No incluye workers de control; esos viven en `nexus-control-operators`.
+
 ### 1. `cmd/` — Entry points
 
 | Directorio | Responsabilidad |
@@ -290,41 +295,19 @@ En local, el seed crea el tool **echo** que apunta a `http://mock-tools:8081/ech
 | `internal/alerts` | Reglas de alerta con webhook: deny_rate, error_rate, rate_limited_count; métricas desde audit |
 | `internal/session` | Tracking de sesiones de agente: calls, writes, denials por session_id |
 
-#### Ops y agentes
+#### Ops y agentes (fuera de core)
 
-| Directorio | Responsabilidad |
-|------------|-----------------|
-| `internal/ops/actionengine` | Motor de acciones: proponer, dry-run, aplicar, rollback |
-| `internal/ops/eventstore` | Store de eventos (append, stream, schema validation) |
-| `internal/ops/comms` | Borradores de comunicación (drafts, aprobación) |
-| `internal/ops/diagnosis` | Reportes de diagnóstico por incidente |
-| `internal/ops/tenant` | Perfiles de tenant (límites, cost model) |
-| `internal/ops/llm` | Cliente LLM (mock, Ollama, cloud) para agentes |
-| `internal/ops/schemas` | JSON Schemas para acciones, eventos y LLM |
+**nexus-core es solo gateway.** No contiene ops ni agentes. Los siguientes componentes viven en otros servicios:
 
-#### Agentes (workers)
-
-| Directorio | Responsabilidad |
-|------------|-----------------|
-| `internal/agents/sentry` | Detección de anomalías (EWMA, baselines) |
-| `internal/agents/coordinator` | Orquestación de incidentes y cooldown |
-| `internal/agents/mitigation` | Aplicación de acciones recomendadas |
-| `internal/agents/recovery` | Verificación y rollback automático |
-| `internal/agents/diagnostician` | Diagnóstico con LLM (actualmente en core; objetivo de migración a external operators) |
-| `internal/agents/comms` | Borradores de comunicación con LLM (objetivo de migración a external operators) |
-| `internal/agents/executive_qa` | Q&A para operadores con LLM (objetivo de migración a external operators) |
-| `internal/agents/runtime` | Tests E2E del flujo de agentes |
-
-**Frontera objetivo de arquitectura:**
-- **Control operators (determinista):** sentry, coordinator, mitigation, recovery.
-- **External operators (IA):** diagnostician, comms, executive_qa (vía servicio Python).
+- **nexus-control-operators**: `internal/ops/` (actionengine, eventstore, tenant), workers deterministas (sentry, coordinator, mitigation, recovery).
+- **nexus-ai-operators**: diagnóstico IA, comms IA, assistant query (Python).
 
 #### Otros módulos
 
 | Directorio | Responsabilidad |
 |------------|-----------------|
 | `internal/admin` | Admin API (activity events, hard limits) |
-| `internal/assistant` | Asistente para operadores |
+| `internal/assistant` | Proxy de `/v1/assistant/query` hacia nexus-ai-operators |
 | `internal/org` | Organizaciones (multi-tenant) + onboarding (`POST /v1/orgs`) |
 | `internal/mcp` | Endpoint MCP JSON-RPC (`tools/list`, `tools/call`) |
 | `internal/a2a` | Protocolo Agent-to-Agent |
@@ -364,3 +347,35 @@ En local, el seed crea el tool **echo** que apunta a `http://mock-tools:8081/ech
 | `sdks/python-sdk/nexus_sdk/integrations/langchain.py` | `NexusTool` + `NexusToolkit` para LangChain |
 | `sdks/python-sdk/nexus_sdk/integrations/openai_agents.py` | `nexus_function_tools` para OpenAI Agents SDK |
 | `sdks/typescript-sdk` | SDK TypeScript: `NexusClient`, tipos exportados |
+
+---
+
+## Estructura de nexus-control-operators
+
+Servicio Go dedicado al control plane determinista. No forma parte del path síncrono de `/v1/run`.
+
+| Directorio | Responsabilidad |
+|------------|-----------------|
+| `cmd/ops-workers` | Entry point del servicio |
+| `internal/agents/sentry` | Detección de anomalías (EWMA, baselines); `worker/helpers.go` para utilidades |
+| `internal/agents/coordinator` | Orquestación de incidentes y cooldown; `worker/helpers.go` |
+| `internal/agents/mitigation` | Aplicación de acciones recomendadas; `worker/helpers.go` |
+| `internal/agents/recovery` | Verificación y rollback automático; `worker/helpers.go` |
+| `internal/ops/actionengine` | Motor de acciones: proponer, dry-run, aplicar, rollback |
+| `internal/ops/eventstore` | Emitter, consumer, store de eventos (schema validation) |
+| `internal/ops/schemas` | JSON Schemas para eventos y acciones |
+| `internal/ops/tenant` | Perfiles de tenant (límites, cost model) |
+| `internal/incidents` | Modelo de incidentes |
+| `internal/events` | Eventos de dominio |
+
+---
+
+## Estructura de nexus-ai-operators
+
+Servicio Python con operadores IA/ML. Consume APIs de Nexus (sin acceso directo a DB).
+
+| Componente | Responsabilidad |
+|------------|-----------------|
+| `/v1/assistant/query` | Respuestas de asistente (summary, tables, actions) para Tower |
+| `/v1/internal/tick` | Tick manual para procesamiento por lotes |
+| Diagnóstico, policy proposals | Funcionalidad IA que propone acciones; las aplica nexus-control-operators vía API |

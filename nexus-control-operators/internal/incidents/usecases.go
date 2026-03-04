@@ -8,7 +8,7 @@ import (
 
 	eventdomain "nexus-control-operators/internal/events/usecases/domain"
 	incidentdomain "nexus-control-operators/internal/incidents/usecases/domain"
-	"nexus-control-operators/pkg/types"
+	"nexus/pkg/types"
 )
 
 type RepositoryPort interface {

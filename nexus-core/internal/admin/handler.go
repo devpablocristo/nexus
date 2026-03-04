@@ -11,8 +11,8 @@ import (
 
 	admindto "nexus-core/internal/admin/handler/dto"
 	admindomain "nexus-core/internal/admin/usecases/domain"
-	"nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	"nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type Handler struct {

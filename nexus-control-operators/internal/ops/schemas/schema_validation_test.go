@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	js "github.com/santhosh-tekuri/jsonschema/v5"
-	"nexus-control-operators/pkg/validations/jsonschema"
+	"nexus/pkg/validations/jsonschema"
 )
 
 func TestEventFixturesValidateAgainstEnvelopeAndEventSchema(t *testing.T) {

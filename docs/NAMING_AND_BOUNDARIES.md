@@ -2,7 +2,7 @@
 
 ## Names
 
-- Product BE name: `nexus-core`.
+- Product BE name: `nexus-core` (gateway/data plane only; no control workers).
 - Internal runtime/data plane component: `gateway`.
 - Deterministic control-plane service: `nexus-control-operators` (deployed from `nexus-control-operators/cmd/ops-workers`).
 - AI operations service: `nexus-ai-operators`.

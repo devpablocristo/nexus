@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	identityoidc "nexus-core/internal/identity/executor/oidc"
-	httperr "nexus-core/pkg/http/errors"
+	httperr "nexus/pkg/http/errors"
 )
 
 // OIDCConfig holds the configuration for the OIDC SSO feature.

@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	policydomain "nexus-core/internal/policy/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type policySvcStub struct{ called bool }

@@ -11,8 +11,8 @@ import (
 	"nexus-core/internal/policy/handler/dto"
 	policydomain "nexus-core/internal/policy/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type policyUsecase interface {

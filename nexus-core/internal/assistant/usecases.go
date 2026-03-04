@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type Config struct {

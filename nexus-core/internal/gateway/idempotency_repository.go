@@ -8,26 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
+	"nexus-core/internal/gateway/idempotency_repository/models"
 )
-
-type idempotencyRow struct {
-	ID                 uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	OrgID              uuid.UUID      `gorm:"type:uuid;index"`
-	ToolName           string         `gorm:"index"`
-	IdempotencyKey     string         `gorm:"column:idempotency_key"`
-	RequestFingerprint string         `gorm:"column:request_fingerprint"`
-	Status             string         `gorm:"column:status"`
-	ResponseRedacted   datatypes.JSON `gorm:"column:response_redacted_json;type:jsonb"`
-	ErrorCode          *string        `gorm:"column:error_code"`
-	CreatedAt          time.Time      `gorm:"column:created_at"`
-	ExpiresAt          time.Time      `gorm:"column:expires_at"`
-}
-
-func (idempotencyRow) TableName() string { return "idempotency_keys" }
 
 type IdempotencyRepository struct {
 	db *gorm.DB
@@ -38,7 +23,7 @@ func NewIdempotencyRepository(db *gorm.DB) *IdempotencyRepository {
 }
 
 func (r *IdempotencyRepository) Get(ctx context.Context, orgID uuid.UUID, toolName, key string) (*gwdomain.IdempotencyRecord, error) {
-	var row idempotencyRow
+	var row models.IdempotencyRow
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? and tool_name = ? and idempotency_key = ?", orgID, toolName, key).
 		Take(&row).Error
@@ -74,7 +59,7 @@ func (r *IdempotencyRepository) MarkCompleted(ctx context.Context, orgID uuid.UU
 		return fmt.Errorf("marshal response: %w", err)
 	}
 	return r.db.WithContext(ctx).
-		Model(&idempotencyRow{}).
+		Model(&models.IdempotencyRow{}).
 		Where("org_id = ? and tool_name = ? and idempotency_key = ?", orgID, toolName, key).
 		Updates(map[string]any{
 			"status":                 string(gwdomain.IdempotencyStatusCompleted),
@@ -89,7 +74,7 @@ func (r *IdempotencyRepository) MarkFailed(ctx context.Context, orgID uuid.UUID,
 		return fmt.Errorf("marshal response: %w", err)
 	}
 	return r.db.WithContext(ctx).
-		Model(&idempotencyRow{}).
+		Model(&models.IdempotencyRow{}).
 		Where("org_id = ? and tool_name = ? and idempotency_key = ?", orgID, toolName, key).
 		Updates(map[string]any{
 			"status":                 string(gwdomain.IdempotencyStatusFailed),
@@ -99,11 +84,11 @@ func (r *IdempotencyRepository) MarkFailed(ctx context.Context, orgID uuid.UUID,
 }
 
 func (r *IdempotencyRepository) DeleteExpired(ctx context.Context, before time.Time) (int64, error) {
-	tx := r.db.WithContext(ctx).Where("expires_at < ?", before).Delete(&idempotencyRow{})
+	tx := r.db.WithContext(ctx).Where("expires_at < ?", before).Delete(&models.IdempotencyRow{})
 	return tx.RowsAffected, tx.Error
 }
 
-func toIdempotencyDomain(row idempotencyRow) *gwdomain.IdempotencyRecord {
+func toIdempotencyDomain(row models.IdempotencyRow) *gwdomain.IdempotencyRecord {
 	out := &gwdomain.IdempotencyRecord{
 		OrgID:              row.OrgID,
 		ToolName:           row.ToolName,

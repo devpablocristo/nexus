@@ -9,8 +9,8 @@ import (
 
 	"nexus-core/internal/egress/handler/dto"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type egressUsecase interface {

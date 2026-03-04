@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type a2aSvcStub struct{ called bool }

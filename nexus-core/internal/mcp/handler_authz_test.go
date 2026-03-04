@@ -14,7 +14,7 @@ import (
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
 	mcpdto "nexus-core/internal/mcp/handler/dto"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type mcpSvcStub struct{ called bool }

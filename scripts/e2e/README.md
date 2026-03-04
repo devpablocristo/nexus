@@ -46,7 +46,9 @@ Los **operators** son workers asíncronos que consumen eventos del event store (
 | Mitigation | `recommended_actions.created` | `action.proposed`, `action.applied` | No |
 | Recovery | `action.applied`, `tool_call.finished` | `incident.state_changed`, `action.rolled_back` | No |
 | Comms | `incident.*`, `diagnosis.created` | `comms.draft_created`, `comms.sent_internal` | Sí |
-| Executive Q&A | consultas de operador | respuesta + propuestas | Sí |
+| Executive Q&A | consultas de operador (Tower → ai-operators) | respuesta + propuestas | Sí |
+
+Diagnostician, Comms y Executive Q&A viven en **nexus-ai-operators** (Python). Sentry, Coordinator, Mitigation, Recovery en **nexus-control-operators** (Go).
 
 **Nota**: El gateway escribe en `audit_events`. Un trigger DB copia a `operational_events` con `tool.call.completed`. Los consumers de `ops_event_store` esperan `tool_call.finished` — actualmente el bridge entre audit y ops_event_store puede estar en evolución.
 
@@ -58,7 +60,7 @@ Los **operators** son workers asíncronos que consumen eventos del event store (
 | Políticas (conditions) | **Sí** | No |
 | DLP (PII detection) | **Sí** | No |
 | Sentry, Coordinator, Mitigation, Recovery | **Sí** (reglas fijas) | No |
-| Diagnostician, Comms, Executive Q&A | **No** | **Sí** |
+| Diagnostician, Comms, Executive Q&A (nexus-ai-operators) | **No** | **Sí** |
 
 El enforcement del gateway es 100% determinista. La IA entra en los agents de diagnóstico, comunicaciones y Q&A del operador, que corren **después** de que ocurren incidentes.
 

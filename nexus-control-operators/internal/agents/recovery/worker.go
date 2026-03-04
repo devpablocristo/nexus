@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	recoveryworker "nexus-control-operators/internal/agents/recovery/worker"
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 )
@@ -67,7 +68,7 @@ func (w *Worker) ConsumerGroup() string {
 }
 
 func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error {
-	incidentID := resolveIncidentID(event)
+	incidentID := recoveryworker.ResolveIncidentID(event)
 	if incidentID == "" {
 		return nil
 	}
@@ -83,12 +84,12 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 		track := mitigationTrack{
 			OrgID:              event.Envelope.OrgID,
 			IncidentID:         incidentID,
-			ActionID:           strings.TrimSpace(asString(event.Envelope.Payload["action_id"])),
-			ActionType:         strings.TrimSpace(asString(event.Envelope.Payload["action_type"])),
+			ActionID:           strings.TrimSpace(recoveryworker.AsString(event.Envelope.Payload["action_id"])),
+			ActionType:         strings.TrimSpace(recoveryworker.AsString(event.Envelope.Payload["action_type"])),
 			SuccessCount:       0,
 			MonitoringDeadline: eventTime.Add(w.monitoringWindow),
 		}
-		ttlSeconds := asInt(event.Envelope.Payload["ttl_seconds"])
+		ttlSeconds := recoveryworker.AsInt(event.Envelope.Payload["ttl_seconds"])
 		if ttlSeconds > 0 {
 			deadline := eventTime.Add(time.Duration(ttlSeconds) * time.Second)
 			track.TTLDeadline = &deadline
@@ -98,7 +99,7 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 		w.mu.Unlock()
 		return w.emitState(ctx, event.Envelope.OrgID, incidentID, "MITIGATING", "MONITORING", "post_apply_monitoring")
 	case "tool_call.finished":
-		status := strings.ToLower(strings.TrimSpace(asString(event.Envelope.Payload["status"])))
+		status := strings.ToLower(strings.TrimSpace(recoveryworker.AsString(event.Envelope.Payload["status"])))
 		w.mu.Lock()
 		track, tracked := w.tracks[incidentID]
 		w.mu.Unlock()
@@ -252,30 +253,3 @@ func (w *Worker) emitActionRollback(ctx context.Context, orgID uuid.UUID, incide
 	return err
 }
 
-func resolveIncidentID(event opsdomain.StoredEvent) string {
-	if event.Envelope.Correlation.IncidentID != nil && *event.Envelope.Correlation.IncidentID != "" {
-		return *event.Envelope.Correlation.IncidentID
-	}
-	if raw := strings.TrimSpace(asString(event.Envelope.Payload["incident_id"])); raw != "" {
-		return raw
-	}
-	return ""
-}
-
-func asString(v any) string {
-	s, _ := v.(string)
-	return s
-}
-
-func asInt(v any) int {
-	switch t := v.(type) {
-	case int:
-		return t
-	case int64:
-		return int(t)
-	case float64:
-		return int(t)
-	default:
-		return 0
-	}
-}

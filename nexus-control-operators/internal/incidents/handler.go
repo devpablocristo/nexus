@@ -11,8 +11,8 @@ import (
 	incidentdto "nexus-control-operators/internal/incidents/handler/dto"
 	incidentdomain "nexus-control-operators/internal/incidents/usecases/domain"
 	"nexus-control-operators/internal/shared/authz"
-	httperr "nexus-control-operators/pkg/http/errors"
-	"nexus-control-operators/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type Handler struct {

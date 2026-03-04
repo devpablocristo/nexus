@@ -12,8 +12,8 @@ import (
 	a2adto "nexus-core/internal/a2a/handler/dto"
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type a2aUsecase interface {

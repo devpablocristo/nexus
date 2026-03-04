@@ -5,19 +5,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	emitterdto "nexus-control-operators/internal/ops/eventstore/emitter/dto"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 )
 
-type EmitInput struct {
-	EventType   string
-	Version     int
-	OccurredAt  time.Time
-	OrgID       uuid.UUID
-	Correlation opsdomain.Correlation
-	Actor       opsdomain.Actor
-	Source      string
-	Payload     map[string]any
-}
+// EmitInput re-exported from emitter/dto for API stability.
+type EmitInput = emitterdto.EmitInput
 
 type Emitter interface {
 	Emit(ctx context.Context, in EmitInput) (opsdomain.StoredEvent, error)

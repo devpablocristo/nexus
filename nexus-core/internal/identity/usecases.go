@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	identitydomain "nexus-core/internal/identity/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type TokenVerifierPort interface {

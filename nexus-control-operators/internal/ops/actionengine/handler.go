@@ -9,9 +9,9 @@ import (
 
 	actiondto "nexus-control-operators/internal/ops/actionengine/handler/dto"
 	"nexus-control-operators/internal/shared/authz"
-	httperr "nexus-control-operators/pkg/http/errors"
-	ginmw "nexus-control-operators/pkg/http/middlewares/gin"
-	"nexus-control-operators/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	ginmw "nexus/pkg/http/middlewares/gin"
+	"nexus/pkg/types"
 )
 
 type Handler struct {

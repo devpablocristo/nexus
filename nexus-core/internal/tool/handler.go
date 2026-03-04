@@ -11,8 +11,8 @@ import (
 	"nexus-core/internal/shared/authz"
 	"nexus-core/internal/tool/handler/dto"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type toolUsecase interface {

@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
-	"nexus-control-operators/pkg/validations/jsonschema"
+	"nexus/pkg/validations/jsonschema"
 )
 
 func TestSchemaValidator_ValidEnvelopeAndPayload(t *testing.T) {

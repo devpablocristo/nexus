@@ -1,0 +1,11 @@
+FROM golang:1.24-alpine
+RUN apk add --no-cache git wget
+RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
+WORKDIR /src
+COPY nexus-core/go.mod nexus-core/go.sum ./nexus-core/
+COPY pkg /pkg
+WORKDIR /src/nexus-core
+RUN go mod download
+WORKDIR /src
+EXPOSE 8080
+CMD ["sh", "-c", "go run ./cmd/migrate -cmd up && air -c .air.toml"]

@@ -78,7 +78,7 @@ func loadOTel(cfg *Config) error {
 	return nil
 }
 
-// loadGateway carga configuración del gateway (idempotency, timeout budget, egress, LLM).
+// loadGateway carga configuración del gateway (idempotency, timeout budget, egress).
 func loadGateway(cfg *Config) error {
 	idt, err := mustIntDefault("NEXUS_IDEMPOTENCY_TTL_HOURS", 24)
 	if err != nil {
@@ -104,11 +104,6 @@ func loadGateway(cfg *Config) error {
 
 	cfg.Service.DisableSSRFProtection = mustBoolDefault("NEXUS_DISABLE_SSRF_PROTECTION", false)
 	cfg.Service.EgressAllowlist = mustStrDefault("NEXUS_EGRESS_ALLOWLIST", "")
-	cfg.Service.LLMProvider = mustStrDefault("NEXUS_LLM_PROVIDER", "mock")
-	cfg.Service.LLMModel = mustStrDefault("NEXUS_LLM_MODEL", "mock-default")
-	cfg.Service.LLMOllamaBaseURL = mustStrDefault("NEXUS_OLLAMA_BASE_URL", "http://localhost:11434")
-	cfg.Service.LLMCloudBaseURL = mustStrDefault("NEXUS_LLM_CLOUD_BASE_URL", "https://api.openai.com/v1")
-	cfg.Service.LLMCloudAPIKey = mustStrDefault("NEXUS_LLM_CLOUD_API_KEY", "")
 	cfg.Service.CORSAllowedOrigins = mustStrDefault("NEXUS_CORS_ALLOWED_ORIGINS", "")
 	cfg.Service.CORSAllowedMethods = mustStrDefault("NEXUS_CORS_ALLOWED_METHODS", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 	cfg.Service.CORSAllowedHeaders = mustStrDefault("NEXUS_CORS_ALLOWED_HEADERS", "Authorization,Content-Type,X-NEXUS-CORE-KEY,X-NEXUS-SCOPES,X-NEXUS-ACTOR,Idempotency-Key,X-Timeout-Ms")

@@ -19,8 +19,8 @@ import (
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 	tenantdomain "nexus-control-operators/internal/ops/tenant/usecases/domain"
-	"nexus-control-operators/pkg/types"
-	"nexus-control-operators/pkg/validations/jsonschema"
+	"nexus/pkg/types"
+	"nexus/pkg/validations/jsonschema"
 )
 
 type EventEmitterPort interface {

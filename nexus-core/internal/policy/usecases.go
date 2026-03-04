@@ -10,7 +10,7 @@ import (
 
 	policydomain "nexus-core/internal/policy/usecases/domain"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type PolicyRepositoryPort interface {

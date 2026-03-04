@@ -10,7 +10,7 @@ import (
 
 	"nexus-core/internal/org/repository/models"
 	orgdomain "nexus-core/internal/org/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type Repository struct {

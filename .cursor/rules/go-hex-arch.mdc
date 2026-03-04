@@ -1,6 +1,6 @@
 ---
 description: Arquitectura hexagonal Go - accept interfaces return structs
-globs: nexus-core/**/*.go
+globs: nexus-core/**/*.go,nexus-control-operators/**/*.go
 alwaysApply: true
 ---
 
@@ -53,3 +53,33 @@ internal/<modulo>/
   usecases/domain/     — entidades de dominio
   repository/models/   — modelos de persistencia
 ```
+
+## Patrón de Adapters
+
+Un **adapter** es cualquier componente que adapta una API externa al dominio (handler HTTP, emitter, consumer, gateway_adapter, etc.).
+
+### Regla obligatoria
+
+1. **Archivo principal en la raíz del dominio**: `adapter.go` (ej. `handler.go`, `emitter.go`) queda en la raíz del módulo.
+2. **Directorio con el nombre del adapter**: Todo lo relacionado con ese adapter va en `adapter/`:
+   - `adapter/dto/` — DTOs de entrada/salida
+   - `adapter/` — cualquier archivo auxiliar del adapter
+3. **Dependencia explícita**: El adapter recibe y usa Usecases (o el port que corresponda). Al inyectar `adapter.NewX(uc *Usecases)` queda explícito que el adapter depende del use case.
+
+### Ejemplo
+
+```
+internal/ops/eventstore/
+  emitter.go           — interface Emitter, NewEmitter(uc *Usecases), archivo principal en raíz
+  emitter/
+    dto/dto.go         — EmitInput y tipos del adapter
+  usecases.go
+  ...
+```
+
+### Aplicar a
+
+- `handler` → `handler.go` + `handler/dto/`
+- `emitter` → `emitter.go` + `emitter/dto/`
+- `consumer` → `consumer.go` + `consumer/` (si necesita dto u otros archivos)
+- `gateway_adapter` → `gateway_adapter.go` + `gateway_adapter/dto/` (si aplica)

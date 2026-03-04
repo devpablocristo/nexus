@@ -11,7 +11,7 @@ import (
 
 	"nexus-core/internal/policy/repository/models"
 	policydomain "nexus-core/internal/policy/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type Repository struct {

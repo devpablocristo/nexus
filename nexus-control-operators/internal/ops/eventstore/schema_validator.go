@@ -8,7 +8,7 @@ import (
 
 	js "github.com/santhosh-tekuri/jsonschema/v5"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
-	"nexus-control-operators/pkg/validations/jsonschema"
+	"nexus/pkg/validations/jsonschema"
 )
 
 var eventTypeSchemaFilesV1 = map[string]string{

@@ -955,28 +955,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ActionEngineResponse"
 
-  /v1/admin/executive-qa/ask:
-    post:
-      tags: [Audit]
-      operationId: executiveQAAsk
-      summary: Ask executive Q&A with evidence and optional action proposal
-      security:
-        - NexusApiKey: []
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ExecutiveQAAskRequest"
-      responses:
-        "200":
-          description: Answer generated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExecutiveQAAskResponse"
-
   /v1/incidents:
     get:
       tags: [Audit]
@@ -2424,34 +2402,6 @@ components:
                 type: object
                 additionalProperties: true
       required: [summary]
-
-    ExecutiveQAAskRequest:
-      type: object
-      properties:
-        question:
-          type: string
-        incident_id:
-          type: string
-          format: uuid
-      required: [question]
-
-    ExecutiveQAAskResponse:
-      type: object
-      properties:
-        answer:
-          type: string
-        evidence_refs:
-          type: array
-          items:
-            type: string
-        proposed_action_id:
-          type: string
-          format: uuid
-          nullable: true
-        proposed_action_type:
-          type: string
-          nullable: true
-      required: [answer]
 
     ApprovalItem:
       type: object

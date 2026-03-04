@@ -2,10 +2,10 @@ package coordinator
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"github.com/google/uuid"
+	"nexus-control-operators/internal/agents/coordinator/worker"
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 )
@@ -32,7 +32,7 @@ func (w *Worker) ConsumerGroup() string {
 }
 
 func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error {
-	incidentID := resolveIncidentID(event)
+	incidentID := worker.ResolveIncidentID(event)
 	if incidentID == "" {
 		return nil
 	}
@@ -95,17 +95,3 @@ func (w *Worker) emitStateChange(ctx context.Context, orgID uuid.UUID, incidentI
 	return err
 }
 
-func resolveIncidentID(event opsdomain.StoredEvent) string {
-	if event.Envelope.Correlation.IncidentID != nil && *event.Envelope.Correlation.IncidentID != "" {
-		return *event.Envelope.Correlation.IncidentID
-	}
-	if s := strings.TrimSpace(asString(event.Envelope.Payload["incident_id"])); s != "" {
-		return s
-	}
-	return ""
-}
-
-func asString(v any) string {
-	s, _ := v.(string)
-	return s
-}

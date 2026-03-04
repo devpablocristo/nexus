@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	"nexus-core/pkg/types"
-	"nexus-core/pkg/validations/jsonschema"
+	"nexus/pkg/types"
+	"nexus/pkg/validations/jsonschema"
 )
 
 type RepositoryPort interface {

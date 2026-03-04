@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"nexus-core/internal/gateway/executor/circuitbreaker"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type Executor struct {

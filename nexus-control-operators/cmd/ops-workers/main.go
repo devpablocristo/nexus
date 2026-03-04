@@ -22,8 +22,8 @@ import (
 	opsaction "nexus-control-operators/internal/ops/actionengine"
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opstenant "nexus-control-operators/internal/ops/tenant"
-	gormdb "nexus-control-operators/pkg/databases/sql/gorm"
-	"nexus-control-operators/pkg/validations/jsonschema"
+	gormdb "nexus/pkg/databases/sql/gorm"
+	"nexus/pkg/validations/jsonschema"
 )
 
 func main() {

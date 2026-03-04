@@ -54,7 +54,7 @@ cleanup-idempotency:
 seed:
 	@echo "Waiting for core to be healthy..."
 	@$(COMPOSE) up -d --wait $(CORE_SERVICE) postgres
-	cd $(CORE_DIR) && NEXUS_COMPOSE_FILE=../docker-compose.yml bash scripts/seed_demo.sh
+	bash scripts/seed_demo.sh
 
 core-test:
 	cd $(CORE_DIR) && go test ./...
@@ -66,7 +66,7 @@ ai-operators-test:
 	cd $(AI_OPERATORS_DIR) && \
 		if [ ! -d .venv ]; then python3 -m venv .venv; fi && \
 		. .venv/bin/activate && \
-		if ! python -c "import importlib.util,sys;mods=['fastapi','httpx','pydantic','pytest'];sys.exit(0 if all(importlib.util.find_spec(m) for m in mods) else 1)"; then \
+		if ! python -c "import importlib.util,sys;mods=['fastapi','httpx','pydantic','pytest','prometheus_client'];sys.exit(0 if all(importlib.util.find_spec(m) for m in mods) else 1)"; then \
 			if ! pip install -q -e '.[dev]'; then \
 				echo "ai-operators-test: dependencies unavailable; skipping (set NEXUS_QA_STRICT=1 to fail)"; \
 				if [ "$${NEXUS_QA_STRICT:-0}" = "1" ]; then exit 1; fi; \
@@ -111,17 +111,17 @@ reset-nexus:
 	$(MAKE) status
 
 e2e:
-	cd $(CORE_DIR) && bash scripts/e2e.sh
+	bash scripts/e2e.sh
 
 e2e-first:
 	@# Primer caso: run echo (requiere: make up, make migrate-up, make seed)
 	bash scripts/e2e/01_run_echo.sh
 
 jwt-e2e:
-	cd $(CORE_DIR) && bash scripts/e2e_jwt.sh
+	bash scripts/e2e_jwt.sh
 
 quickstart-admin:
-	cd $(CORE_DIR) && bash scripts/quickstart_admin.sh
+	bash scripts/quickstart_admin.sh
 
 demo-doorjam:
 	$(MAKE) migrate-sim-engine

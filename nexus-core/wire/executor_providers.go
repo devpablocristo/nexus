@@ -10,7 +10,7 @@ import (
 	"nexus-core/internal/gateway/executor/circuitbreaker"
 	exechttp "nexus-core/internal/gateway/executor/http"
 	"nexus-core/internal/gateway/executor/ratelimit"
-	"nexus-core/pkg/utils"
+	"nexus/pkg/utils"
 )
 
 var ExecutorSet = wire.NewSet(

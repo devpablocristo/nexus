@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	secretdomain "nexus-core/internal/secrets/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type secretsSvcStub struct{ called bool }

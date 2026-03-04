@@ -10,8 +10,8 @@ import (
 
 	eventdto "nexus-control-operators/internal/events/handler/dto"
 	"nexus-control-operators/internal/shared/authz"
-	httperr "nexus-control-operators/pkg/http/errors"
-	"nexus-control-operators/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type Handler struct {

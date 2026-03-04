@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"nexus-core/cmd/config"
-	"nexus-core/pkg/telemetry"
+	"nexus/pkg/telemetry"
 	"nexus-core/wire"
 )
 

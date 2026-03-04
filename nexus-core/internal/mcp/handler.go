@@ -14,9 +14,9 @@ import (
 	mcpdto "nexus-core/internal/mcp/handler/dto"
 	"nexus-core/internal/shared/authz"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	httperr "nexus-core/pkg/http/errors"
-	ginmw "nexus-core/pkg/http/middlewares/gin"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	ginmw "nexus/pkg/http/middlewares/gin"
+	"nexus/pkg/types"
 )
 
 type mcpUsecase interface {

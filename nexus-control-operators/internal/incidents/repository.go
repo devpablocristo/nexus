@@ -10,7 +10,7 @@ import (
 
 	"nexus-control-operators/internal/incidents/repository/models"
 	incidentdomain "nexus-control-operators/internal/incidents/usecases/domain"
-	"nexus-control-operators/pkg/types"
+	"nexus/pkg/types"
 )
 
 type Repository struct {

@@ -11,7 +11,6 @@ import (
 	"nexus-core/internal/a2a"
 	"nexus-core/internal/actions"
 	"nexus-core/internal/admin"
-	"nexus-core/internal/agents/executive_qa"
 	"nexus-core/internal/alerts"
 	"nexus-core/internal/approval"
 	"nexus-core/internal/assistant"
@@ -22,19 +21,14 @@ import (
 	"nexus-core/internal/identity"
 	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
-	"nexus-core/internal/ops/actionengine"
 	"nexus-core/internal/org"
 	"nexus-core/internal/session"
-	opseventstore "nexus-core/internal/ops/eventstore"
-	opsllm "nexus-core/internal/ops/llm"
-	opstenant "nexus-core/internal/ops/tenant"
 	"nexus-core/internal/policy"
 	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
 	"nexus-core/internal/tool"
-	ginmw "nexus-core/pkg/http/middlewares/gin"
-	ginserver "nexus-core/pkg/http/servers/gin"
-	"nexus-core/pkg/validations/jsonschema"
+	ginmw "nexus/pkg/http/middlewares/gin"
+	ginserver "nexus/pkg/http/servers/gin"
 )
 
 func NewRouter(
@@ -87,32 +81,6 @@ func NewRouter(
 	onboardGroup := r.Group("/v1")
 	orgH.Register(onboardGroup)
 
-	opsEventRepo := opseventstore.NewRepository(db)
-	opsEventSvc := opseventstore.NewUsecases(
-		opsEventRepo,
-		opseventstore.NewSchemaValidator(jsonschema.NewCompilerCache(), ""),
-	)
-	opsEmitter := opseventstore.NewEmitter(opsEventSvc)
-	opsTenantSvc := opstenant.NewUsecases(opstenant.NewRepository(db))
-	opsActionSvc := actionengine.NewUsecases(actionengine.NewRepository(db))
-	opsActionEngine := actionengine.NewEngine(
-		opsActionSvc,
-		opsEmitter,
-		opsTenantSvc,
-		actionengine.EngineConfig{},
-		jsonschema.NewCompilerCache(),
-	)
-	opsActionH := actionengine.NewHandler(opsActionEngine)
-
-	llmClient := opsllm.NewClient(opsllm.Config{
-		Provider:      cfg.LLMProvider,
-		Model:         cfg.LLMModel,
-		OllamaBaseURL: cfg.LLMOllamaBaseURL,
-		CloudBaseURL:  cfg.LLMCloudBaseURL,
-		CloudAPIKey:   cfg.LLMCloudAPIKey,
-	}, jsonschema.NewCompilerCache())
-	execQAH := executive_qa.NewHandler(executive_qa.NewUsecases(llmClient, opsActionEngine))
-
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
 	toolH.Register(v1)
@@ -121,8 +89,6 @@ func NewRouter(
 	adminH.Register(v1)
 	eventsH.Register(v1)
 	actionsH.Register(v1)
-	opsActionH.Register(v1)
-	execQAH.Register(v1)
 	incidentsH.Register(v1)
 	proposalH.Register(v1)
 	assistantH.Register(v1)

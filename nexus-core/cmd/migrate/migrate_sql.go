@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"nexus-core/pkg/utils"
+	"nexus/pkg/utils"
 )
 
 type Runner struct {

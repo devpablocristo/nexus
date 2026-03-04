@@ -11,9 +11,9 @@ import (
 	"nexus-core/cmd/config"
 	identitydomain "nexus-core/internal/identity/usecases/domain"
 	orgdomain "nexus-core/internal/org/usecases/domain"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
-	"nexus-core/pkg/utils"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
+	"nexus/pkg/utils"
 )
 
 const (

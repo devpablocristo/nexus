@@ -6,7 +6,7 @@ metadata:
     {{- include "nexus.labels" . | nindent 4 }}
 data:
   # Derived service URLs for inter-component communication
-  NEXUS_OPERATOR_URL: "http://{{ include "nexus.operator.serviceName" . }}:{{ .Values.operator.service.port }}"
+  NEXUS_AI_OPERATORS_URL: "http://{{ include "nexus.operator.serviceName" . }}:{{ .Values.operator.service.port }}"
   NEXUS_CORE_BASE_URL: "http://{{ include "nexus.core.serviceName" . }}:{{ .Values.core.service.port }}"
   OPERATOR_PORT: {{ .Values.operator.service.port | quote }}
   {{- range $key, $value := .Values.config }}

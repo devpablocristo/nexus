@@ -293,7 +293,7 @@ secrets:
   # JWKS URL for JWT verification
   NEXUS_JWKS_URL: ""
   # Internal communication keys
-  NEXUS_OPERATOR_INTERNAL_KEY: "operator-internal-key"
+  NEXUS_AI_OPERATORS_INTERNAL_KEY: "operator-internal-key"
   OPERATOR_INTERNAL_KEY: "operator-internal-key"
   # API keys
   NEXUS_CORE_API_KEY: "nexus-ai-operators-local-key"

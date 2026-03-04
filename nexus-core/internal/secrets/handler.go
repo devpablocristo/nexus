@@ -9,8 +9,8 @@ import (
 	"nexus-core/internal/secrets/handler/dto"
 	secretdomain "nexus-core/internal/secrets/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type secretsUsecase interface {

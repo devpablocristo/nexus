@@ -30,15 +30,15 @@ services:
   nexus-core:
     restart: unless-stopped
     build:
-      context: ./nexus-core
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: deploy/docker/nexus-core.Dockerfile
     env_file:
       - .env
     environment:
       NEXUS_DATABASE_URL: "${NEXUS_DATABASE_URL}"
       NEXUS_REDIS_URL: "${NEXUS_REDIS_URL}"
-      NEXUS_OPERATOR_URL: "${NEXUS_OPERATOR_URL}"
-      NEXUS_OPERATOR_INTERNAL_KEY: "${NEXUS_OPERATOR_INTERNAL_KEY}"
+      NEXUS_AI_OPERATORS_URL: "${NEXUS_AI_OPERATORS_URL}"
+      NEXUS_AI_OPERATORS_INTERNAL_KEY: "${NEXUS_AI_OPERATORS_INTERNAL_KEY}"
       NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081}"
     depends_on:
       postgres:
@@ -59,8 +59,8 @@ services:
   mock-tools:
     restart: unless-stopped
     build:
-      context: ./nexus-core
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: deploy/docker/nexus-core.Dockerfile
     depends_on:
       nexus-core:
         condition: service_started
@@ -92,7 +92,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: nexus-control-operators/Dockerfile
+      dockerfile: deploy/docker/nexus-control-operators.Dockerfile
     env_file:
       - .env
     environment:
@@ -106,7 +106,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: nexus-ai-operators/Dockerfile
+      dockerfile: deploy/docker/nexus-ai-operators.Dockerfile
     env_file:
       - .env
     environment:
@@ -136,7 +136,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: nexus-tower/Dockerfile
+      dockerfile: deploy/docker/nexus-tower.Dockerfile
       args:
         VITE_NEXUS_CORE_URL: "${VITE_NEXUS_CORE_URL}"
         VITE_NEXUS_AI_OPERATORS_URL: "${VITE_NEXUS_AI_OPERATORS_URL}"

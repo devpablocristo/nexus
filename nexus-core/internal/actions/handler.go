@@ -11,8 +11,8 @@ import (
 	actiondto "nexus-core/internal/actions/handler/dto"
 	actiondomain "nexus-core/internal/actions/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type Handler struct {

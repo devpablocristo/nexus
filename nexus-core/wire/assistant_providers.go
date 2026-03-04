@@ -10,11 +10,11 @@ import (
 )
 
 func ProvideAssistantConfig() assistant.Config {
-	baseURL := os.Getenv("NEXUS_OPERATOR_URL")
+	baseURL := os.Getenv("NEXUS_AI_OPERATORS_URL")
 	if baseURL == "" {
 		baseURL = "http://nexus-ai-operators:8000"
 	}
-	apiKey := os.Getenv("NEXUS_OPERATOR_INTERNAL_KEY")
+	apiKey := os.Getenv("NEXUS_AI_OPERATORS_INTERNAL_KEY")
 	return assistant.Config{
 		OperatorBaseURL: baseURL,
 		OperatorAPIKey:  apiKey,

@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	"nexus-core/pkg/types"
-	"nexus-core/pkg/utils"
+	"nexus/pkg/types"
+	"nexus/pkg/utils"
 )
 
 // checkActionOverrides aplica overrides de runtime; devuelve respuesta si hay deny.

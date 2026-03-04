@@ -14,8 +14,8 @@ import (
 	auditdto "nexus-core/internal/audit/handler/dto"
 	auditdomain "nexus-core/internal/audit/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type auditUsecase interface {

@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type RepositoryPort interface {

@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	auditdomain "nexus-core/internal/audit/usecases/domain"
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
-	"nexus-core/pkg/types"
-	"nexus-core/pkg/utils"
+	"nexus/pkg/types"
+	"nexus/pkg/utils"
 )
 
 // handleIdempotencyReplayCompleted devuelve la respuesta cacheada cuando existe un registro completed.

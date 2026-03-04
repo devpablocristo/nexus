@@ -14,9 +14,9 @@ import (
 	"nexus-core/cmd/config"
 	"nexus-core/internal/actions"
 	"nexus-core/internal/dlp"
-	gormdb "nexus-core/pkg/databases/sql/gorm"
-	"nexus-core/pkg/utils"
-	"nexus-core/pkg/validations/jsonschema"
+	gormdb "nexus/pkg/databases/sql/gorm"
+	"nexus/pkg/utils"
+	"nexus/pkg/validations/jsonschema"
 )
 
 type ActionTTLEngine interface {

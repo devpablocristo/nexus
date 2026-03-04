@@ -25,8 +25,8 @@ import (
 	"nexus-core/internal/org"
 	"nexus-core/internal/policy"
 	"nexus-core/internal/tool"
-	"nexus-core/pkg/utils"
-	"nexus-core/pkg/validations/jsonschema"
+	"nexus/pkg/utils"
+	"nexus/pkg/validations/jsonschema"
 	"nexus-core/wire"
 )
 

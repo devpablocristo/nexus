@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 func TestExecutor_GETRejectsNestedInput(t *testing.T) {

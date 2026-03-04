@@ -6,26 +6,9 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"nexus-control-operators/internal/agents/sentry/repository/models"
 )
-
-type baselineRow struct {
-	OrgID       uuid.UUID `gorm:"column:org_id;type:uuid;primaryKey"`
-	ToolName    string    `gorm:"column:tool_name;primaryKey"`
-	Metric      string    `gorm:"column:metric;primaryKey"`
-	EWMAValue   float64   `gorm:"column:ewma_value"`
-	SampleCount int64     `gorm:"column:sample_count"`
-}
-
-func (baselineRow) TableName() string { return "ops_sentry_baselines" }
-
-type fingerprintRow struct {
-	OrgID       uuid.UUID  `gorm:"column:org_id;type:uuid;primaryKey"`
-	Fingerprint string     `gorm:"column:fingerprint;primaryKey"`
-	IncidentID  *uuid.UUID `gorm:"column:incident_id;type:uuid"`
-	State       string     `gorm:"column:state"`
-}
-
-func (fingerprintRow) TableName() string { return "ops_incident_fingerprints" }
 
 type SentryState struct {
 	db *gorm.DB
@@ -36,7 +19,7 @@ func NewSentryState(db *gorm.DB) *SentryState {
 }
 
 func (s *SentryState) GetBaseline(ctx context.Context, orgID uuid.UUID, toolName, metric string) (Baseline, error) {
-	var row baselineRow
+	var row models.BaselineRow
 	if err := s.db.WithContext(ctx).
 		Where("org_id = ? AND tool_name = ? AND metric = ?", orgID, toolName, metric).
 		Take(&row).Error; err != nil {
@@ -55,7 +38,7 @@ func (s *SentryState) GetBaseline(ctx context.Context, orgID uuid.UUID, toolName
 }
 
 func (s *SentryState) UpsertBaseline(ctx context.Context, b Baseline) error {
-	row := baselineRow{
+	row := models.BaselineRow{
 		OrgID:       b.OrgID,
 		ToolName:    b.ToolName,
 		Metric:      b.Metric,
@@ -73,7 +56,7 @@ func (s *SentryState) UpsertBaseline(ctx context.Context, b Baseline) error {
 }
 
 func (s *SentryState) GetFingerprint(ctx context.Context, orgID uuid.UUID, fingerprint string) (FingerprintState, error) {
-	var row fingerprintRow
+	var row models.FingerprintRow
 	if err := s.db.WithContext(ctx).
 		Where("org_id = ? AND fingerprint = ?", orgID, fingerprint).
 		Take(&row).Error; err != nil {
@@ -91,7 +74,7 @@ func (s *SentryState) GetFingerprint(ctx context.Context, orgID uuid.UUID, finge
 }
 
 func (s *SentryState) UpsertFingerprint(ctx context.Context, f FingerprintState) error {
-	row := fingerprintRow{
+	row := models.FingerprintRow{
 		OrgID:       f.OrgID,
 		Fingerprint: f.Fingerprint,
 		IncidentID:  f.IncidentID,

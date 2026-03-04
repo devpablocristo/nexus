@@ -28,11 +28,6 @@ type ServiceConfig struct {
 	TimeoutBudgetMaxMS     int
 	DisableSSRFProtection  bool
 	EgressAllowlist        string
-	LLMProvider            string
-	LLMModel               string
-	LLMOllamaBaseURL       string
-	LLMCloudBaseURL        string
-	LLMCloudAPIKey         string
 	CORSAllowedOrigins     string
 	CORSAllowedMethods     string
 	CORSAllowedHeaders     string

@@ -6,9 +6,10 @@ import (
 	"github.com/gin-gonic/gin"
 
 	assistantdto "nexus-core/internal/assistant/handler/dto"
+	hlp "nexus-core/internal/assistant/handler"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type Handler struct {
@@ -24,7 +25,7 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 func (h *Handler) query(c *gin.Context) {
-	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeAdminConsoleRead) {
+	if !authz.CanAccess(hlp.ScopesFromCtx(c), hlp.RoleFromCtx(c), authz.ScopeAdminConsoleRead) {
 		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeAdminConsoleRead+" scope required")
 		return
 	}
@@ -33,7 +34,7 @@ func (h *Handler) query(c *gin.Context) {
 		httperr.BadRequest(c, "invalid json")
 		return
 	}
-	out, err := h.uc.Query(c.Request.Context(), mustOrgID(c), actorFromCtx(c), req.Query)
+	out, err := h.uc.Query(c.Request.Context(), hlp.MustOrgID(c), hlp.ActorFromCtx(c), req.Query)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return

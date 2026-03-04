@@ -9,9 +9,9 @@ import (
 	auditdomain "nexus-core/internal/audit/usecases/domain"
 	gwdomain "nexus-core/internal/gateway/usecases/domain"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	"nexus-core/pkg/types"
-	"nexus-core/pkg/utils"
-	"nexus-core/pkg/validations/jsonschema"
+	"nexus/pkg/types"
+	"nexus/pkg/utils"
+	"nexus/pkg/validations/jsonschema"
 )
 
 // validateOutputSchema valida el resultado contra output_schema; devuelve respuesta si falla.

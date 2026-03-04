@@ -9,7 +9,7 @@ import (
 
 	admindomain "nexus-core/internal/admin/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 
 	secretdomain "nexus-core/internal/secrets/usecases/domain"
 	tooldomain "nexus-core/internal/tool/usecases/domain"
-	"nexus-core/pkg/types"
+	"nexus/pkg/types"
 )
 
 type RepositoryPort interface {

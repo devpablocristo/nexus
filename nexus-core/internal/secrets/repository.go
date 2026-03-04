@@ -9,8 +9,8 @@ import (
 
 	"nexus-core/internal/secrets/repository/models"
 	secretdomain "nexus-core/internal/secrets/usecases/domain"
-	"nexus-core/pkg/types"
-	"nexus-core/pkg/utils"
+	"nexus/pkg/types"
+	"nexus/pkg/utils"
 )
 
 type Repository struct {

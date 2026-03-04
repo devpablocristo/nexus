@@ -64,7 +64,7 @@ make seed
 | Nexus Core API | http://localhost:8080 |
 | API Docs | http://localhost:8080/docs |
 | Tower UI | http://localhost:5174 |
-| External Operators API | http://localhost:8000 |
+| AI Operators API | http://localhost:8000 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
 

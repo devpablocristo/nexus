@@ -2,6 +2,10 @@ module nexus-control-operators
 
 go 1.24.0
 
+require nexus/pkg v0.0.0
+
+replace nexus/pkg => ../pkg
+
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0

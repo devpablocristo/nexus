@@ -11,8 +11,8 @@ import (
 	proposaldto "nexus-core/internal/policyproposal/handler/dto"
 	proposaldomain "nexus-core/internal/policyproposal/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type Handler struct {

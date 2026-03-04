@@ -9,8 +9,8 @@ import (
 	approvaldto "nexus-core/internal/approval/handler/dto"
 	domain "nexus-core/internal/approval/usecases/domain"
 	"nexus-core/internal/shared/authz"
-	httperr "nexus-core/pkg/http/errors"
-	"nexus-core/pkg/types"
+	httperr "nexus/pkg/http/errors"
+	"nexus/pkg/types"
 )
 
 type Handler struct {

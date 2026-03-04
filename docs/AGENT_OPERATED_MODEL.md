@@ -32,11 +32,11 @@
 ## Ask-Agent Flow
 
 - UI: `POST /v1/assistant/query` on Nexus Core.
-- Core proxy: forwards to AI operators `/v1/assistant/query` using internal key.
+- Core proxy: forwards to nexus-ai-operators `/v1/assistant/query` using internal key.
 - Response is structured (`summary`, `tables`, `actions`) and rendered in Tower.
 
 ## Determinism Boundary
 
 - In scope deterministic: `/v1/run`, `/mcp`, `/a2a` and policy/limits/egress/approval enforcement.
-- Out of scope deterministic: AI-operators narrative/summarization endpoint.
+- Out of scope deterministic: nexus-ai-operators narrative/summarization endpoint.
 - Enforcement decisions are never delegated to LLM.

@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
-	"nexus-core/pkg/utils"
+	orgdto "nexus-core/internal/org/handler/dto"
+	"nexus/pkg/utils"
 )
 
 type Handler struct {
@@ -19,23 +19,12 @@ func NewHandler(repo *Repository) *Handler {
 	return &Handler{repo: repo}
 }
 
-type createOrgRequest struct {
-	Name   string   `json:"name" binding:"required"`
-	Scopes []string `json:"scopes"`
-}
-
-type createOrgResponse struct {
-	OrgID  uuid.UUID `json:"org_id"`
-	APIKey string    `json:"api_key"`
-	Name   string    `json:"name"`
-}
-
 func (h *Handler) Register(r *gin.RouterGroup) {
 	r.POST("/orgs", h.CreateOrg)
 }
 
 func (h *Handler) CreateOrg(c *gin.Context) {
-	var req createOrgRequest
+	var req orgdto.CreateOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": err.Error()}})
 		return
@@ -65,7 +54,7 @@ func (h *Handler) CreateOrg(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, createOrgResponse{
+	c.JSON(http.StatusCreated, orgdto.CreateOrgResponse{
 		OrgID:  orgID,
 		APIKey: rawKey,
 		Name:   req.Name,

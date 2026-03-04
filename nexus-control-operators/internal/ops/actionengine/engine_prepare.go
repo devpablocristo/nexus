@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	actiondomain "nexus-control-operators/internal/ops/actionengine/usecases/domain"
-	"nexus-control-operators/pkg/types"
+	"nexus/pkg/types"
 )
 
 // validatePrepareInput valida action_type, scope, params y ttl_seconds.

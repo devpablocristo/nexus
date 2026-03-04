@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"nexus-control-operators/pkg/config/godotenv"
+	"nexus/pkg/config/godotenv"
 )
 
 type Config struct {
