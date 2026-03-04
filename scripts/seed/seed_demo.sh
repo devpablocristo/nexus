@@ -67,8 +67,8 @@ compose exec -T postgres psql "$DB_URL_EXEC" <<SQL
 \set ON_ERROR_STOP on
 
 WITH ins AS (
-  INSERT INTO orgs(name)
-  SELECT 'demo'
+  INSERT INTO orgs(id, name)
+  SELECT (md5(random()::text || clock_timestamp()::text)::uuid), 'demo'
   WHERE NOT EXISTS (SELECT 1 FROM orgs WHERE name='demo')
   RETURNING id
 )
@@ -84,15 +84,15 @@ WHERE org_id=:'org_id'::uuid
   AND name NOT IN ('echo', 'transfer');
 
 DELETE FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='demo-key';
-INSERT INTO org_api_keys(org_id, api_key_hash, name)
-VALUES (:'org_id'::uuid, '${API_KEY_HASH}', 'demo-key');
+INSERT INTO org_api_keys(id, org_id, api_key_hash, name)
+VALUES ((md5(random()::text || clock_timestamp()::text)::uuid), :'org_id'::uuid, '${API_KEY_HASH}', 'demo-key');
 
 DELETE FROM org_api_key_scopes
 WHERE api_key_id IN (
   SELECT id FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='demo-key'
 );
-INSERT INTO org_api_key_scopes(api_key_id, scope)
-SELECT id, scope
+INSERT INTO org_api_key_scopes(id, api_key_id, scope)
+SELECT (md5(random()::text || clock_timestamp()::text)::uuid), id, scope
 FROM org_api_keys
 JOIN (VALUES
   ('tools:read'),
@@ -114,15 +114,15 @@ JOIN (VALUES
 WHERE org_id=:'org_id'::uuid AND name='demo-key';
 
 DELETE FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='operator-key';
-INSERT INTO org_api_keys(org_id, api_key_hash, name)
-VALUES (:'org_id'::uuid, '${OPERATOR_API_KEY_HASH}', 'operator-key');
+INSERT INTO org_api_keys(id, org_id, api_key_hash, name)
+VALUES ((md5(random()::text || clock_timestamp()::text)::uuid), :'org_id'::uuid, '${OPERATOR_API_KEY_HASH}', 'operator-key');
 
 DELETE FROM org_api_key_scopes
 WHERE api_key_id IN (
   SELECT id FROM org_api_keys WHERE org_id=:'org_id'::uuid AND name='operator-key'
 );
-INSERT INTO org_api_key_scopes(api_key_id, scope)
-SELECT id, scope
+INSERT INTO org_api_key_scopes(id, api_key_id, scope)
+SELECT (md5(random()::text || clock_timestamp()::text)::uuid), id, scope
 FROM org_api_keys
 JOIN (VALUES
   ('audit:read'),
@@ -200,8 +200,8 @@ compose exec -T postgres psql "$DB_URL_EXEC" <<SQL
 \set ON_ERROR_STOP on
 
 WITH ins AS (
-  INSERT INTO orgs(name)
-  SELECT 'demo'
+  INSERT INTO orgs(id, name)
+  SELECT (md5(random()::text || clock_timestamp()::text)::uuid), 'demo'
   WHERE NOT EXISTS (SELECT 1 FROM orgs WHERE name='demo')
   RETURNING id
 )
@@ -263,8 +263,12 @@ if [[ -z "$DEMO_ORG_ID" ]]; then
   exit 1
 fi
 
-echo "Seeding org + API keys in nexus-saas..."
-compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" <<SQL
+SAAS_HAS_ORGS="$(
+compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" -At -c "SELECT to_regclass('public.orgs') IS NOT NULL;"
+)"
+if [[ "$SAAS_HAS_ORGS" == "t" ]]; then
+  echo "Seeding org + API keys in nexus-saas..."
+  compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" <<SQL
 \set ON_ERROR_STOP on
 
 INSERT INTO orgs(id, name)
@@ -319,6 +323,9 @@ JOIN (VALUES
 ) AS scopes(scope) ON true
 WHERE org_id='${DEMO_ORG_ID}'::uuid AND name='operator-key';
 SQL
+else
+  echo "Skipping saas org/API key seed (table public.orgs not found)."
+fi
 
 seeded_count="$(
 compose exec -T postgres psql "$DB_URL_EXEC" -At -c "SELECT count(*) FROM org_api_keys WHERE api_key_hash IN ('${API_KEY_HASH}', '${OPERATOR_API_KEY_HASH}');"
@@ -328,12 +335,14 @@ if [[ "$seeded_count" != "2" ]]; then
   exit 1
 fi
 
-saas_seeded_count="$(
-compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" -At -c "SELECT count(*) FROM org_api_keys WHERE api_key_hash IN ('${API_KEY_HASH}', '${OPERATOR_API_KEY_HASH}');"
-)"
-if [[ "$saas_seeded_count" != "2" ]]; then
-  echo "Seed verification failed: expected 2 local API keys in saas DB, got ${saas_seeded_count}" >&2
-  exit 1
+if [[ "$SAAS_HAS_ORGS" == "t" ]]; then
+  saas_seeded_count="$(
+  compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" -At -c "SELECT count(*) FROM org_api_keys WHERE api_key_hash IN ('${API_KEY_HASH}', '${OPERATOR_API_KEY_HASH}');"
+  )"
+  if [[ "$saas_seeded_count" != "2" ]]; then
+    echo "Seed verification failed: expected 2 local API keys in saas DB, got ${saas_seeded_count}" >&2
+    exit 1
+  fi
 fi
 
 echo "Seeding demo alert rule..."
