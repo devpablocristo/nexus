@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: deploy/docker/nexus-core.Dockerfile
+      dockerfile: nexus-core/Dockerfile
     env_file:
       - .env
     environment:
@@ -60,7 +60,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: deploy/docker/nexus-core.Dockerfile
+      dockerfile: nexus-core/Dockerfile
     depends_on:
       nexus-core:
         condition: service_started
@@ -92,7 +92,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: deploy/docker/nexus-control-operators.Dockerfile
+      dockerfile: nexus-control-operators/Dockerfile
     env_file:
       - .env
     environment:
@@ -106,7 +106,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: deploy/docker/nexus-ai-operators.Dockerfile
+      dockerfile: nexus-ai-operators/Dockerfile
     env_file:
       - .env
     environment:
@@ -136,7 +136,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: deploy/docker/nexus-tower.Dockerfile
+      dockerfile: nexus-tower/Dockerfile
       args:
         VITE_NEXUS_CORE_URL: "${VITE_NEXUS_CORE_URL}"
         VITE_NEXUS_AI_OPERATORS_URL: "${VITE_NEXUS_AI_OPERATORS_URL}"

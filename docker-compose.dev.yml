@@ -2,11 +2,10 @@ services:
   nexus-core:
     build:
       context: .
-      dockerfile: deploy/docker/nexus-core.dev.Dockerfile
+      dockerfile: nexus-core/Dockerfile.dev
     volumes:
       - ./nexus-core:/src
       - ./pkg:/pkg
-      - ./deploy/air/nexus-core.toml:/src/.air.toml:ro
     environment:
       NEXUS_MIGRATIONS_DIR: /src/migrations
     command: ["sh", "-c", "go run ./cmd/migrate -cmd up && air -c .air.toml"]
@@ -18,17 +17,16 @@ services:
   mock-tools:
     build:
       context: .
-      dockerfile: deploy/docker/nexus-core.dev.Dockerfile
+      dockerfile: nexus-core/Dockerfile.dev
     volumes:
       - ./nexus-core:/src
       - ./pkg:/pkg
-      - ./deploy/air/nexus-core-mock-tools.toml:/src/.air-mock-tools.toml:ro
     command: ["air", "-c", ".air-mock-tools.toml"]
 
   nexus-control-operators:
     build:
       context: .
-      dockerfile: deploy/docker/nexus-control-operators.Dockerfile
+      dockerfile: nexus-control-operators/Dockerfile
 
   nexus-ai-operators:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

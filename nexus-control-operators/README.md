@@ -12,4 +12,4 @@ It operates asynchronously over operational events and is not part of the synchr
 
 ## Image
 
-Built with `deploy/docker/nexus-control-operators.Dockerfile` (from repo root: `docker compose build nexus-control-operators`).
+Built with `nexus-control-operators/Dockerfile` (from repo root: `docker compose build nexus-control-operators`).

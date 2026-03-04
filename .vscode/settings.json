@@ -1,0 +1,6 @@
+{
+  "evenBetterToml.schema.associations": {
+    "**/.air.toml": "./.vscode/schemas/air-permissive.schema.json",
+    "**/.air-*.toml": "./.vscode/schemas/air-permissive.schema.json"
+  }
+}
