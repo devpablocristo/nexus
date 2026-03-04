@@ -12,7 +12,7 @@ COMPOSE := docker compose
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test saas-test control-operators-test ai-operators-test tower-test tower-qa qa e2e jwt-e2e quickstart-admin \
 	core-dev saas-dev control-dev ai-operators-dev tower-dev reset-nexus logs-tail up-ready status \
-	qa-sim-engine migrate-sim-engine demo-doorjam replay \
+	qa-sim-engine migrate-sim-engine bootstrap demo \
 	sdk-test-python sdk-test
 
 up:
@@ -56,6 +56,12 @@ seed:
 	@echo "Waiting for core to be healthy..."
 	@$(COMPOSE) up -d --wait $(CORE_SERVICE) postgres
 	bash scripts/seed/seed_demo.sh
+
+bootstrap:
+	bash scripts/bootstrap/bootstrap.sh
+
+demo:
+	bash scripts/demo/demo.sh
 
 core-test:
 	cd $(CORE_DIR) && go test ./...
@@ -124,15 +130,6 @@ jwt-e2e:
 
 quickstart-admin:
 	bash scripts/admin/quickstart_admin.sh
-
-demo-doorjam:
-	$(MAKE) migrate-sim-engine
-	bash scripts/seed_sim_engine_demo.sh
-	python scripts/demo_doorjam.py
-
-replay:
-	@if [ -z "$(RUN_ID)" ]; then echo "RUN_ID is required. Usage: make replay RUN_ID=<run-id>"; exit 1; fi
-	python scripts/replay_sim_engine.py --run-id "$(RUN_ID)"
 
 core-dev:
 	cd $(CORE_DIR) && go run ./cmd/api
