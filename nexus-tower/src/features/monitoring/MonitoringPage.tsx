@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useActiveTool } from '../../lib/tool-context';
 
 const grafanaBase =
   import.meta.env.VITE_NEXUS_GRAFANA_URL || 'http://localhost:3000';
@@ -27,12 +28,14 @@ const charts: PanelDef[] = [
   { id: 14, title: 'Error Runs by Tool', h: 260 },
 ];
 
-function panelUrl(panelId: number, theme: string, from: string, to: string): string {
-  return `${grafanaBase}/d-solo/${DASHBOARD_UID}?orgId=1&panelId=${panelId}&theme=${theme}&from=${from}&to=${to}`;
+function panelUrl(panelId: number, theme: string, from: string, to: string, toolName: string | null): string {
+  const varParam = toolName ? `&var-tool_name=${encodeURIComponent(toolName)}` : '';
+  return `${grafanaBase}/d-solo/${DASHBOARD_UID}?orgId=1&panelId=${panelId}&theme=${theme}&from=${from}&to=${to}${varParam}`;
 }
 
 export function MonitoringPage() {
   const [range, setRange] = useState('now-1h');
+  const { activeTool } = useActiveTool();
   const theme = 'dark';
   const from = range;
   const to = 'now';
@@ -63,7 +66,7 @@ export function MonitoringPage() {
       <div className="monitoring-kpis">
         {kpis.map((p) => (
           <div key={p.id} className="monitoring-panel" style={{ height: p.h }}>
-            <iframe src={panelUrl(p.id, theme, from, to)} title={p.title} frameBorder="0" />
+            <iframe src={panelUrl(p.id, theme, from, to, activeTool)} title={p.title} frameBorder="0" />
           </div>
         ))}
       </div>
@@ -71,7 +74,7 @@ export function MonitoringPage() {
       <div className="monitoring-charts">
         {charts.map((p) => (
           <div key={p.id} className="monitoring-panel" style={{ height: p.h }}>
-            <iframe src={panelUrl(p.id, theme, from, to)} title={p.title} frameBorder="0" />
+            <iframe src={panelUrl(p.id, theme, from, to, activeTool)} title={p.title} frameBorder="0" />
           </div>
         ))}
       </div>

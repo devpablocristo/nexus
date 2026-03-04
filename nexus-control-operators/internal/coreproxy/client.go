@@ -1,4 +1,3 @@
-// Package coreproxy provides contract-driven adapters to Nexus Core.
 package coreproxy
 
 import (
@@ -8,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 
 	"nexus-control-operators/internal/shared/coreerr"
+	"nexus-control-operators/internal/shared/metrics"
 )
 
 type Client struct {
@@ -56,9 +57,13 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, reqBody any, o
 
 	resp, err := c.http.Do(req)
 	if err != nil {
+		metrics.CoreRequests.WithLabelValues(method, "error").Inc()
 		return err
 	}
 	defer resp.Body.Close()
+
+	metrics.CoreRequests.WithLabelValues(method, strconv.Itoa(resp.StatusCode)).Inc()
+
 	payload, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
@@ -75,6 +80,22 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, reqBody any, o
 		if err := json.Unmarshal(payload, out); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/readyz", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("nexus-core readyz returned %d", resp.StatusCode)
 	}
 	return nil
 }

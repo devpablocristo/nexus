@@ -10,6 +10,7 @@ import (
 
 	opseventstore "nexus-control-operators/internal/ops/eventstore"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
+	"nexus-control-operators/internal/shared/eventutil"
 )
 
 func TestCoordinatorWorker_TransitionsIncidentState(t *testing.T) {
@@ -42,6 +43,57 @@ func TestCoordinatorWorker_TransitionsIncidentState(t *testing.T) {
 	}
 	if got := em.lastToState(); got != "MONITORING" {
 		t.Fatalf("unexpected final state: got=%s want=MONITORING", got)
+	}
+}
+
+func TestCoordinatorWorker_CleansUpOnExternalResolved(t *testing.T) {
+	t.Parallel()
+
+	orgID := uuid.MustParse("996e9e43-7bab-4e68-a831-0a766befbf54")
+	incidentID := "aaa-bbb-ccc"
+	em := &emitRecorder{}
+	w := NewWorker(em, zerolog.Nop())
+
+	_ = w.Handle(context.Background(), opsdomain.StoredEvent{
+		Envelope: opsdomain.Envelope{
+			OrgID:     orgID,
+			EventType: "incident.opened",
+			Correlation: opsdomain.Correlation{
+				IncidentID: &incidentID,
+			},
+			Payload: map[string]any{"incident_id": incidentID},
+		},
+	})
+
+	w.mu.Lock()
+	if _, ok := w.states[incidentID]; !ok {
+		w.mu.Unlock()
+		t.Fatalf("expected incident in states map after opening")
+	}
+	w.mu.Unlock()
+
+	_ = w.Handle(context.Background(), opsdomain.StoredEvent{
+		Envelope: opsdomain.Envelope{
+			OrgID:     orgID,
+			EventType: "incident.state_changed",
+			Source:    "agents.recovery",
+			Correlation: opsdomain.Correlation{
+				IncidentID: &incidentID,
+			},
+			Payload: map[string]any{
+				"incident_id": incidentID,
+				"to_state":    eventutil.StateResolved,
+				"from_state":  "MONITORING",
+				"reason":      "stable_after_mitigation_window",
+			},
+		},
+	})
+
+	w.mu.Lock()
+	_, stillPresent := w.states[incidentID]
+	w.mu.Unlock()
+	if stillPresent {
+		t.Fatalf("expected incident removed from states after external RESOLVED")
 	}
 }
 

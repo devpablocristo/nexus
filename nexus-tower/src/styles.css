@@ -83,6 +83,46 @@ body {
   border-color: #5f79a6;
 }
 
+/* ── Active Tool Banner ──────────────────────────────────────────────────── */
+
+.active-tool-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  margin-bottom: 16px;
+  background: rgba(127, 163, 214, 0.08);
+  border: 1px solid rgba(127, 163, 214, 0.25);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.active-tool-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 600;
+}
+.active-tool-name {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.active-tool-clear {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.active-tool-clear:hover { color: var(--ink); background: rgba(255,255,255,0.06); }
+
 /* ── Shared ───────────────────────────────────────────────────────────────── */
 
 .table {
@@ -177,6 +217,10 @@ textarea {
 .btn-action.restore:hover { background: rgba(90,158,122,0.1); }
 .btn-action.danger { color: #c45c4a; border-color: #c45c4a40; }
 .btn-action.danger:hover { background: rgba(196,92,74,0.1); }
+.btn-action.monitor { color: var(--accent); border-color: rgba(127,163,214,0.3); }
+.btn-action.monitor:hover { background: rgba(127,163,214,0.1); }
+.btn-action.monitored { color: #7bc99e; border-color: rgba(90,158,122,0.4); background: rgba(90,158,122,0.08); }
+.btn-action.monitored:hover { background: rgba(90,158,122,0.15); }
 
 .btn-secondary {
   padding: 0.5rem 1rem;

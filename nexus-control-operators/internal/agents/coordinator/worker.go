@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -41,6 +42,11 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	if incidentID == "" {
 		return nil
 	}
+
+	if event.Envelope.EventType == "incident.state_changed" {
+		return w.handleExternalStateChange(event, incidentID)
+	}
+
 	var target string
 	switch event.Envelope.EventType {
 	case "incident.opened":
@@ -78,6 +84,29 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	}
 
 	return err
+}
+
+func (w *Worker) handleExternalStateChange(event opsdomain.StoredEvent, incidentID string) error {
+	toState := strings.ToUpper(strings.TrimSpace(
+		eventutil.AsString(event.Envelope.Payload["to_state"]),
+	))
+	source := eventutil.AsString(event.Envelope.Payload["source"])
+	if source == "" {
+		source = event.Envelope.Source
+	}
+
+	if source == "agents.coordinator" {
+		return nil
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if toState == eventutil.StateResolved || toState == eventutil.StateEscalated {
+		delete(w.states, incidentID)
+	} else if toState != "" {
+		w.states[incidentID] = toState
+	}
+	return nil
 }
 
 func (w *Worker) emitStateChange(ctx context.Context, orgID uuid.UUID, incidentID, fromState, toState, reason string) error {

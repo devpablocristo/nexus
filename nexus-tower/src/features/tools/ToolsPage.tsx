@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
@@ -15,6 +15,7 @@ import {
   updateTool,
 } from '../../lib/api';
 import type { EgressRuleItem, PolicyItem, ToolItem } from '../../lib/types';
+import { useActiveTool } from '../../lib/tool-context';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -544,8 +545,14 @@ type Tab = 'details' | 'edit' | 'egress' | 'policies';
 
 function ToolDetail({ tool, onClose, onDeleted }: { tool: ToolItem; onClose: () => void; onDeleted: () => void }) {
   const qc = useQueryClient();
+  const { activeTool, setActiveTool } = useActiveTool();
   const [tab, setTab] = useState<Tab>('details');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const isMonitored = activeTool === tool.name;
+
+  const handleMonitor = () => {
+    if (!isMonitored) setActiveTool(tool.name);
+  };
 
   const toggleMut = useMutation({
     mutationFn: (enabled: boolean) => updateTool(tool.name, { enabled }),
@@ -576,6 +583,14 @@ function ToolDetail({ tool, onClose, onDeleted }: { tool: ToolItem; onClose: () 
           {tool.description && <p className="tool-desc">{tool.description}</p>}
         </div>
         <div className="tool-detail-actions">
+          <button
+            className={`btn-action ${isMonitored ? 'monitored' : 'monitor'}`}
+            onClick={handleMonitor}
+            title={isMonitored ? 'Currently monitored' : 'Set as active tool for Audit & Monitoring'}
+            disabled={isMonitored}
+          >
+            {isMonitored ? '● Monitored' : '○ Monitor'}
+          </button>
           {tool.enabled ? (
             <button
               className="btn-action archive"
@@ -707,9 +722,16 @@ function ToolCard({ tool, selected, onClick }: { tool: ToolItem; selected: boole
 export function ToolsPage() {
   const [selected, setSelected] = useState<ToolItem | null>(null);
   const [showRegister, setShowRegister] = useState(false);
+  const { activeTool, setActiveTool } = useActiveTool();
 
   const query = useQuery({ queryKey: ['tools'], queryFn: getTools, refetchInterval: 15000, refetchOnWindowFocus: false });
   const tools: ToolItem[] = query.data?.items ?? [];
+
+  useEffect(() => {
+    if (!activeTool && tools.length > 0) {
+      setActiveTool(tools[0].name);
+    }
+  }, [activeTool, tools, setActiveTool]);
 
   const handleRegisterDone = () => {
     setShowRegister(false);

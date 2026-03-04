@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"nexus-control-operators/internal/ops/actionengine"
 	actiondomain "nexus-control-operators/internal/ops/actionengine/usecases/domain"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
@@ -13,7 +14,7 @@ import (
 func TestMitigationWorker_AppliesOnlyNonApprovalActions(t *testing.T) {
 	t.Parallel()
 	engine := &engineStub{}
-	w := NewWorker(engine)
+	w := NewWorker(engine, zerolog.Nop())
 
 	incidentID := "f503f46f-c137-4165-b9ca-999d0d6f328f"
 	err := w.Handle(context.Background(), opsdomain.StoredEvent{

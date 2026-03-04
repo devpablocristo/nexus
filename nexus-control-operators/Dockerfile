@@ -21,7 +21,8 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates
 RUN addgroup -g 1000 app && adduser -D -u 1000 -G app app
 COPY --from=builder /out/nexus-control-operators /app/nexus-control-operators
-RUN chown -R app:app /app
+RUN mkdir -p /app/data && chown -R app:app /app
 
 USER app
+EXPOSE 8090
 ENTRYPOINT ["/app/nexus-control-operators"]

@@ -2,7 +2,10 @@ package coreproxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -17,15 +20,19 @@ type EventstoreRepository struct {
 	mu            sync.Mutex
 	offsets       map[string]int64
 	eventContract map[string]opsdomain.EventContract
+	dataDir       string
 }
 
-func NewEventstoreRepository(client *Client, defaultOrgID uuid.UUID) *EventstoreRepository {
-	return &EventstoreRepository{
+func NewEventstoreRepository(client *Client, defaultOrgID uuid.UUID, dataDir string) *EventstoreRepository {
+	r := &EventstoreRepository{
 		client:        client,
 		defaultOrgID:  defaultOrgID,
 		offsets:       map[string]int64{},
 		eventContract: map[string]opsdomain.EventContract{},
+		dataDir:       dataDir,
 	}
+	r.loadOffsets()
+	return r
 }
 
 func (r *EventstoreRepository) Append(ctx context.Context, event opsdomain.Envelope, schemaValid bool, validationError *string) (opsdomain.StoredEvent, error) {
@@ -53,14 +60,18 @@ func (r *EventstoreRepository) Append(ctx context.Context, event opsdomain.Envel
 		return opsdomain.StoredEvent{}, err
 	}
 
-	seq := int64(0)
 	if okVal, ok := resp["ok"].(bool); !ok || !okVal {
 		return opsdomain.StoredEvent{}, fmt.Errorf("append failed")
 	}
 
-	// Sequence from SaaS list is monotonic ID, but append response only confirms accepted.
-	// Use current monotonic time for immediate local ordering; consumers reconcile on fetch.
-	seq = time.Now().UTC().UnixNano()
+	seq := int64(0)
+	if id, ok := resp["id"].(float64); ok && id > 0 {
+		seq = int64(id)
+	} else if seqVal, ok := resp["sequence"].(float64); ok && seqVal > 0 {
+		seq = int64(seqVal)
+	} else {
+		seq = time.Now().UTC().UnixNano()
+	}
 
 	return opsdomain.StoredEvent{
 		Sequence:        seq,
@@ -135,20 +146,21 @@ func (r *EventstoreRepository) ListGlobalAfterSequence(ctx context.Context, afte
 	return out, nil
 }
 
-func (r *EventstoreRepository) GetConsumerOffset(ctx context.Context, consumerGroup string) (int64, error) {
+func (r *EventstoreRepository) GetConsumerOffset(_ context.Context, consumerGroup string) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.offsets[consumerGroup], nil
 }
 
-func (r *EventstoreRepository) UpsertConsumerOffset(ctx context.Context, consumerGroup string, sequence int64) error {
+func (r *EventstoreRepository) UpsertConsumerOffset(_ context.Context, consumerGroup string, sequence int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.offsets[consumerGroup] = sequence
+	r.persistOffsets()
 	return nil
 }
 
-func (r *EventstoreRepository) UpsertContract(ctx context.Context, in opsdomain.EventContract) error {
+func (r *EventstoreRepository) UpsertContract(_ context.Context, in opsdomain.EventContract) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	key := in.EventType + ":" + fmt.Sprintf("%d", in.Version)
@@ -156,7 +168,7 @@ func (r *EventstoreRepository) UpsertContract(ctx context.Context, in opsdomain.
 	return nil
 }
 
-func (r *EventstoreRepository) GetContract(ctx context.Context, eventType string, version int) (opsdomain.EventContract, error) {
+func (r *EventstoreRepository) GetContract(_ context.Context, eventType string, version int) (opsdomain.EventContract, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	key := eventType + ":" + fmt.Sprintf("%d", version)
@@ -169,4 +181,35 @@ func (r *EventstoreRepository) GetContract(ctx context.Context, eventType string
 		Enabled:   true,
 		Schema:    map[string]any{},
 	}, nil
+}
+
+func (r *EventstoreRepository) loadOffsets() {
+	if r.dataDir == "" {
+		return
+	}
+	path := filepath.Join(r.dataDir, "offsets.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var offsets map[string]int64
+	if json.Unmarshal(data, &offsets) == nil {
+		r.offsets = offsets
+	}
+}
+
+func (r *EventstoreRepository) persistOffsets() {
+	if r.dataDir == "" {
+		return
+	}
+	_ = os.MkdirAll(r.dataDir, 0o755)
+	data, err := json.Marshal(r.offsets)
+	if err != nil {
+		return
+	}
+	tmp := filepath.Join(r.dataDir, "offsets.json.tmp")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, filepath.Join(r.dataDir, "offsets.json"))
 }

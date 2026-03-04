@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { getAuditLog, getTools, type AuditQuery } from '../../lib/api';
-import type { AuditItem, ToolItem } from '../../lib/types';
+import { getAuditLog, type AuditQuery } from '../../lib/api';
+import type { AuditItem } from '../../lib/types';
+import { useActiveTool } from '../../lib/tool-context';
 
 function decisionCls(d: string) {
   if (d === 'allow') return 'run-pill run-pill-allow';
@@ -25,27 +26,20 @@ function fmtDate(iso: string) {
 }
 
 export function AuditPage() {
-  const [toolFilter, setToolFilter] = useState('');
+  const { activeTool } = useActiveTool();
   const [decisionFilter, setDecisionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [limit, setLimit] = useState(50);
   const [selected, setSelected] = useState<AuditItem | null>(null);
 
-  const toolsQuery = useQuery({
-    queryKey: ['tools'],
-    queryFn: getTools,
-    refetchOnWindowFocus: false,
-  });
-  const toolNames: string[] = (toolsQuery.data?.items ?? []).map((t: ToolItem) => t.name);
-
   const query: AuditQuery = {};
-  if (toolFilter) query.tool_name = toolFilter;
+  if (activeTool) query.tool_name = activeTool;
   if (decisionFilter) query.decision = decisionFilter;
   if (statusFilter) query.status = statusFilter;
   query.limit = limit;
 
   const auditQuery = useQuery({
-    queryKey: ['audit', toolFilter, decisionFilter, statusFilter, limit],
+    queryKey: ['audit', activeTool, decisionFilter, statusFilter, limit],
     queryFn: () => getAuditLog(query),
     refetchInterval: 5000,
     refetchOnWindowFocus: false,
@@ -56,16 +50,6 @@ export function AuditPage() {
   return (
     <div className="audit-page">
       <div className="audit-filters">
-        <label>
-          Tool
-          <select value={toolFilter} onChange={(e) => setToolFilter(e.target.value)}>
-            <option value="">All tools</option>
-            {toolNames.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-        </label>
-
         <label>
           Decision
           <select value={decisionFilter} onChange={(e) => setDecisionFilter(e.target.value)}>
@@ -99,7 +83,11 @@ export function AuditPage() {
       {auditQuery.isLoading && <p className="muted">Loading audit log...</p>}
 
       {!auditQuery.isLoading && items.length === 0 && (
-        <p className="muted">No audit entries found. Run requests through the gateway to generate entries.</p>
+        <p className="muted">
+          {activeTool
+            ? `No audit entries for "${activeTool}". Select a different tool or clear the filter.`
+            : 'No audit entries found. Run requests through the gateway to generate entries.'}
+        </p>
       )}
 
       <div className="audit-layout">
@@ -109,7 +97,6 @@ export function AuditPage() {
               <thead>
                 <tr>
                   <th>Time</th>
-                  <th>Tool</th>
                   <th>Decision</th>
                   <th>Status</th>
                   <th>Latency</th>
@@ -127,7 +114,6 @@ export function AuditPage() {
                       <span className="audit-date">{fmtDate(item.created_at)}</span>{' '}
                       {fmtTime(item.created_at)}
                     </td>
-                    <td><code className="run-tool">{item.tool_name}</code></td>
                     <td><span className={decisionCls(item.decision)}>{item.decision}</span></td>
                     <td><span className={statusCls(item.status)}>{item.status}</span></td>
                     <td className="audit-latency">{item.latency_ms}ms</td>

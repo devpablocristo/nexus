@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useActiveTool } from '../lib/tool-context';
 
 const navItems = [
   { to: '/tools', label: 'Tools' },
@@ -8,6 +9,8 @@ const navItems = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const { activeTool } = useActiveTool();
+
   return (
     <div className="shell">
       <header className="shell-header">
@@ -25,6 +28,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </Link>
         ))}
       </nav>
+
+      {activeTool && (
+        <div className="active-tool-banner">
+          <span className="active-tool-label">Monitoring</span>
+          <code className="active-tool-name">{activeTool}</code>
+        </div>
+      )}
 
       <main className="shell-main">{children}</main>
     </div>

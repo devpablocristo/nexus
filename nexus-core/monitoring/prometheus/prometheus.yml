@@ -6,3 +6,8 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["nexus-core:8080"]
+
+  - job_name: nexus-control-operators
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["nexus-control-operators:8090"]

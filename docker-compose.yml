@@ -149,9 +149,18 @@ services:
       NEXUS_CORE_URL: "${NEXUS_CORE_URL:-http://nexus-core:8080}"
       OPERATOR_INTERNAL_KEY: "${OPERATOR_INTERNAL_KEY}"
       NEXUS_DEFAULT_ORG_ID: "${NEXUS_DEFAULT_ORG_ID:-}"
+      OPERATOR_HEALTH_PORT: "8090"
+      OPERATOR_DATA_DIR: "/app/data"
+    volumes:
+      - control_operators_data:/app/data
     depends_on:
       nexus-core:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   nexus-ai-operators:
     restart: unless-stopped
     build:
@@ -237,3 +246,4 @@ volumes:
   postgres_data:
   postgres_saas_data:
   ollama_data:
+  control_operators_data:

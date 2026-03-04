@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -15,16 +17,20 @@ import (
 )
 
 type CoreActionEngine struct {
-	client *Client
-	mu     sync.Mutex
-	store  map[uuid.UUID]opsaction.EngineRequest
+	client  *Client
+	mu      sync.Mutex
+	store   map[uuid.UUID]opsaction.EngineRequest
+	dataDir string
 }
 
-func NewCoreActionEngine(client *Client) *CoreActionEngine {
-	return &CoreActionEngine{
-		client: client,
-		store:  map[uuid.UUID]opsaction.EngineRequest{},
+func NewCoreActionEngine(client *Client, dataDir string) *CoreActionEngine {
+	e := &CoreActionEngine{
+		client:  client,
+		store:   map[uuid.UUID]opsaction.EngineRequest{},
+		dataDir: dataDir,
 	}
+	e.loadStore()
+	return e
 }
 
 func (e *CoreActionEngine) DryRun(ctx context.Context, orgID uuid.UUID, actor *string, req opsaction.EngineRequest) (opsaction.EngineResult, error) {
@@ -47,6 +53,7 @@ func (e *CoreActionEngine) DryRun(ctx context.Context, orgID uuid.UUID, actor *s
 	}
 	e.mu.Lock()
 	e.store[proposalID] = req
+	e.persistStore()
 	e.mu.Unlock()
 	return opsaction.EngineResult{
 		Proposal:         proposal,
@@ -92,6 +99,14 @@ func (e *CoreActionEngine) Apply(ctx context.Context, orgID uuid.UUID, actor *st
 		CreatedAt:  time.Now().UTC(),
 		UpdatedAt:  time.Now().UTC(),
 	}
+
+	if req.ProposalID != nil {
+		e.mu.Lock()
+		delete(e.store, *req.ProposalID)
+		e.persistStore()
+		e.mu.Unlock()
+	}
+
 	return opsaction.EngineResult{
 		Proposal:       proposal,
 		IdempotencyKey: proposal.ID.String(),
@@ -100,6 +115,14 @@ func (e *CoreActionEngine) Apply(ctx context.Context, orgID uuid.UUID, actor *st
 
 func (e *CoreActionEngine) Rollback(ctx context.Context, orgID uuid.UUID, actor *string, req opsaction.EngineRequest) (opsaction.EngineResult, error) {
 	id := proposalIDOrNew(req.ProposalID)
+
+	if req.ProposalID != nil {
+		e.mu.Lock()
+		delete(e.store, *req.ProposalID)
+		e.persistStore()
+		e.mu.Unlock()
+	}
+
 	return opsaction.EngineResult{
 		Proposal: actiondomain.Proposal{
 			ID:         id,
@@ -113,8 +136,6 @@ func (e *CoreActionEngine) Rollback(ctx context.Context, orgID uuid.UUID, actor 
 	}, nil
 }
 
-// deterministicProposalID generates a reproducible UUID from the request
-// so retries of the same event produce the same proposal, ensuring idempotency.
 func deterministicProposalID(req opsaction.EngineRequest) uuid.UUID {
 	incidentPart := ""
 	if req.IncidentID != nil {
@@ -130,4 +151,49 @@ func proposalIDOrNew(id *uuid.UUID) uuid.UUID {
 		return *id
 	}
 	return uuid.New()
+}
+
+type proposalEntry struct {
+	ID  string                 `json:"id"`
+	Req opsaction.EngineRequest `json:"req"`
+}
+
+func (e *CoreActionEngine) loadStore() {
+	if e.dataDir == "" {
+		return
+	}
+	path := filepath.Join(e.dataDir, "proposals.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var entries []proposalEntry
+	if json.Unmarshal(data, &entries) != nil {
+		return
+	}
+	for _, entry := range entries {
+		if id, err := uuid.Parse(entry.ID); err == nil {
+			e.store[id] = entry.Req
+		}
+	}
+}
+
+func (e *CoreActionEngine) persistStore() {
+	if e.dataDir == "" {
+		return
+	}
+	_ = os.MkdirAll(e.dataDir, 0o755)
+	entries := make([]proposalEntry, 0, len(e.store))
+	for id, req := range e.store {
+		entries = append(entries, proposalEntry{ID: id.String(), Req: req})
+	}
+	data, err := json.Marshal(entries)
+	if err != nil {
+		return
+	}
+	tmp := filepath.Join(e.dataDir, "proposals.json.tmp")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, filepath.Join(e.dataDir, "proposals.json"))
 }

@@ -8,11 +8,11 @@ import (
 	"github.com/rs/zerolog"
 
 	"nexus-control-operators/internal/shared/coreerr"
+	"nexus-control-operators/internal/shared/metrics"
 	consumerdto "nexus-control-operators/internal/ops/eventstore/consumer/dto"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
 )
 
-// ConsumerConfig re-exported from consumer/dto for API stability.
 type ConsumerConfig = consumerdto.ConsumerConfig
 
 type EventHandler func(ctx context.Context, event opsdomain.StoredEvent) error
@@ -24,9 +24,9 @@ type consumerPort interface {
 }
 
 const (
-	backoffMin         = 1 * time.Second
-	backoffMax         = 30 * time.Second
-	maxHandlerRetries  = 3
+	backoffMin        = 1 * time.Second
+	backoffMax        = 30 * time.Second
+	maxHandlerRetries = 3
 )
 
 type Consumer struct {
@@ -97,12 +97,19 @@ func (c *Consumer) Run(ctx context.Context, handler EventHandler) error {
 		}
 
 		for _, ev := range items {
+			start := time.Now()
 			if processErr := c.processEvent(ctx, handler, ev); processErr != nil {
 				c.log.Error().Err(processErr).Int64("seq", ev.Sequence).Msg("event permanently failed, skipping")
+				metrics.EventsProcessed.WithLabelValues(c.consumerGroup, "error").Inc()
+			} else {
+				metrics.EventsProcessed.WithLabelValues(c.consumerGroup, "ok").Inc()
 			}
+			metrics.EventDuration.WithLabelValues(c.consumerGroup).Observe(time.Since(start).Seconds())
+
 			if ackErr := c.service.Ack(ctx, c.consumerGroup, ev.Sequence); ackErr != nil {
 				c.log.Warn().Err(ackErr).Int64("seq", ev.Sequence).Msg("ack failed, retrying next cycle")
 			}
+			metrics.ConsumerOffset.WithLabelValues(c.consumerGroup).Set(float64(ev.Sequence))
 			lastSeen = ev.Sequence
 		}
 	}

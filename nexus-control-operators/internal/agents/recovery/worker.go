@@ -19,6 +19,7 @@ type EventEmitter interface {
 type Config struct {
 	RequiredSuccesses int
 	MonitoringWindow  time.Duration
+	IdleInterval      time.Duration
 	Now               func() time.Time
 }
 
@@ -36,6 +37,7 @@ type Worker struct {
 	emitter           EventEmitter
 	requiredSuccesses int
 	monitoringWindow  time.Duration
+	idleInterval      time.Duration
 	now               func() time.Time
 	mu                sync.Mutex
 	tracks            map[string]mitigationTrack
@@ -50,6 +52,10 @@ func NewWorker(emitter EventEmitter, cfg Config) *Worker {
 	if monitoringWindow <= 0 {
 		monitoringWindow = 5 * time.Minute
 	}
+	idleInterval := cfg.IdleInterval
+	if idleInterval <= 0 {
+		idleInterval = 15 * time.Second
+	}
 	nowFn := cfg.Now
 	if nowFn == nil {
 		nowFn = func() time.Time { return time.Now().UTC() }
@@ -58,6 +64,7 @@ func NewWorker(emitter EventEmitter, cfg Config) *Worker {
 		emitter:           emitter,
 		requiredSuccesses: required,
 		monitoringWindow:  monitoringWindow,
+		idleInterval:      idleInterval,
 		now:               nowFn,
 		tracks:            map[string]mitigationTrack{},
 	}
@@ -74,7 +81,6 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 	}
 	eventTime := w.eventTime(event)
 
-	// Evaluate time-based states first for every incoming event.
 	if err := w.evaluateIncident(ctx, incidentID, event.Envelope.OrgID, eventTime); err != nil {
 		return err
 	}
@@ -148,7 +154,7 @@ func (w *Worker) OnIdle(ctx context.Context) error {
 }
 
 func (w *Worker) IdleInterval() time.Duration {
-	return 1 * time.Second
+	return w.idleInterval
 }
 
 func (w *Worker) evaluateIncident(ctx context.Context, incidentID string, orgID uuid.UUID, at time.Time) error {
@@ -252,4 +258,3 @@ func (w *Worker) emitActionRollback(ctx context.Context, orgID uuid.UUID, incide
 	})
 	return err
 }
-
