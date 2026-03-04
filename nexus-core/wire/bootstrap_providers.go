@@ -12,7 +12,6 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"nexus-core/cmd/config"
-	"nexus-core/internal/actions"
 	"nexus-core/internal/dlp"
 	gormdb "nexus/pkg/databases/sql/gorm"
 	"nexus/pkg/utils"
@@ -76,11 +75,10 @@ func NewHTTPServer(cfg config.APIConfig, router *gin.Engine) *http.Server {
 	}
 }
 
-func NewApp(router *gin.Engine, server *http.Server, actionSvc *actions.Usecases) *App {
+func NewApp(router *gin.Engine, server *http.Server) *App {
 	return &App{
-		Router:          router,
-		Server:          server,
-		ActionTTLEngine: actionSvc,
+		Router: router,
+		Server: server,
 	}
 }
 

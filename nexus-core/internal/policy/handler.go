@@ -29,6 +29,10 @@ func NewHandler(uc policyUsecase) *Handler {
 	return &Handler{uc: uc}
 }
 
+func AsPolicyUsecase(uc *Usecases) policyUsecase {
+	return uc
+}
+
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/tools/:name/policies", h.createForTool)
 	rg.GET("/tools/:name/policies", h.listForTool)

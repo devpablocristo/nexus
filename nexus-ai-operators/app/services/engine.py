@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from app.adapters.nexus_core_client import NexusCoreClient
+from app.adapters.nexus_saas_client import NexusSaaSClient
 from app.core.config import Settings
 from app.core.metrics import ACTIONS_APPLIED, EVENTS_CONSUMED, INCIDENTS_OPENED, LAST_CURSOR, PROPOSALS_CREATED
 from app.domain.models import Event
@@ -26,7 +26,7 @@ class EngineState:
 
 
 class OperatorEngine:
-    def __init__(self, settings: Settings, client: NexusCoreClient) -> None:
+    def __init__(self, settings: Settings, client: NexusSaaSClient) -> None:
         self.settings = settings
         self.client = client
         self.state = EngineState()

@@ -31,6 +31,10 @@ func NewHandler(uc auditUsecase) *Handler {
 	return &Handler{uc: uc}
 }
 
+func AsAuditUsecase(uc *Usecases) auditUsecase {
+	return uc
+}
+
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.GET("/audit", h.query)
 	rg.GET("/audit/export", h.export)

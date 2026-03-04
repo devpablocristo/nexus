@@ -17,5 +17,6 @@ var PolicySet = wire.NewSet(
 	ProvidePolicyToolLookup,
 	policy.NewEvaluator,
 	policy.NewUsecases,
+	policy.AsPolicyUsecase,
 	policy.NewHandler,
 )

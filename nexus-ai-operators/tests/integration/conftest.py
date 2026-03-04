@@ -1,8 +1,8 @@
 """Shared fixtures for nexus-ai-operators integration tests.
 
 These tests exercise the full FastAPI application through httpx.AsyncClient
-with the real ASGI transport -- no running server required.  The NexusCoreClient
-is replaced by an AsyncMock so tests never make real HTTP calls to nexus-core.
+with the real ASGI transport -- no running server required. The management
+client is replaced by an AsyncMock so tests never make real HTTP calls.
 """
 from __future__ import annotations
 
@@ -29,9 +29,9 @@ def make_settings(**overrides: Any) -> Settings:
         "OPERATOR_APP_NAME": "nexus-ai-operators-test",
         "OPERATOR_ENV": "test",
         "OPERATOR_PORT": 9999,
-        "NEXUS_CORE_BASE_URL": "http://nexus-core-fake:8080",
-        "NEXUS_CORE_API_KEY": "fake-api-key",
-        "NEXUS_CORE_TIMEOUT_SECONDS": 1.0,
+        "NEXUS_SAAS_BASE_URL": "http://nexus-saas-fake:8082",
+        "NEXUS_SAAS_API_KEY": "fake-api-key",
+        "NEXUS_SAAS_TIMEOUT_SECONDS": 1.0,
         "OPERATOR_POLL_INTERVAL_SECONDS": 3600,
         "OPERATOR_POLL_BATCH_SIZE": 100,
         "OPERATOR_DENY_RATIO_THRESHOLD": 0.35,
@@ -50,7 +50,7 @@ def make_settings(**overrides: Any) -> Settings:
 
 
 def make_mock_client() -> AsyncMock:
-    """Return an AsyncMock that quacks like NexusCoreClient."""
+    """Return an AsyncMock that quacks like the management API client."""
     client = AsyncMock()
     client.list_events.return_value = {"items": [], "next_cursor": 0}
     client.apply_action.return_value = {"ok": True}

@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,9 +9,18 @@ class Settings(BaseSettings):
     app_env: str = Field(default='dev', alias='OPERATOR_ENV')
     app_port: int = Field(default=8000, alias='OPERATOR_PORT')
 
-    core_base_url: str = Field(default='http://nexus-core:8080', alias='NEXUS_CORE_BASE_URL')
-    core_api_key: str = Field(default='nexus-ai-operators-local-key', alias='NEXUS_CORE_API_KEY')
-    core_timeout_seconds: float = Field(default=5.0, alias='NEXUS_CORE_TIMEOUT_SECONDS')
+    saas_base_url: str = Field(
+        default='http://nexus-saas:8082',
+        validation_alias=AliasChoices('NEXUS_SAAS_BASE_URL', 'NEXUS_CORE_BASE_URL'),
+    )
+    saas_api_key: str = Field(
+        default='nexus-ai-operators-local-key',
+        validation_alias=AliasChoices('NEXUS_SAAS_API_KEY', 'NEXUS_CORE_API_KEY'),
+    )
+    saas_timeout_seconds: float = Field(
+        default=5.0,
+        validation_alias=AliasChoices('NEXUS_SAAS_TIMEOUT_SECONDS', 'NEXUS_CORE_TIMEOUT_SECONDS'),
+    )
 
     poll_interval_seconds: int = Field(default=10, alias='OPERATOR_POLL_INTERVAL_SECONDS')
     poll_batch_size: int = Field(default=100, alias='OPERATOR_POLL_BATCH_SIZE')

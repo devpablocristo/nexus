@@ -25,6 +25,8 @@ type Handler struct {
 
 func NewHandler(uc secretsUsecase) *Handler { return &Handler{uc: uc} }
 
+func AsSecretsUsecase(uc *Usecases) secretsUsecase { return uc }
+
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/tools/:name/secrets", h.upsert)
 	rg.GET("/tools/:name/secrets", h.list)

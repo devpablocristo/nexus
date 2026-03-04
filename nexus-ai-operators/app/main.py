@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.adapters.nexus_core_client import NexusCoreClient
+from app.adapters.nexus_saas_client import NexusSaaSClient
 from app.api.routes import router
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -16,10 +16,10 @@ configure_logging()
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-    client = NexusCoreClient(
-        base_url=settings.core_base_url,
-        api_key=settings.core_api_key,
-        timeout_seconds=settings.core_timeout_seconds,
+    client = NexusSaaSClient(
+        base_url=settings.saas_base_url,
+        api_key=settings.saas_api_key,
+        timeout_seconds=settings.saas_timeout_seconds,
     )
     engine = OperatorEngine(settings=settings, client=client)
     application.state.settings = settings

@@ -5,13 +5,13 @@ WORKDIR /src
 RUN apk add --no-cache git
 
 COPY nexus-core/go.mod nexus-core/go.sum ./nexus-core/
-COPY pkg/go.mod pkg/go.sum ./pkg/
+COPY pkgs/go-pkg/go.mod pkgs/go-pkg/go.sum ./pkgs/go-pkg/
 WORKDIR /src/nexus-core
 RUN go mod download
 
 WORKDIR /src
 COPY nexus-core ./nexus-core
-COPY pkg ./pkg
+COPY pkgs/go-pkg ./pkgs/go-pkg
 
 WORKDIR /src/nexus-core
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nexus-core ./cmd/api

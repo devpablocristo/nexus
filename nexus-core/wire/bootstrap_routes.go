@@ -5,28 +5,21 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/zsais/go-gin-prometheus"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"nexus-core/cmd/config"
 	"nexus-core/internal/a2a"
-	"nexus-core/internal/actions"
-	"nexus-core/internal/admin"
-	"nexus-core/internal/alerts"
 	"nexus-core/internal/approval"
-	"nexus-core/internal/assistant"
 	"nexus-core/internal/audit"
 	"nexus-core/internal/egress"
-	"nexus-core/internal/events"
 	"nexus-core/internal/gateway"
 	"nexus-core/internal/identity"
-	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
 	"nexus-core/internal/org"
-	"nexus-core/internal/session"
 	"nexus-core/internal/policy"
-	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
 	"nexus-core/internal/tool"
+	"nexus-core/internal/usagemetering"
 	ginmw "nexus/pkg/http/middlewares/gin"
 	ginserver "nexus/pkg/http/servers/gin"
 )
@@ -40,12 +33,6 @@ func NewRouter(
 	toolH *tool.Handler,
 	policyH *policy.Handler,
 	auditH *audit.Handler,
-	adminH *admin.Handler,
-	eventsH *events.Handler,
-	actionsH *actions.Handler,
-	incidentsH *incidents.Handler,
-	proposalH *policyproposal.Handler,
-	assistantH *assistant.Handler,
 	gwH *gateway.Handler,
 	secretH *secrets.Handler,
 	egressH *egress.Handler,
@@ -53,9 +40,8 @@ func NewRouter(
 	a2aH *a2a.Handler,
 	oidcH *identity.OIDCHandler,
 	approvalH *approval.Handler,
-	alertsH *alerts.Handler,
-	sessionH *session.Handler,
 	orgH *org.Handler,
+	usageMeteringMw usagemetering.APICallsMiddlewareFunc,
 ) *gin.Engine {
 	r := ginserver.NewEngine(
 		ginserver.EngineOptions{},
@@ -83,21 +69,14 @@ func NewRouter(
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
+	v1.Use(gin.HandlerFunc(usageMeteringMw))
 	toolH.Register(v1)
 	policyH.Register(v1)
 	auditH.Register(v1)
-	adminH.Register(v1)
-	eventsH.Register(v1)
-	actionsH.Register(v1)
-	incidentsH.Register(v1)
-	proposalH.Register(v1)
-	assistantH.Register(v1)
 	gwH.Register(v1)
 	secretH.Register(v1)
 	egressH.Register(v1)
 	approvalH.Register(v1)
-	alertsH.Register(v1)
-	sessionH.Register(v1)
 
 	mcpGroup := r.Group("")
 	mcpGroup.Use(authMw)

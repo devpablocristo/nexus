@@ -2,6 +2,7 @@ package wire
 
 import (
 	"github.com/google/wire"
+	"github.com/rs/zerolog"
 
 	"nexus-core/internal/admin"
 	"nexus-core/internal/audit"
@@ -11,6 +12,7 @@ import (
 	"nexus-core/internal/gateway/executor/ratelimit"
 	exectelemetry "nexus-core/internal/gateway/executor/telemetry"
 	"nexus-core/internal/policy"
+	"nexus-core/internal/saasclient"
 	"nexus-core/internal/secrets"
 	"nexus-core/internal/tool"
 )
@@ -22,7 +24,9 @@ func ProvideGatewayIdempotencyRepo(r *gateway.IdempotencyRepository) gateway.Ide
 	return r
 }
 func ProvideGatewaySecretRepo(r *secrets.Repository) gateway.SecretRepoPort { return r }
-func ProvideGatewayTenantCaps(r *admin.Repository) gateway.TenantLimitsPort { return r }
+func ProvideGatewayTenantCaps(_ *admin.Repository) gateway.TenantLimitsPort {
+	return saasclient.NewEntitlementsClient(zerolog.Nop())
+}
 func ProvideGatewayEgressPort(s *egress.Usecases) gateway.EgressPort         { return s }
 func ProvideGatewayRateLimiter(l ratelimit.Adapter) gateway.RateLimiterPort {
 	return l

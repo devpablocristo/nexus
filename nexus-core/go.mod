@@ -4,7 +4,7 @@ go 1.24.0
 
 require nexus/pkg v0.0.0
 
-replace nexus/pkg => ../pkg
+replace nexus/pkg => ../pkgs/go-pkg
 
 require (
 	github.com/gin-gonic/gin v1.11.0

@@ -1,0 +1,88 @@
+package wire
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
+
+	ginprometheus "github.com/zsais/go-gin-prometheus"
+	"nexus-saas/cmd/config"
+	"nexus-saas/internal/admin"
+	"nexus-saas/internal/alerts"
+	"nexus-saas/internal/contracts"
+	"nexus-saas/internal/coreproxy"
+	"nexus-saas/internal/events"
+	"nexus-saas/internal/identity"
+	"nexus-saas/internal/incidents"
+	"nexus-saas/internal/org"
+	"nexus-saas/internal/policyproposal"
+	"nexus-saas/internal/session"
+	"nexus-saas/internal/actions"
+	"nexus-saas/internal/assistant"
+	"nexus-saas/internal/usagemetering"
+	ginmw "nexus/pkg/http/middlewares/gin"
+	ginserver "nexus/pkg/http/servers/gin"
+)
+
+func NewRouter(
+	db *gorm.DB,
+	l zerolog.Logger,
+	cfg config.ServiceConfig,
+	httpCfg config.HTTPServerConfig,
+	authMw gin.HandlerFunc,
+	adminH *admin.Handler,
+	eventsH *events.Handler,
+	actionsH *actions.Handler,
+	incidentsH *incidents.Handler,
+	alertsH *alerts.Handler,
+	sessionH *session.Handler,
+	proposalH *policyproposal.Handler,
+	assistantH *assistant.Handler,
+	oidcH *identity.OIDCHandler,
+	orgH *org.Handler,
+	contractsH *contracts.Handler,
+	coreProxyH *coreproxy.Handler,
+	usageMeteringMw usagemetering.APICallsMiddlewareFunc,
+) *gin.Engine {
+	_ = db
+	_ = httpCfg
+	r := ginserver.NewEngine(
+		ginserver.EngineOptions{},
+		ginmw.RequestID(),
+		ginmw.Recovery(l),
+		ginmw.CORS(cfg.CORSAllowedOrigins, cfg.CORSAllowedMethods, cfg.CORSAllowedHeaders),
+		ginmw.LoggerMiddleware(l),
+	)
+	prom := ginprometheus.NewPrometheus("nexus_saas")
+	prom.Use(r)
+
+	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	r.GET("/readyz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+
+	oidcGroup := r.Group("/v1")
+	oidcH.Register(oidcGroup)
+
+	onboardGroup := r.Group("/v1")
+	orgH.Register(onboardGroup)
+
+	contractsH.RegisterInternal(r)
+	coreProxyH.RegisterRoot(r)
+
+	v1 := r.Group("/v1")
+	v1.Use(authMw)
+	v1.Use(gin.HandlerFunc(usageMeteringMw))
+	adminH.Register(v1)
+	eventsH.Register(v1)
+	actionsH.Register(v1)
+	incidentsH.Register(v1)
+	alertsH.Register(v1)
+	sessionH.Register(v1)
+	proposalH.Register(v1)
+	assistantH.Register(v1)
+	coreProxyH.Register(v1)
+
+	return r
+}

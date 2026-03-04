@@ -29,6 +29,8 @@ type Handler struct{ uc mcpUsecase }
 
 func NewHandler(uc mcpUsecase) *Handler { return &Handler{uc: uc} }
 
+func AsMCPUsecase(uc *Usecases) mcpUsecase { return uc }
+
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/mcp", h.rpc)
 }

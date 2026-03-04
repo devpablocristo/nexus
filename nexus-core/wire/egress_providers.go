@@ -14,5 +14,6 @@ var EgressSet = wire.NewSet(
 	wire.Bind(new(egress.RepositoryPort), new(*egress.Repository)),
 	ProvideEgressToolLookup,
 	egress.NewUsecases,
+	egress.AsEgressUsecase,
 	egress.NewHandler,
 )

@@ -1,7 +1,8 @@
 go 1.24.0
 
 use (
-	./nexus-core
 	./nexus-control-operators
-	./pkg
+	./nexus-core
+	./nexus-saas
+	./pkgs/go-pkg
 )

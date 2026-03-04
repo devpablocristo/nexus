@@ -28,7 +28,7 @@ obj/
 dist/
 build/
 out/
-; pkg/
+# pkg moved to pkgs/go-pkg
 */bin/
 
 # Dependencies

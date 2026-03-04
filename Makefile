@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 
 CORE_DIR := nexus-core
+SAAS_DIR := nexus-saas
 AI_OPERATORS_DIR := nexus-ai-operators
 CONTROL_OPERATORS_DIR := nexus-control-operators
 TOWER_DIR := nexus-tower
@@ -9,8 +10,8 @@ CORE_SERVICE := nexus-core
 COMPOSE := docker compose
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
-	core-test control-operators-test ai-operators-test tower-test tower-qa qa e2e jwt-e2e quickstart-admin \
-	core-dev control-dev ai-operators-dev tower-dev reset-nexus logs-tail up-ready status \
+	core-test saas-test control-operators-test ai-operators-test tower-test tower-qa qa e2e jwt-e2e quickstart-admin \
+	core-dev saas-dev control-dev ai-operators-dev tower-dev reset-nexus logs-tail up-ready status \
 	qa-sim-engine migrate-sim-engine demo-doorjam replay \
 	sdk-test-python sdk-test
 
@@ -95,6 +96,7 @@ tower-qa:
 
 qa:
 	$(MAKE) core-test
+	$(MAKE) saas-test
 	$(MAKE) control-operators-test
 	$(MAKE) ai-operators-test
 	$(MAKE) tower-qa
@@ -134,6 +136,12 @@ replay:
 
 core-dev:
 	cd $(CORE_DIR) && go run ./cmd/api
+
+saas-test:
+	cd $(SAAS_DIR) && go test ./...
+
+saas-dev:
+	cd $(SAAS_DIR) && go run ./cmd/nexus-saas
 
 ai-operators-dev:
 	cd $(AI_OPERATORS_DIR) && \

@@ -5,7 +5,7 @@ services:
       dockerfile: nexus-core/Dockerfile.dev
     volumes:
       - ./nexus-core:/src
-      - ./pkg:/pkg
+      - ./pkgs/go-pkg:/pkgs/go-pkg
     environment:
       NEXUS_MIGRATIONS_DIR: /src/migrations
     command: ["sh", "-c", "go run ./cmd/migrate -cmd up && air -c .air.toml"]
@@ -20,15 +20,39 @@ services:
       dockerfile: nexus-core/Dockerfile.dev
     volumes:
       - ./nexus-core:/src
-      - ./pkg:/pkg
+      - ./pkgs/go-pkg:/pkgs/go-pkg
     command: ["air", "-c", ".air-mock-tools.toml"]
 
   nexus-control-operators:
     build:
       context: .
-      dockerfile: nexus-control-operators/Dockerfile
+      dockerfile: nexus-control-operators/Dockerfile.dev
+    volumes:
+      - ./nexus-control-operators:/src/nexus-control-operators
+      - ./pkgs/go-pkg:/src/pkgs/go-pkg
+
+  nexus-saas:
+    build:
+      context: .
+      dockerfile: nexus-saas/Dockerfile.dev
+    volumes:
+      - ./nexus-saas:/src/nexus-saas
+      - ./pkgs/go-pkg:/src/pkgs/go-pkg
+    ports:
+      - "${NEXUS_SAAS_HTTP_PORT:-8082}:8082"
 
   nexus-ai-operators:
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    build:
+      context: .
+      dockerfile: nexus-ai-operators/Dockerfile.dev
     volumes:
       - ./nexus-ai-operators:/workspace/nexus-ai-operators
+
+  nexus-tower:
+    build:
+      context: .
+      dockerfile: nexus-tower/Dockerfile.dev
+    volumes:
+      - ./nexus-tower:/workspace
+    ports:
+      - "${NEXUS_TOWER_PORT:-5173}:5173"

@@ -8,14 +8,32 @@ COMPOSE_FILE="${NEXUS_COMPOSE_FILE:-docker-compose.yml}"
 compose() { docker compose -f "$COMPOSE_FILE" "$@"; }
 
 DB_URL_EXEC="${NEXUS_DATABASE_URL_EXEC:-postgres://postgres:postgres@localhost:5432/nexus?sslmode=disable}"
+SAAS_DB_URL_EXEC="${NEXUS_SAAS_DATABASE_URL_EXEC:-postgres://postgres:postgres@localhost:5432/nexus_saas?sslmode=disable}"
 HTTP_PORT="${NEXUS_HTTP_PORT:-8080}"
+SAAS_HTTP_PORT="${NEXUS_SAAS_HTTP_PORT:-8082}"
 
 echo "Waiting for postgres..."
 bash scripts/db/wait-for-db.sh "$DB_URL_EXEC"
 
+echo "Waiting for saas postgres..."
+for i in {1..60}; do
+  if compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" -c "select 1" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
 echo "Waiting for nexus-core /readyz..."
 for i in {1..60}; do
   if curl -fsS "http://localhost:${HTTP_PORT}/readyz" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+echo "Waiting for nexus-saas /health..."
+for i in {1..60}; do
+  if curl -fsS "http://localhost:${SAAS_HTTP_PORT}/health" >/dev/null 2>&1; then
     break
   fi
   sleep 1
@@ -237,6 +255,71 @@ VALUES
   );
 SQL
 
+DEMO_ORG_ID="$(
+compose exec -T postgres psql "$DB_URL_EXEC" -At -c "SELECT id FROM orgs WHERE name='demo' LIMIT 1;"
+)"
+if [[ -z "$DEMO_ORG_ID" ]]; then
+  echo "Seed verification failed: demo org not found in core DB" >&2
+  exit 1
+fi
+
+echo "Seeding org + API keys in nexus-saas..."
+compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" <<SQL
+\set ON_ERROR_STOP on
+
+INSERT INTO orgs(id, name)
+VALUES ('${DEMO_ORG_ID}'::uuid, 'demo')
+ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name;
+
+DELETE FROM org_api_keys WHERE org_id='${DEMO_ORG_ID}'::uuid AND name='demo-key';
+INSERT INTO org_api_keys(id, org_id, api_key_hash, name)
+VALUES ((md5(random()::text || clock_timestamp()::text)::uuid), '${DEMO_ORG_ID}'::uuid, '${API_KEY_HASH}', 'demo-key');
+
+DELETE FROM org_api_key_scopes
+WHERE api_key_id IN (
+  SELECT id FROM org_api_keys WHERE org_id='${DEMO_ORG_ID}'::uuid AND name='demo-key'
+);
+INSERT INTO org_api_key_scopes(id, api_key_id, scope)
+SELECT (md5(random()::text || clock_timestamp()::text)::uuid), id, scope
+FROM org_api_keys
+JOIN (VALUES
+  ('tools:read'),
+  ('tools:write'),
+  ('policy:read'),
+  ('policy:write'),
+  ('egress:read'),
+  ('egress:write'),
+  ('audit:read'),
+  ('gateway:run'),
+  ('gateway:simulate'),
+  ('mcp:read'),
+  ('mcp:call'),
+  ('a2a:call'),
+  ('admin:secrets'),
+  ('admin:console:read'),
+  ('admin:console:write')
+) AS scopes(scope) ON true
+WHERE org_id='${DEMO_ORG_ID}'::uuid AND name='demo-key';
+
+DELETE FROM org_api_keys WHERE org_id='${DEMO_ORG_ID}'::uuid AND name='operator-key';
+INSERT INTO org_api_keys(id, org_id, api_key_hash, name)
+VALUES ((md5(random()::text || clock_timestamp()::text)::uuid), '${DEMO_ORG_ID}'::uuid, '${OPERATOR_API_KEY_HASH}', 'operator-key');
+
+DELETE FROM org_api_key_scopes
+WHERE api_key_id IN (
+  SELECT id FROM org_api_keys WHERE org_id='${DEMO_ORG_ID}'::uuid AND name='operator-key'
+);
+INSERT INTO org_api_key_scopes(id, api_key_id, scope)
+SELECT (md5(random()::text || clock_timestamp()::text)::uuid), id, scope
+FROM org_api_keys
+JOIN (VALUES
+  ('audit:read'),
+  ('admin:console:read'),
+  ('admin:console:write')
+) AS scopes(scope) ON true
+WHERE org_id='${DEMO_ORG_ID}'::uuid AND name='operator-key';
+SQL
+
 seeded_count="$(
 compose exec -T postgres psql "$DB_URL_EXEC" -At -c "SELECT count(*) FROM org_api_keys WHERE api_key_hash IN ('${API_KEY_HASH}', '${OPERATOR_API_KEY_HASH}');"
 )"
@@ -245,10 +328,18 @@ if [[ "$seeded_count" != "2" ]]; then
   exit 1
 fi
 
+saas_seeded_count="$(
+compose exec -T postgres-saas psql "$SAAS_DB_URL_EXEC" -At -c "SELECT count(*) FROM org_api_keys WHERE api_key_hash IN ('${API_KEY_HASH}', '${OPERATOR_API_KEY_HASH}');"
+)"
+if [[ "$saas_seeded_count" != "2" ]]; then
+  echo "Seed verification failed: expected 2 local API keys in saas DB, got ${saas_seeded_count}" >&2
+  exit 1
+fi
+
 echo "Seeding demo alert rule..."
 curl -sS -H "X-NEXUS-CORE-KEY: ${API_KEY}" -H "Content-Type: application/json" \
   -d '{"name":"high-deny-rate","metric":"deny_rate","threshold":0.3,"webhook_url":"http://mock-tools:8081/echo","window_seconds":300,"cooldown_seconds":600,"enabled":true}' \
-  "http://localhost:${HTTP_PORT}/v1/alert-rules" >/dev/null 2>&1 || true
+  "http://localhost:${SAAS_HTTP_PORT}/v1/alert-rules" >/dev/null 2>&1 || true
 
 echo "NEXUS_DEMO_API_KEY=$API_KEY"
 

@@ -20,4 +20,4 @@
 
 - Existing external header names used by clients.
 - Existing metric namespace `nexus_gateway_*` used by dashboards/alerts.
-- Error codes catalog (`shared/contracts/error-codes.json`).
+- Error codes catalog (`pkgs/contracts/error-codes.json`).

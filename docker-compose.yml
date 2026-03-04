@@ -16,6 +16,23 @@ services:
       timeout: 3s
       retries: 30
 
+  postgres-saas:
+    restart: unless-stopped
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: nexus_saas
+    ports:
+      - "${NEXUS_SAAS_POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_saas_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_saas"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   redis:
     restart: unless-stopped
     image: redis:7-alpine
@@ -40,10 +57,15 @@ services:
       NEXUS_AI_OPERATORS_URL: "${NEXUS_AI_OPERATORS_URL}"
       NEXUS_AI_OPERATORS_INTERNAL_KEY: "${NEXUS_AI_OPERATORS_INTERNAL_KEY}"
       NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081}"
+      NEXUS_SAAS_URL: "${NEXUS_SAAS_URL:-http://nexus-saas:8082}"
+      NEXUS_SAAS_INTERNAL_KEY: "${NEXUS_SAAS_INTERNAL_KEY}"
+      NEXUS_SAAS_TIMEOUT_MS: "${NEXUS_SAAS_TIMEOUT_MS:-300}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      nexus-saas:
         condition: service_healthy
     ports:
       - "${NEXUS_HTTP_PORT}:8080"
@@ -55,6 +77,31 @@ services:
       retries: 30
     networks:
       default: {}
+
+  nexus-saas:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: nexus-saas/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NEXUS_SAAS_DATABASE_URL: "${NEXUS_SAAS_DATABASE_URL}"
+      NEXUS_SAAS_INTERNAL_KEY: "${NEXUS_SAAS_INTERNAL_KEY}"
+      NEXUS_CORE_URL: "${NEXUS_CORE_URL:-http://nexus-core:8080}"
+      NEXUS_AI_OPERATORS_URL: "${NEXUS_AI_OPERATORS_URL:-http://nexus-ai-operators:8000}"
+      NEXUS_AI_OPERATORS_INTERNAL_KEY: "${NEXUS_AI_OPERATORS_INTERNAL_KEY}"
+      NEXUS_HTTP_PORT: 8082
+    depends_on:
+      postgres-saas:
+        condition: service_healthy
+    ports:
+      - "${NEXUS_SAAS_HTTP_PORT:-8082}:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/health >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   mock-tools:
     restart: unless-stopped
@@ -110,8 +157,8 @@ services:
     env_file:
       - .env
     environment:
-      NEXUS_CORE_BASE_URL: "http://nexus-core:8080"
-      NEXUS_CORE_API_KEY: "${NEXUS_OPERATOR_API_KEY}"
+      NEXUS_SAAS_BASE_URL: "http://nexus-saas:8082"
+      NEXUS_SAAS_API_KEY: "${NEXUS_OPERATOR_API_KEY}"
       OPERATOR_PORT: "${NEXUS_OPERATOR_PORT}"
       OPERATOR_INTERNAL_KEY: "${OPERATOR_INTERNAL_KEY}"
       LLM_BACKEND: "${LLM_BACKEND:-fallback}"
@@ -120,7 +167,7 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}"
     depends_on:
-      nexus-core:
+      nexus-saas:
         condition: service_healthy
       nexus-control-operators:
         condition: service_started
@@ -138,15 +185,11 @@ services:
       context: .
       dockerfile: nexus-tower/Dockerfile
       args:
-        VITE_NEXUS_CORE_URL: "${VITE_NEXUS_CORE_URL}"
-        VITE_NEXUS_AI_OPERATORS_URL: "${VITE_NEXUS_AI_OPERATORS_URL}"
+        VITE_NEXUS_SAAS_URL: "${VITE_NEXUS_SAAS_URL}"
         VITE_NEXUS_API_KEY: "${VITE_NEXUS_API_KEY}"
         VITE_NEXUS_SCOPES: "${VITE_NEXUS_SCOPES}"
-        VITE_AI_OPERATORS_ACTION_KEY: "${VITE_AI_OPERATORS_ACTION_KEY}"
     depends_on:
-      nexus-core:
-        condition: service_healthy
-      nexus-ai-operators:
+      nexus-saas:
         condition: service_healthy
     ports:
       - "${NEXUS_TOWER_PORT}:4173"
@@ -186,4 +229,5 @@ services:
 
 volumes:
   postgres_data:
+  postgres_saas_data:
   ollama_data:

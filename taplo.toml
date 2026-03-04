@@ -1,0 +1,6 @@
+# Taplo/Even Better TOML config - disable strict schema for Air config files
+[[rule]]
+include = ["**/.air*.toml"]
+
+[rule.schema]
+enabled = false

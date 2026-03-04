@@ -23,6 +23,8 @@ type Handler struct{ uc egressUsecase }
 
 func NewHandler(uc egressUsecase) *Handler { return &Handler{uc: uc} }
 
+func AsEgressUsecase(uc *Usecases) egressUsecase { return uc }
+
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/tools/:name/egress-rules", h.upsert)
 	rg.GET("/tools/:name/egress-rules", h.list)

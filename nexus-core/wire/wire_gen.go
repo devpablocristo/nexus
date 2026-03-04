@@ -9,25 +9,20 @@ package wire
 import (
 	"nexus-core/cmd/config"
 	"nexus-core/internal/a2a"
-	"nexus-core/internal/actions"
+	"nexus-core/internal/actionoverrides"
 	"nexus-core/internal/admin"
-	"nexus-core/internal/assistant"
+	"nexus-core/internal/approval"
 	"nexus-core/internal/audit"
 	"nexus-core/internal/egress"
-	"nexus-core/internal/events"
 	"nexus-core/internal/gateway"
 	"nexus-core/internal/gateway/executor/telemetry"
 	"nexus-core/internal/identity"
-	"nexus-core/internal/incidents"
 	"nexus-core/internal/mcp"
 	"nexus-core/internal/org"
 	"nexus-core/internal/policy"
-	"nexus-core/internal/policyproposal"
 	"nexus-core/internal/secrets"
-	"nexus-core/internal/alerts"
-	"nexus-core/internal/approval"
-	"nexus-core/internal/session"
 	"nexus-core/internal/tool"
+	"nexus-core/internal/usagemetering"
 )
 
 // Injectors from wire.go:
@@ -43,45 +38,26 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	}
 	httpServerConfig := ProvideHTTPServerConfig(cfg)
 	repository := org.NewRepository(db)
-	authUsecase := org.NewUsecases(repository)
-	orgHandler := org.NewHandler(repository)
+	usecases := org.NewUsecases(repository)
 	verifier := NewJWKSVerifier(serviceConfig)
 	identityConfig := NewIdentityConfig(serviceConfig)
-	service := identity.NewUsecases(verifier, identityConfig)
-	handlerFunc := NewAuthMiddleware(logger, serviceConfig, authUsecase, service)
+	identityUsecases := identity.NewUsecases(verifier, identityConfig)
+	handlerFunc := NewAuthMiddleware(logger, serviceConfig, usecases, identityUsecases)
 	toolRepository := tool.NewRepository(db)
 	adminRepository := admin.NewRepository(db)
 	tenantLimitsPort := ProvideToolTenantLimits(adminRepository)
 	compilerCache := NewSchemaCache()
-	serviceImpl := tool.NewUsecases(toolRepository, tenantLimitsPort, compilerCache)
-	handler := tool.NewHandler(serviceImpl)
+	toolUsecases := tool.NewUsecases(toolRepository, tenantLimitsPort, compilerCache)
+	handler := ProvideToolHandler(toolUsecases)
 	policyRepository := policy.NewRepository(db)
-	toolLookupPort := ProvidePolicyToolLookup(serviceImpl)
+	toolLookupPort := ProvidePolicyToolLookup(toolUsecases)
 	policyUsecases := policy.NewUsecases(policyRepository, toolLookupPort)
-	policyHandler := policy.NewHandler(policyUsecases)
+	policyUsecase := policy.AsPolicyUsecase(policyUsecases)
+	policyHandler := policy.NewHandler(policyUsecase)
 	auditRepository := audit.NewRepository(db)
 	auditUsecases := audit.NewUsecases(auditRepository)
-	auditHandler := audit.NewHandler(auditUsecases)
-	adminService := admin.NewUsecases(adminRepository)
-	adminHandler := admin.NewHandler(adminService)
-	eventsRepository := events.NewRepository(db)
-	eventsUsecases := events.NewUsecases(eventsRepository)
-	eventsHandler := events.NewHandler(eventsUsecases)
-	actionsRepository := actions.NewRepository(db)
-	eventSink := ProvideActionsEventSink(eventsUsecases)
-	actionsService := actions.NewUsecases(actionsRepository, eventSink)
-	actionsHandler := actions.NewHandler(actionsService)
-	incidentsRepository := incidents.NewRepository(db)
-	incidentsEventSink := ProvideIncidentsEventSink(eventsUsecases)
-	incidentsService := incidents.NewUsecases(incidentsRepository, incidentsEventSink)
-	incidentsHandler := incidents.NewHandler(incidentsService)
-	policyproposalRepository := policyproposal.NewRepository(db)
-	policyproposalEventSink := ProvidePolicyProposalEventSink(eventsUsecases)
-	policyproposalService := policyproposal.NewUsecases(policyproposalRepository, policyproposalEventSink)
-	policyproposalHandler := policyproposal.NewHandler(policyproposalService)
-	assistantConfig := ProvideAssistantConfig()
-	assistantService := assistant.NewUsecases(assistantConfig)
-	assistantHandler := assistant.NewHandler(assistantService)
+	auditUsecase := audit.AsAuditUsecase(auditUsecases)
+	auditHandler := audit.NewHandler(auditUsecase)
 	toolRepoPort := ProvideGatewayToolRepo(toolRepository)
 	policyRepoPort := ProvideGatewayPolicyRepo(policyRepository)
 	auditRepoPort := ProvideGatewayAuditRepo(auditRepository)
@@ -93,7 +69,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	secretsRepository := secrets.NewRepository(db, aesgcm)
 	secretRepoPort := ProvideGatewaySecretRepo(secretsRepository)
 	egressRepository := egress.NewRepository(db)
-	egressToolLookupPort := ProvideEgressToolLookup(serviceImpl)
+	egressToolLookupPort := ProvideEgressToolLookup(toolUsecases)
 	egressUsecases := egress.NewUsecases(egressRepository, egressToolLookupPort)
 	egressPort := ProvideGatewayEgressPort(egressUsecases)
 	adapter, cleanup2, err := NewRateLimiter(serviceConfig)
@@ -107,44 +83,45 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	idempotencyRepository := gateway.NewIdempotencyRepository(db)
 	idempotencyPort := ProvideGatewayIdempotencyRepo(idempotencyRepository)
 	gatewayTenantLimitsPort := ProvideGatewayTenantCaps(adminRepository)
-	actionOverridesPort := ProvideGatewayActionOverrides(actionsService)
+	actionoverridesRepository := actionoverrides.NewRepository()
+	approvalRepository := approval.NewRepository(db)
+	approvalUsecases := approval.NewUsecases(approvalRepository)
+	gatewayAdapter := approval.NewGatewayAdapter(approvalUsecases)
+	approvalPort := ProvideGatewayApprovalPort(gatewayAdapter)
 	runMetrics := telemetry.NewRunMetrics()
 	runMetricsPort := ProvideGatewayMetrics(runMetrics)
 	evaluator := policy.NewEvaluator()
 	detector := NewDLPDetector()
 	gatewayConfig := ProvideGatewayConfig(serviceConfig)
-	approvalRepo := approval.NewRepository(db)
-	approvalSvc := approval.NewUsecases(approvalRepo)
-	approvalAdapter := approval.NewGatewayAdapter(approvalSvc)
-	approvalHandler := approval.NewHandler(approvalSvc)
-	alertsRepo := alerts.NewRepository(db)
-	alertsMetrics := alerts.NewAuditMetricsSource(db)
-	alertsSvc := alerts.NewUsecases(alertsRepo, alertsMetrics, logger)
-	alertsHandler := alerts.NewHandler(alertsSvc)
-	sessionRepo := session.NewRepository(db)
-	sessionSvc := session.NewUsecases(sessionRepo)
-	sessionHandler := session.NewHandler(sessionSvc)
-	gatewayService := gateway.NewUsecases(toolRepoPort, policyRepoPort, auditRepoPort, secretRepoPort, egressPort, rateLimiterPort, httpExecutorPort, idempotencyPort, gatewayTenantLimitsPort, actionOverridesPort, approvalAdapter, runMetricsPort, compilerCache, evaluator, detector, gatewayConfig, logger)
-	gatewayHandler := gateway.NewHandler(gatewayService)
-	secretsToolLookupPort := ProvideSecretsToolLookup(serviceImpl)
+	gatewayUsecases := gateway.NewUsecases(toolRepoPort, policyRepoPort, auditRepoPort, secretRepoPort, egressPort, rateLimiterPort, httpExecutorPort, idempotencyPort, gatewayTenantLimitsPort, actionoverridesRepository, approvalPort, runMetricsPort, compilerCache, evaluator, detector, gatewayConfig, logger)
+	gatewayHandler := ProvideGatewayHandler(gatewayUsecases)
+	secretsToolLookupPort := ProvideSecretsToolLookup(toolUsecases)
 	secretsUsecases := secrets.NewUsecases(secretsRepository, secretsToolLookupPort)
-	secretsHandler := secrets.NewHandler(secretsUsecases)
-	egressHandler := egress.NewHandler(egressUsecases)
-	toolPort := ProvideMCPToolPort(serviceImpl)
-	runPort := ProvideMCPRunPort(gatewayService)
-	mcpService := mcp.NewUsecases(toolPort, runPort)
-	mcpHandler := mcp.NewHandler(mcpService)
-	a2aRunPort := ProvideA2ARunPort(gatewayService)
-	a2aService := a2a.NewUsecases(a2aRunPort)
-	a2aHandler := a2a.NewHandler(a2aService)
+	secretsUsecase := secrets.AsSecretsUsecase(secretsUsecases)
+	secretsHandler := secrets.NewHandler(secretsUsecase)
+	egressUsecase := egress.AsEgressUsecase(egressUsecases)
+	egressHandler := egress.NewHandler(egressUsecase)
+	toolPort := ProvideMCPToolPort(toolUsecases)
+	runPort := ProvideMCPRunPort(gatewayUsecases)
+	mcpUsecases := mcp.NewUsecases(toolPort, runPort)
+	mcpUsecase := mcp.AsMCPUsecase(mcpUsecases)
+	mcpHandler := mcp.NewHandler(mcpUsecase)
+	a2aRunPort := ProvideA2ARunPort(gatewayUsecases)
+	a2aUsecases := a2a.NewUsecases(a2aRunPort)
+	a2aUsecase := a2a.AsA2AUsecase(a2aUsecases)
+	a2aHandler := a2a.NewHandler(a2aUsecase)
 	oidcConfig := NewOIDCConfig(serviceConfig)
 	discoveryClient := NewOIDCDiscoveryClient(oidcConfig)
 	tokenExchanger := NewOIDCTokenExchanger(oidcConfig, discoveryClient)
-	oidcHandler := NewOIDCHandler(oidcConfig, discoveryClient, tokenExchanger, service)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, adminHandler, eventsHandler, actionsHandler, incidentsHandler, policyproposalHandler, assistantHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler, a2aHandler, oidcHandler, approvalHandler, alertsHandler, sessionHandler, orgHandler)
+	oidcHandler := NewOIDCHandler(oidcConfig, discoveryClient, tokenExchanger, identityUsecases)
+	approvalHandler := approval.NewHandler(approvalUsecases)
+	orgHandler := org.NewHandler(repository)
+	usagemeteringRepository := usagemetering.NewRepository(db)
+	apiCallsMiddlewareFunc := usagemetering.NewAPICallsMiddleware(usagemeteringRepository)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, policyHandler, auditHandler, gatewayHandler, secretsHandler, egressHandler, mcpHandler, a2aHandler, oidcHandler, approvalHandler, orgHandler, apiCallsMiddlewareFunc)
 	apiConfig := ProvideAPIConfig(cfg)
 	server := NewHTTPServer(apiConfig, engine)
-	app := NewApp(engine, server, actionsService)
+	app := NewApp(engine, server)
 	return app, func() {
 		cleanup2()
 		cleanup()

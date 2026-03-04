@@ -14,5 +14,6 @@ var SecretsSet = wire.NewSet(
 	wire.Bind(new(secrets.RepositoryPort), new(*secrets.Repository)),
 	ProvideSecretsToolLookup,
 	secrets.NewUsecases,
+	secrets.AsSecretsUsecase,
 	secrets.NewHandler,
 )

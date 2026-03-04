@@ -28,6 +28,10 @@ func NewHandler(uc a2aUsecase) *Handler {
 	return &Handler{uc: uc}
 }
 
+func AsA2AUsecase(uc *Usecases) a2aUsecase {
+	return uc
+}
+
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/a2a/call", h.call)
 }

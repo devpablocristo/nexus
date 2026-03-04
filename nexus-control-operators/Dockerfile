@@ -5,13 +5,13 @@ WORKDIR /src
 RUN apk add --no-cache git
 
 COPY nexus-control-operators/go.mod nexus-control-operators/go.sum ./nexus-control-operators/
-COPY pkg/go.mod pkg/go.sum ./pkg/
+COPY pkgs/go-pkg/go.mod pkgs/go-pkg/go.sum ./pkgs/go-pkg/
 WORKDIR /src/nexus-control-operators
 RUN go mod download
 
 WORKDIR /src
 COPY nexus-control-operators ./nexus-control-operators
-COPY pkg ./pkg
+COPY pkgs/go-pkg ./pkgs/go-pkg
 
 WORKDIR /src/nexus-control-operators
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nexus-control-operators ./cmd/ops-workers

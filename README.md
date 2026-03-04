@@ -5,6 +5,7 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 ## Architecture
 
 - **nexus-core**: deterministic gateway/data-plane — run/simulate, policies, DLP, egress, idempotency, audit.
+- **nexus-saas**: SaaS business-plane — tenant plans, limits, usage metering, SaaS admin.
 - **nexus-control-operators**: deterministic control-plane workers (Go) — sentry, coordinator, mitigation, recovery.
 - **nexus-ai-operators**: AI-operated service (Python) — risk scoring, policy proposals, assistant-facing intelligence.
 - **nexus-tower**: supervision UI — overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.
@@ -35,6 +36,7 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 
 ```text
 /nexus-core        Go backend (gateway/data plane)
+/nexus-saas        Go backend (SaaS business plane)
 /nexus-control-operators  Dedicated deterministic control-plane service (Go workers image)
 /nexus-ai-operators  Python AI operators service
 /nexus-tower       React supervision UI
@@ -117,11 +119,11 @@ const resp = await client.run('echo', { hello: 'world' });
 
 ## Contracts
 
-Shared contracts under `shared/`:
-- `shared/contracts/openapi.nexus-core.snapshot.yaml`
-- `shared/contracts/events.schema.json`
-- `shared/contracts/world-events.schema.json`
-- `shared/contracts/error-codes.json`
+Shared contracts under `pkgs/contracts/`:
+- `pkgs/contracts/openapi.nexus-core.snapshot.yaml`
+- `pkgs/contracts/events.schema.json`
+- `pkgs/contracts/world-events.schema.json`
+- `pkgs/contracts/error-codes.json`
 
 ## Agent-Operated Model
 
@@ -134,5 +136,6 @@ Shared contracts under `shared/`:
 ## Docs
 
 - [`docs/DOC.md`](docs/DOC.md) — Full technical reference (pipeline, endpoints, directory structure, SDKs).
+- [`docs/SERVICE_BOUNDARIES.md`](docs/SERVICE_BOUNDARIES.md) — Ownership boundaries between core and saas.
 - [`docs/AGENT_OPERATED_MODEL.md`](docs/AGENT_OPERATED_MODEL.md) — Agent-operated model and HITL flow.
 - [`docs/NAMING_AND_BOUNDARIES.md`](docs/NAMING_AND_BOUNDARIES.md) — Names, headers, compatibility.

@@ -1,12 +1,16 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,11 +21,25 @@ import (
 )
 
 type Repository struct {
-	db *gorm.DB
+	db          *gorm.DB
+	saasURL     string
+	saasKey     string
+	saasTimeout time.Duration
 }
 
 func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+	timeoutMS := 300
+	if raw := strings.TrimSpace(os.Getenv("NEXUS_SAAS_TIMEOUT_MS")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			timeoutMS = v
+		}
+	}
+	return &Repository{
+		db:          db,
+		saasURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("NEXUS_SAAS_URL")), "/"),
+		saasKey:     strings.TrimSpace(os.Getenv("NEXUS_SAAS_INTERNAL_KEY")),
+		saasTimeout: time.Duration(timeoutMS) * time.Millisecond,
+	}
 }
 
 func (r *Repository) Create(ctx context.Context, ev auditdomain.AuditEvent) error {
@@ -31,7 +49,7 @@ func (r *Repository) Create(ctx context.Context, ev auditdomain.AuditEvent) erro
 	outB, _ := json.Marshal(ev.OutputRedacted)
 	scopesB, _ := json.Marshal(ev.ActorScopes)
 	stageDurB, _ := json.Marshal(ev.StageDurationsMS)
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var prevHash *string
 		var last models.AuditEvent
 		err := tx.Select("event_hash").
@@ -80,6 +98,11 @@ func (r *Repository) Create(ctx context.Context, ev auditdomain.AuditEvent) erro
 		}
 		return tx.Create(&m).Error
 	})
+	if err != nil {
+		return err
+	}
+	r.forwardOperationalEvent(ev)
+	return nil
 }
 
 func (r *Repository) Query(ctx context.Context, orgID uuid.UUID, q auditdomain.Query) ([]auditdomain.AuditEvent, error) {
@@ -281,4 +304,48 @@ func intPtrToString(v *int) string {
 		return ""
 	}
 	return strconv.Itoa(*v)
+}
+
+type forwardedOperationalEvent struct {
+	OrgID     string         `json:"org_id"`
+	EventType string         `json:"event_type"`
+	Payload   map[string]any `json:"payload"`
+}
+
+func (r *Repository) forwardOperationalEvent(ev auditdomain.AuditEvent) {
+	if r.saasURL == "" || r.saasKey == "" {
+		return
+	}
+	payload := map[string]any{
+		"request_id":  ev.RequestID,
+		"tool_name":   ev.ToolName,
+		"decision":    string(ev.Decision),
+		"status":      string(ev.Status),
+		"latency_ms":  ev.LatencyMS,
+		"event_hash":  ev.EventHash,
+		"dlp_summary": ev.DLPSummary,
+	}
+	body, err := json.Marshal(forwardedOperationalEvent{
+		OrgID:     ev.OrgID.String(),
+		EventType: "tool.call.completed",
+		Payload:   payload,
+	})
+	if err != nil {
+		return
+	}
+	go func(raw []byte) {
+		ctx, cancel := context.WithTimeout(context.Background(), r.saasTimeout)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.saasURL+"/internal/events", bytes.NewReader(raw))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-NEXUS-SAAS-KEY", r.saasKey)
+		resp, err := (&http.Client{Timeout: r.saasTimeout}).Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+	}(body)
 }

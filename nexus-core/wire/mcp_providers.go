@@ -15,5 +15,6 @@ var MCPSet = wire.NewSet(
 	ProvideMCPToolPort,
 	ProvideMCPRunPort,
 	mcp.NewUsecases,
+	mcp.AsMCPUsecase,
 	mcp.NewHandler,
 )

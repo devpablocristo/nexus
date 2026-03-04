@@ -8,7 +8,4 @@ import (
 
 var AdminSet = wire.NewSet(
 	admin.NewRepository,
-	wire.Bind(new(admin.RepositoryPort), new(*admin.Repository)),
-	admin.NewUsecases,
-	admin.NewHandler,
 )

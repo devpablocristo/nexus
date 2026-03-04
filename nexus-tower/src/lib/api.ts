@@ -10,7 +10,8 @@ import type {
   SessionItem,
 } from './types';
 
-const baseUrl = import.meta.env.VITE_NEXUS_CORE_URL || 'http://localhost:8080';
+const baseUrl =
+  import.meta.env.VITE_NEXUS_SAAS_URL || import.meta.env.VITE_NEXUS_CORE_URL || 'http://localhost:8082';
 const apiKey = import.meta.env.VITE_NEXUS_API_KEY || '';
 const scopes = import.meta.env.VITE_NEXUS_SCOPES || 'admin:console:read,admin:console:write,audit:read';
 
@@ -129,17 +130,5 @@ export async function getSession(sessionId: string): Promise<SessionItem> {
 }
 
 export async function aiOperatorsTick(): Promise<{ status: string }> {
-  const aiOperatorsBase = import.meta.env.VITE_NEXUS_AI_OPERATORS_URL || 'http://localhost:8000';
-  const key = import.meta.env.VITE_AI_OPERATORS_ACTION_KEY || '';
-  const res = await fetch(`${aiOperatorsBase}/v1/internal/tick`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Operator-Key': key,
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`AI operators ${res.status}`);
-  }
-  return res.json() as Promise<{ status: string }>;
+  return call('/v1/assistant/tick', { method: 'POST', body: JSON.stringify({}) });
 }
