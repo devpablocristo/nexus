@@ -5,8 +5,11 @@
 #   cp .env.example .env
 #   make up && make migrate-up && make seed
 #   export NEXUS_API_KEY="<seed-output-value>"
-#   bash scripts/demo.sh
+#   bash scripts/demo/demo.sh
 set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT_DIR"
 
 BASE="http://localhost:${NEXUS_HTTP_PORT:-8080}"
 : "${NEXUS_API_KEY:?Set NEXUS_API_KEY from seed output}"

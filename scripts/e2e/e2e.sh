@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 if [[ ! -f ".env" ]]; then
@@ -132,7 +132,7 @@ echo "[e2e] migrate up"
 make migrate-up >/dev/null
 
 echo "[e2e] seed demo"
-SEED_OUT="$(bash scripts/seed_demo.sh)"
+SEED_OUT="$(bash scripts/seed/seed_demo.sh)"
 echo "$SEED_OUT" | match "^NEXUS_DEMO_API_KEY=" >/dev/null || fail "seed did not print api key"
 API_KEY="$(echo "$SEED_OUT" | match "^NEXUS_DEMO_API_KEY=" | tail -n1 | cut -d= -f2)"
 [[ -n "$API_KEY" ]] || fail "empty api key"

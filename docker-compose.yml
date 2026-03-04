@@ -60,6 +60,7 @@ services:
       NEXUS_SAAS_URL: "${NEXUS_SAAS_URL:-http://nexus-saas:8082}"
       NEXUS_SAAS_INTERNAL_KEY: "${NEXUS_SAAS_INTERNAL_KEY}"
       NEXUS_SAAS_TIMEOUT_MS: "${NEXUS_SAAS_TIMEOUT_MS:-300}"
+      NEXUS_OPERATOR_API_KEY: "${NEXUS_OPERATOR_API_KEY}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,11 +145,11 @@ services:
     env_file:
       - .env
     environment:
-      NEXUS_SAAS_DATABASE_URL: "${NEXUS_SAAS_DATABASE_URL}"
+      NEXUS_CORE_URL: "${NEXUS_CORE_URL:-http://nexus-core:8080}"
+      OPERATOR_INTERNAL_KEY: "${OPERATOR_INTERNAL_KEY}"
+      NEXUS_DEFAULT_ORG_ID: "${NEXUS_DEFAULT_ORG_ID:-}"
     depends_on:
-      postgres-saas:
-        condition: service_healthy
-      redis:
+      nexus-core:
         condition: service_healthy
   nexus-ai-operators:
     restart: unless-stopped
@@ -158,8 +159,8 @@ services:
     env_file:
       - .env
     environment:
-      NEXUS_SAAS_BASE_URL: "http://nexus-saas:8082"
-      NEXUS_SAAS_API_KEY: "${NEXUS_OPERATOR_API_KEY}"
+      NEXUS_CORE_BASE_URL: "http://nexus-core:8080"
+      NEXUS_CORE_API_KEY: "${OPERATOR_INTERNAL_KEY}"
       OPERATOR_PORT: "${NEXUS_OPERATOR_PORT}"
       OPERATOR_INTERNAL_KEY: "${OPERATOR_INTERNAL_KEY}"
       LLM_BACKEND: "${LLM_BACKEND:-fallback}"
@@ -168,7 +169,7 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}"
     depends_on:
-      nexus-saas:
+      nexus-core:
         condition: service_healthy
       nexus-control-operators:
         condition: service_started

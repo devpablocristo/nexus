@@ -1,3 +1,4 @@
+// Package wire wires Nexus Core application dependencies and routes.
 package wire
 
 import (
@@ -15,6 +16,7 @@ import (
 	"nexus-core/internal/gateway"
 	"nexus-core/internal/identity"
 	"nexus-core/internal/mcp"
+	"nexus-core/internal/operatorproxy"
 	"nexus-core/internal/org"
 	"nexus-core/internal/policy"
 	"nexus-core/internal/secrets"
@@ -58,6 +60,7 @@ func NewRouter(
 	prom.Use(r)
 
 	registerHealthAndDocs(r, db, serviceConfigForRoutes{SwaggerCDN: cfg.SwaggerCDN})
+	operatorproxy.NewHandlerFromEnv().Register(r)
 
 	// OIDC endpoints are public (no auth middleware) because they are
 	// the entry point for authentication itself.

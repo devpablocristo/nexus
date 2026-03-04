@@ -9,17 +9,17 @@ class Settings(BaseSettings):
     app_env: str = Field(default='dev', alias='OPERATOR_ENV')
     app_port: int = Field(default=8000, alias='OPERATOR_PORT')
 
-    saas_base_url: str = Field(
-        default='http://nexus-saas:8082',
-        validation_alias=AliasChoices('NEXUS_SAAS_BASE_URL', 'NEXUS_CORE_BASE_URL'),
+    core_base_url: str = Field(
+        default='http://nexus-core:8080',
+        validation_alias=AliasChoices('NEXUS_CORE_BASE_URL', 'NEXUS_SAAS_BASE_URL'),
     )
-    saas_api_key: str = Field(
-        default='nexus-ai-operators-local-key',
-        validation_alias=AliasChoices('NEXUS_SAAS_API_KEY', 'NEXUS_CORE_API_KEY'),
+    core_api_key: str = Field(
+        default='operator-internal-key',
+        validation_alias=AliasChoices('NEXUS_CORE_API_KEY', 'OPERATOR_INTERNAL_KEY', 'NEXUS_SAAS_API_KEY'),
     )
-    saas_timeout_seconds: float = Field(
+    core_timeout_seconds: float = Field(
         default=5.0,
-        validation_alias=AliasChoices('NEXUS_SAAS_TIMEOUT_SECONDS', 'NEXUS_CORE_TIMEOUT_SECONDS'),
+        validation_alias=AliasChoices('NEXUS_CORE_TIMEOUT_SECONDS', 'NEXUS_SAAS_TIMEOUT_SECONDS'),
     )
 
     poll_interval_seconds: int = Field(default=10, alias='OPERATOR_POLL_INTERVAL_SECONDS')

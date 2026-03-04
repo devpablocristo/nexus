@@ -1,3 +1,4 @@
+// Package audit provides persistence for audit events.
 package audit
 
 import (
@@ -318,6 +319,7 @@ func (r *Repository) forwardOperationalEvent(ev auditdomain.AuditEvent) {
 	}
 	payload := map[string]any{
 		"request_id":  ev.RequestID,
+		"org_id":      ev.OrgID.String(),
 		"tool_name":   ev.ToolName,
 		"decision":    string(ev.Decision),
 		"status":      string(ev.Status),

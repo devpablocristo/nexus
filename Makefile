@@ -55,7 +55,7 @@ cleanup-idempotency:
 seed:
 	@echo "Waiting for core to be healthy..."
 	@$(COMPOSE) up -d --wait $(CORE_SERVICE) postgres
-	bash scripts/seed_demo.sh
+	bash scripts/seed/seed_demo.sh
 
 core-test:
 	cd $(CORE_DIR) && go test ./...
@@ -113,17 +113,17 @@ reset-nexus:
 	$(MAKE) status
 
 e2e:
-	bash scripts/e2e.sh
+	bash scripts/e2e/e2e.sh
 
 e2e-first:
 	@# Primer caso: run echo (requiere: make up, make migrate-up, make seed)
 	bash scripts/e2e/01_run_echo.sh
 
 jwt-e2e:
-	bash scripts/e2e_jwt.sh
+	bash scripts/e2e/e2e_jwt.sh
 
 quickstart-admin:
-	bash scripts/quickstart_admin.sh
+	bash scripts/admin/quickstart_admin.sh
 
 demo-doorjam:
 	$(MAKE) migrate-sim-engine

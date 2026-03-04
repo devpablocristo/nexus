@@ -1,8 +1,10 @@
+// Package config loads service configuration from environment variables.
 package config
 
 import (
 	"errors"
 	"os"
+	"strings"
 )
 
 // loadDB carga configuración de base de datos.
@@ -11,8 +13,8 @@ func loadDB(cfg *Config) error {
 	if cfg.DB.DatabaseURL == "" {
 		cfg.DB.DatabaseURL = os.Getenv("NEXUS_DATABASE_URL")
 	}
-	if cfg.DB.DatabaseURL == "" {
-		return errors.New("NEXUS_SAAS_DATABASE_URL required (or fallback NEXUS_DATABASE_URL)")
+	if cfg.DB.DatabaseURL == "" && strings.TrimSpace(os.Getenv("NEXUS_CORE_URL")) == "" {
+		return errors.New("set NEXUS_CORE_URL for contract mode or configure NEXUS_SAAS_DATABASE_URL/NEXUS_DATABASE_URL")
 	}
 	return nil
 }
