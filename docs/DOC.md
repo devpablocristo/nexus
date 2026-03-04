@@ -21,10 +21,10 @@ En lugar de que un agente llame directo a una API (pagos, CRM, etc.), el agente 
    - Plano de control interno: monitorea eventos y ejecuta respuestas deterministas.
    - Workers activos: `sentry`, `coordinator`, `mitigation`, `recovery`.
    - No forma parte del path síncrono de `/v1/run` (opera en background).
-   - Se despliega desde `nexus-core/cmd/ops-workers` como servicio separado en compose.
+   - Se despliega como servicio dedicado (`nexus-control-operators`).
 
-3. **nexus-external-operators** (IA, Python)  
-   - Servicio externo de operadores con IA/ML (evolución del `nexus-operator` actual).
+3. **nexus-ai-operators** (IA, Python)  
+   - Servicio externo de operadores con IA/ML.
    - Consume APIs de Nexus (sin acceso directo a DB).
    - Objetivo: diagnóstico inteligente, policy suggestions, automaciones asistidas por IA.
    - Debe invocar herramientas de control y no aplicar cambios críticos fuera de controles deterministas.
@@ -231,7 +231,6 @@ En local, el seed crea el tool **echo** que apunta a `http://mock-tools:8081/ech
 | `cmd/config` | Carga de configuración desde env (DB, HTTP, auth, OIDC, circuit breaker, etc.) |
 | `cmd/migrate` | Ejecución de migraciones SQL |
 | `cmd/mock-tools` | Servidor mock de tools para pruebas |
-| `cmd/ops-workers` | Proceso del servicio `nexus-control-operators` (workers deterministas: sentry, coordinator, mitigation, recovery) |
 
 ### 2. `internal/` — Módulos por dominio
 

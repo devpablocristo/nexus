@@ -4,8 +4,8 @@
 
 - Product BE name: `nexus-core`.
 - Internal runtime/data plane component: `gateway`.
-- Deterministic control-plane service: `nexus-control-operators` (deployed from `nexus-core/cmd/ops-workers`).
-- External AI operations service: `nexus-external-operators` (implemented in `nexus-operator/` for compatibility).
+- Deterministic control-plane service: `nexus-control-operators` (deployed from `nexus-control-operators/cmd/ops-workers`).
+- AI operations service: `nexus-ai-operators`.
 - Supervision UI: `nexus-tower`.
 - Python SDK: `nexus-sdk` (`sdks/python-sdk`).
 - TypeScript SDK: `nexus-sdk` (`sdks/typescript-sdk`).

@@ -7,4 +7,4 @@ This directory centralizes cross-project contracts for the monorepo:
 - `clients/python/`: Nexus Core Python API client.
 - `shared-types/`: portable TypeScript domain types.
 
-All service-to-service integrations (`nexus-operator`, `nexus-tower`) must use Nexus Core APIs, never direct DB access.
+All service-to-service integrations (`nexus-ai-operators`, `nexus-tower`) must use Nexus Core APIs, never direct DB access.

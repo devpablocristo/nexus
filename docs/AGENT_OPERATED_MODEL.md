@@ -11,7 +11,7 @@
 
 1. Runtime emits events into `operational_events`.
 2. `nexus-control-operators` consumes internal operational streams and executes deterministic controls.
-3. `nexus-external-operators` consumes `/v1/events` with cursor and proposes AI-assisted actions.
+3. `nexus-ai-operators` consumes `/v1/events` with cursor and proposes AI-assisted actions.
 4. Control actions are applied via `/v1/actions/apply`, incidents/proposals via API.
 5. Humans supervise from `nexus-tower` and approve/reject proposal outcomes.
 6. Alert rules fire webhooks when metrics (deny_rate, error_rate, rate_limited_count) exceed thresholds.
@@ -32,11 +32,11 @@
 ## Ask-Agent Flow
 
 - UI: `POST /v1/assistant/query` on Nexus Core.
-- Core proxy: forwards to external operators `/v1/assistant/query` using internal key.
+- Core proxy: forwards to AI operators `/v1/assistant/query` using internal key.
 - Response is structured (`summary`, `tables`, `actions`) and rendered in Tower.
 
 ## Determinism Boundary
 
 - In scope deterministic: `/v1/run`, `/mcp`, `/a2a` and policy/limits/egress/approval enforcement.
-- Out of scope deterministic: external-operators narrative/summarization endpoint.
+- Out of scope deterministic: AI-operators narrative/summarization endpoint.
 - Enforcement decisions are never delegated to LLM.

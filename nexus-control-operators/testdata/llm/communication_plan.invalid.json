@@ -1,0 +1,19 @@
+{
+  "incident_id": "f503f46f-c137-4165-b9ca-999d0d6f328f",
+  "summary": "Se detecto degradacion.",
+  "root_cause_claim": {
+    "value": "rate_limit_bucket_saturated",
+    "confidence": 0.3
+  },
+  "audiences": [
+    {"name": "oncall", "channel": "internal"}
+  ],
+  "drafts": [
+    {
+      "audience": "oncall",
+      "subject": "Incident update",
+      "body": "Investigando",
+      "approval_required": false
+    }
+  ]
+}

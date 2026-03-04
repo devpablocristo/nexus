@@ -23,17 +23,10 @@ services:
 
   nexus-control-operators:
     build:
-      context: ./nexus-core
-      dockerfile: Dockerfile.dev
-    volumes:
-      - ./nexus-core:/src
-    command: ["go", "run", "./cmd/ops-workers"]
+      context: .
+      dockerfile: nexus-control-operators/Dockerfile
 
-  nexus-external-operators:
+  nexus-ai-operators:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
-      - ./nexus-operator:/workspace/nexus-operator
-    networks:
-      default:
-        aliases:
-          - nexus-operator
+      - ./nexus-ai-operators:/workspace/nexus-ai-operators

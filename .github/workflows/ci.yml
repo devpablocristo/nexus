@@ -27,11 +27,28 @@ jobs:
       - name: Docker build (verify only)
         run: docker build -t nexus-core:ci .
 
-  nexus-operator:
+  nexus-control-operators:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: nexus-operator
+        working-directory: nexus-control-operators
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Docker build (verify only)
+        run: docker build -t nexus-control-operators:ci .
+
+  nexus-ai-operators:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nexus-ai-operators
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -67,7 +84,7 @@ jobs:
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: [nexus-core, nexus-operator, nexus-tower]
+    needs: [nexus-core, nexus-control-operators, nexus-ai-operators, nexus-tower]
     steps:
       - uses: actions/checkout@v4
       - name: Create .env from example

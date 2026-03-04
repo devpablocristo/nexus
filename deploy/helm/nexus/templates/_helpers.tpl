@@ -60,20 +60,20 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-nexus-operator labels
+nexus-ai-operators labels
 */}}
 {{- define "nexus.operator.labels" -}}
 {{ include "nexus.labels" . }}
-app.kubernetes.io/name: {{ include "nexus.name" . }}-operator
+app.kubernetes.io/name: {{ include "nexus.name" . }}-ai-operators
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: operator
 {{- end }}
 
 {{/*
-nexus-operator selector labels
+nexus-ai-operators selector labels
 */}}
 {{- define "nexus.operator.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "nexus.name" . }}-operator
+app.kubernetes.io/name: {{ include "nexus.name" . }}-ai-operators
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
@@ -186,7 +186,7 @@ Service names used for inter-component communication
 {{- end }}
 
 {{- define "nexus.operator.serviceName" -}}
-{{ include "nexus.fullname" . }}-operator
+{{ include "nexus.fullname" . }}-ai-operators
 {{- end }}
 
 {{- define "nexus.tower.serviceName" -}}

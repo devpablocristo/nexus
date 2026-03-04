@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/actions/quarantine_tenant_v1.json",
+  "title": "Action quarantine_tenant v1",
+  "type": "object",
+  "required": ["action_type", "scope", "ttl_seconds", "params"],
+  "properties": {
+    "action_type": { "const": "quarantine_tenant" },
+    "scope": {
+      "type": "object",
+      "required": ["level"],
+      "properties": {
+        "level": { "type": "string", "enum": ["org", "actor"] },
+        "org_id": { "type": "string", "format": "uuid" },
+        "actor_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "ttl_seconds": { "type": "integer", "minimum": 1 },
+    "params": {
+      "type": "object",
+      "properties": {
+        "org_id": { "type": "string", "format": "uuid" },
+        "actor_id": { "type": "string", "minLength": 1 },
+        "mode": { "type": "string", "enum": ["soft", "hard"] }
+      },
+      "anyOf": [
+        { "required": ["org_id"] },
+        { "required": ["actor_id"] }
+      ],
+      "additionalProperties": false
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "additionalProperties": false
+}

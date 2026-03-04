@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/events/comms_sent_internal_v1.json",
+  "title": "comms.sent_internal payload v1",
+  "type": "object",
+  "required": ["draft_id", "incident_id", "channel", "sent_at"],
+  "properties": {
+    "draft_id": { "type": "string", "format": "uuid" },
+    "incident_id": { "type": "string", "format": "uuid" },
+    "channel": { "type": "string", "enum": ["internal"] },
+    "sent_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
+}

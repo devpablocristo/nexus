@@ -6,7 +6,7 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 
 - **nexus-core**: deterministic gateway/data-plane — run/simulate, policies, DLP, egress, idempotency, audit.
 - **nexus-control-operators**: deterministic control-plane workers (Go) — sentry, coordinator, mitigation, recovery.
-- **nexus-external-operators**: AI-operated service (Python) — risk scoring, policy proposals, assistant-facing intelligence.
+- **nexus-ai-operators**: AI-operated service (Python) — risk scoring, policy proposals, assistant-facing intelligence.
 - **nexus-tower**: supervision UI — overview, run explorer, timeline, policies, approvals, alerts, sessions, ask-agent, exports.
 - **sdks/**: Python (sync + async) and TypeScript SDKs with LangChain and OpenAI Agents integrations.
 
@@ -35,8 +35,8 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 
 ```text
 /nexus-core        Go backend (gateway/data plane)
-/nexus-core/cmd/ops-workers  Go deterministic control workers (nexus-control-operators service)
-/nexus-operator    Python external operators service (a.k.a. nexus-external-operators)
+/nexus-control-operators  Dedicated deterministic control-plane service (Go workers image)
+/nexus-ai-operators  Python AI operators service
 /nexus-tower       React supervision UI
 /sdks              Python SDK + TypeScript SDK
 /shared            Contracts (OpenAPI, event schemas, error codes)
@@ -127,7 +127,7 @@ Shared contracts under `shared/`:
 
 - External operators **never** write to DB directly.
 - External operators consume `GET /v1/events` and act through Nexus APIs (`/v1/actions/*`, `/v1/incidents`, `/v1/policy-proposals`).
-- Control operators run deterministic workers from `nexus-core/cmd/ops-workers` and react via internal event-store workflows.
+- Control operators run deterministic workers from `nexus-control-operators/cmd/ops-workers` and react via internal event-store workflows.
 - HITL: policies with `require_approval` block execution until a human approves/rejects.
 - Tower does not call LLM directly — routes through `nexus-core /v1/assistant/query`.
 

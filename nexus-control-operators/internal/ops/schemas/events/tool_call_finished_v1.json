@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/events/tool_call_finished_v1.json",
+  "title": "tool_call.finished payload v1",
+  "type": "object",
+  "required": [
+    "request_id",
+    "tool_name",
+    "status",
+    "latency_ms"
+  ],
+  "properties": {
+    "request_id": { "type": "string", "minLength": 1 },
+    "tool_name": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["success", "error", "blocked"] },
+    "decision": { "type": "string", "enum": ["allow", "deny"] },
+    "latency_ms": { "type": "integer", "minimum": 0 },
+    "error_code": { "type": "string" },
+    "http_status": { "type": "integer", "minimum": 100, "maximum": 599 }
+  },
+  "additionalProperties": true
+}

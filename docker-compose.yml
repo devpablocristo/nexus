@@ -91,8 +91,8 @@ services:
   nexus-control-operators:
     restart: unless-stopped
     build:
-      context: ./nexus-core
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: nexus-control-operators/Dockerfile
     env_file:
       - .env
     environment:
@@ -102,13 +102,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: ["/app/ops-workers"]
-
-  nexus-external-operators:
+  nexus-ai-operators:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: nexus-operator/Dockerfile
+      dockerfile: nexus-ai-operators/Dockerfile
     env_file:
       - .env
     environment:
@@ -133,10 +131,6 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
-    networks:
-      default:
-        aliases:
-          - nexus-operator
 
   nexus-tower:
     restart: unless-stopped
@@ -152,7 +146,7 @@ services:
     depends_on:
       nexus-core:
         condition: service_healthy
-      nexus-external-operators:
+      nexus-ai-operators:
         condition: service_healthy
     ports:
       - "${NEXUS_TOWER_PORT}:4173"

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexus.example/schemas/ops/actions/pause_tool_v1.json",
+  "title": "Action pause_tool v1",
+  "type": "object",
+  "required": ["action_type", "scope", "ttl_seconds", "params"],
+  "properties": {
+    "action_type": { "const": "pause_tool" },
+    "scope": {
+      "type": "object",
+      "required": ["level", "org_id", "tool_id"],
+      "properties": {
+        "level": { "const": "tool" },
+        "org_id": { "type": "string", "format": "uuid" },
+        "tool_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "ttl_seconds": { "type": "integer", "minimum": 1 },
+    "params": {
+      "type": "object",
+      "required": ["tool_id"],
+      "properties": {
+        "tool_id": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "additionalProperties": false
+}
