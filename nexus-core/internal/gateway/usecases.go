@@ -29,6 +29,7 @@ import (
 
 type ToolRepoPort interface {
 	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
+	GetByID(ctx context.Context, orgID, toolID uuid.UUID) (tooldomain.Tool, error)
 }
 
 type PolicyRepoPort interface {
@@ -204,20 +205,23 @@ func (u *Usecases) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunReq
 		contextMap = map[string]any{}
 	}
 
-	// 2. Resolución de tool
-	tool, err := u.toolRepo.GetByName(ctx, orgID, req.ToolName)
+	// 2. Resolución de tool (by tool_id if provided, otherwise by tool_name)
+	tool, err := u.resolveTool(ctx, orgID, req.ToolID, req.ToolName)
 	if err != nil {
+		toolRef := req.ToolName
+		if toolRef == "" {
+			toolRef = req.ToolID
+		}
 		var he types.HTTPError
 		if errors.As(err, &he) && he.Code == types.ErrCodeNotFound {
-			// Can't write audit without a valid tool_id due to FK constraints.
 			reason := "tool not found"
 			code := types.ErrCodeNotFound
 			latency := time.Since(start).Milliseconds()
-			u.observeRun(ctx, req.ToolName, string(gwdomain.DecisionDeny), string(gwdomain.RunStatusBlocked), time.Duration(latency)*time.Millisecond)
+			u.observeRun(ctx, toolRef, string(gwdomain.DecisionDeny), string(gwdomain.RunStatusBlocked), time.Duration(latency)*time.Millisecond)
 			u.log.Warn().
 				Str("request_id", requestID).
 				Str("org_id", orgID.String()).
-				Str("tool_name", req.ToolName).
+				Str("tool_ref", toolRef).
 				Str("decision", "deny").
 				Str("status", "blocked").
 				Int64("latency_ms", latency).
@@ -226,7 +230,7 @@ func (u *Usecases) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunReq
 			return gwdomain.RunResponse{
 				RequestID:  requestID,
 				Decision:   gwdomain.DecisionDeny,
-				ToolName:   req.ToolName,
+				ToolName:   toolRef,
 				Status:     gwdomain.RunStatusBlocked,
 				Reason:     &reason,
 				ErrorCode:  &code,
@@ -239,10 +243,11 @@ func (u *Usecases) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunReq
 			Err(err).
 			Str("request_id", requestID).
 			Str("org_id", orgID.String()).
-			Str("tool_name", req.ToolName).
+			Str("tool_ref", toolRef).
 			Msg("tool_lookup_failed")
 		return gwdomain.RunResponse{}, err
 	}
+	req.ToolName = tool.Name
 
 	// 3. Idempotencia
 	isWrite := tool.ActionType == tooldomain.ActionWrite || (tool.ActionType == "" && strings.ToUpper(tool.Method) != "GET")
@@ -573,16 +578,21 @@ func (u *Usecases) runExecuteAndFinish(ctx context.Context, orgID uuid.UUID, req
 func (u *Usecases) Simulate(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.SimulateResponse, error) {
 	st := u.initSimulateState(req)
 
-	tool, err := u.toolRepo.GetByName(ctx, orgID, req.ToolName)
+	tool, err := u.resolveTool(ctx, orgID, req.ToolID, req.ToolName)
 	if err != nil {
+		toolRef := req.ToolName
+		if toolRef == "" {
+			toolRef = req.ToolID
+		}
 		var he types.HTTPError
 		if errors.As(err, &he) && he.Code == types.ErrCodeNotFound {
 			st.explain["stage"] = "tool_lookup"
 			st.explain["result"] = "not_found"
-			return u.simulateDeny(st, tooldomain.Tool{Name: req.ToolName}, "tool not found", types.ErrCodeNotFound, http.StatusNotFound, ""), nil
+			return u.simulateDeny(st, tooldomain.Tool{Name: toolRef}, "tool not found", types.ErrCodeNotFound, http.StatusNotFound, ""), nil
 		}
 		return gwdomain.SimulateResponse{}, err
 	}
+	req.ToolName = tool.Name
 	st.explain["tool_id"] = tool.ID.String()
 	st.explain["tool_name"] = tool.Name
 
@@ -750,6 +760,21 @@ func (u *Usecases) firstMatch(policies []policydomain.Policy, input, contextMap 
 		return &p, reason, parsedLimits{m: lim}, nil
 	}
 	return nil, "", parsedLimits{}, nil
+}
+
+// resolveTool resolves a tool by ID (if provided) or by name. tool_id takes precedence.
+func (u *Usecases) resolveTool(ctx context.Context, orgID uuid.UUID, toolID, toolName string) (tooldomain.Tool, error) {
+	if toolID != "" {
+		id, err := uuid.Parse(toolID)
+		if err != nil {
+			return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "tool_id is not a valid UUID")
+		}
+		return u.toolRepo.GetByID(ctx, orgID, id)
+	}
+	if toolName == "" {
+		return tooldomain.Tool{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "tool_name or tool_id required")
+	}
+	return u.toolRepo.GetByName(ctx, orgID, toolName)
 }
 
 func (u *Usecases) blocked(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, requestID string, toolName string, toolIDVal uuid.UUID, policyID *uuid.UUID, reason string, code string, httpStatus int, start time.Time, input, contextMap map[string]any, idem gwdomain.IdempotencyMeta, timeoutMS int, budgetRemaining *int, stageDur map[string]int64) gwdomain.RunResponse {

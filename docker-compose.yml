@@ -56,6 +56,7 @@ services:
       NEXUS_REDIS_URL: "${NEXUS_REDIS_URL}"
       NEXUS_AI_OPERATORS_URL: "${NEXUS_AI_OPERATORS_URL}"
       NEXUS_AI_OPERATORS_INTERNAL_KEY: "${NEXUS_AI_OPERATORS_INTERNAL_KEY}"
+      NEXUS_CORS_ALLOWED_ORIGINS: "${NEXUS_CORS_ALLOWED_ORIGINS:-*}"
       NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081}"
       NEXUS_SAAS_URL: "${NEXUS_SAAS_URL:-http://nexus-saas:8082}"
       NEXUS_SAAS_INTERNAL_KEY: "${NEXUS_SAAS_INTERNAL_KEY}"
@@ -219,6 +220,9 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
     volumes:
       - ./nexus-core/monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./nexus-core/monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro

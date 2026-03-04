@@ -1,13 +1,24 @@
 ---
-description: Probar antes de afirmar que algo funciona
+description: Probar e iterar antes de devolver cualquier resultado
 globs:
 alwaysApply: true
 ---
 
-# Regla obligatoria
+# Regla obligatoria: probar → corregir → repetir hasta éxito
 
-- **Nunca afirmes que algo "funciona" o "está listo" sin haberlo probado.**
-- Antes de decir que un cambio funciona: ejecutar la prueba relevante (build, test, curl, comando, flujo) y verificar el resultado.
-- Si es un endpoint: hacer la petición y comprobar código/body esperado.
-- Si es un flujo (up, seed, UI): ejecutar los pasos y confirmar que el resultado es el esperado.
-- Si no podés probar en el entorno actual, decilo explícitamente en lugar de afirmar que funciona.
+Antes de devolver **cualquier** resultado al usuario:
+
+1. **Ejecutar la prueba correspondiente** al cambio realizado:
+   - Código Go/Python/TS: `go build`, `go test`, `npm run build`, `pytest`
+   - Endpoint nuevo: `curl` y verificar código HTTP + body esperado
+   - Flujo completo (stack, seed, UI): ejecutar cada paso y confirmar output
+   - Script nuevo: ejecutarlo y verificar que termina sin error
+   - **CRÍTICO – nexus-tower**: el frontend corre como imagen Docker compilada (nginx, puerto 5174→4173). Cualquier cambio a `nexus-tower/src/**` REQUIERE `docker compose build nexus-tower && docker compose up -d --force-recreate nexus-tower` antes de probar en el browser. El hot-reload de Vite NO aplica.
+
+2. **Si falla: corregir y volver al paso 1.** No devolver el resultado hasta que pase.
+
+3. **Solo cuando la prueba pasa**, decirle al usuario que está listo.
+
+4. **Si el entorno no permite probar** (sin red, sin Docker, etc.), decirlo explícitamente — nunca asumir que funciona.
+
+Nunca afirmar "listo", "funciona" o "debería andar" sin evidencia de una ejecución exitosa en este turno.

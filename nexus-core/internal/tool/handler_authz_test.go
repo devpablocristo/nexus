@@ -27,9 +27,21 @@ func (s *toolSvcStub) GetByName(context.Context, uuid.UUID, string) (tooldomain.
 	s.called = true
 	return tooldomain.Tool{}, nil
 }
+func (s *toolSvcStub) GetByID(_ context.Context, _, _ uuid.UUID) (tooldomain.Tool, error) {
+	s.called = true
+	return tooldomain.Tool{}, nil
+}
+func (s *toolSvcStub) ResolveRef(_ context.Context, _ uuid.UUID, _ string) (tooldomain.Tool, error) {
+	s.called = true
+	return tooldomain.Tool{}, nil
+}
 func (s *toolSvcStub) UpdateByName(context.Context, uuid.UUID, string, ToolPatch) (tooldomain.Tool, error) {
 	s.called = true
 	return tooldomain.Tool{}, nil
+}
+func (s *toolSvcStub) DeleteByName(context.Context, uuid.UUID, string) error {
+	s.called = true
+	return nil
 }
 
 func TestToolListAuthz(t *testing.T) {

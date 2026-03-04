@@ -78,6 +78,29 @@ func (r *Repository) GetByName(ctx context.Context, orgID uuid.UUID, name string
 	return toDomain(row), nil
 }
 
+func (r *Repository) GetByID(ctx context.Context, orgID, toolID uuid.UUID) (tooldomain.Tool, error) {
+	var row models.Tool
+	err := r.db.WithContext(ctx).Where("org_id = ? AND id = ?", orgID, toolID).Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tooldomain.Tool{}, types.NewHTTPError(http.StatusNotFound, types.ErrCodeNotFound, "tool not found")
+		}
+		return tooldomain.Tool{}, err
+	}
+	return toDomain(row), nil
+}
+
+func (r *Repository) DeleteByName(ctx context.Context, orgID uuid.UUID, name string) error {
+	res := r.db.WithContext(ctx).Where("org_id = ? AND name = ?", orgID, name).Delete(&models.Tool{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return types.NewHTTPError(http.StatusNotFound, types.ErrCodeNotFound, "tool not found")
+	}
+	return nil
+}
+
 func (r *Repository) UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch ToolPatch) (tooldomain.Tool, error) {
 	var row models.Tool
 	err := r.db.WithContext(ctx).Where("org_id = ? AND name = ?", orgID, name).Take(&row).Error

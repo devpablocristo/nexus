@@ -3,6 +3,7 @@ package domain
 type RunRequest struct {
 	RequestID        string
 	ToolName         string
+	ToolID           string
 	Input            map[string]any
 	Context          map[string]any
 	Actor            *string

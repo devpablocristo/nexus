@@ -1,11 +1,44 @@
-export type EventItem = {
-  id: number;
-  event_type: string;
+export type ToolItem = {
+  id: string;
+  name: string;
+  kind: 'http';
+  description?: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  url: string;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  action_type: 'read' | 'write';
+  classification: 'internal' | 'external';
+  sensitivity: 'low' | 'medium' | 'high';
+  risk_level: 1 | 2 | 3;
+  enabled: boolean;
   created_at: string;
-  payload: Record<string, unknown>;
+  updated_at: string;
 };
 
-export type AuditEventItem = {
+export type EgressRuleItem = {
+  id: string;
+  tool_id: string;
+  host: string;
+  enabled: boolean;
+  created_at: string;
+};
+
+export type PolicyItem = {
+  id: string;
+  tool_id: string;
+  name?: string;
+  effect: 'allow' | 'deny';
+  priority: number;
+  conditions: Record<string, unknown>;
+  limits: Record<string, unknown>;
+  reason_template?: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AuditItem = {
   request_id: string;
   org_id?: string;
   tool_name: string;
@@ -25,97 +58,9 @@ export type AuditEventItem = {
   event_hash?: string;
   hash_algo?: string;
   created_at: string;
-  input?: Record<string, unknown>;
-  context?: Record<string, unknown>;
-  dlp_summary?: Record<string, unknown>;
-  output?: Record<string, unknown>;
-  error?: {
-    code?: string;
-    message?: string;
-  };
-};
-
-export type ActionItem = {
-  id: string;
-  scope_type: string;
-  action_type: string;
-  status: string;
-  ttl_seconds: number;
-  created_at: string;
-};
-
-export type IncidentItem = {
-  id: string;
-  severity: 'LOW' | 'MED' | 'HIGH' | 'CRIT';
-  status: 'open' | 'closed';
-  title: string;
-  summary: string;
-  opened_at: string;
-  closed_at?: string;
-};
-
-export type PolicyProposalItem = {
-  id: string;
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'shadow';
-  rationale: string;
-  diff: Record<string, unknown>;
-  tests_suggested: string[];
-  rollback_plan: string;
-  created_at: string;
-};
-
-export type AssistantResponse = {
-  summary: string;
-  tables?: {
-    title: string;
-    columns: string[];
-    rows: Record<string, string>[];
-  }[];
-  actions?: {
-    label: string;
-    action_type: string;
-    payload: Record<string, unknown>;
-  }[];
-};
-
-export type ApprovalItem = {
-  id: string;
-  request_id: string;
-  tool_name: string;
-  actor?: string;
-  role?: string;
-  input_redacted: Record<string, unknown>;
-  context_redacted: Record<string, unknown>;
-  reason: string;
-  status: string;
-  decided_by?: string;
-  decided_at?: string;
-  expires_at: string;
-  created_at: string;
-};
-
-export type AlertRuleItem = {
-  id: string;
-  name: string;
-  metric: string;
-  threshold: number;
-  window_seconds: number;
-  tool_name?: string;
-  webhook_url: string;
-  cooldown_seconds: number;
-  enabled: boolean;
-  last_fired_at?: string;
-  created_at: string;
-};
-
-export type SessionItem = {
-  id: string;
-  session_id: string;
-  actor?: string;
-  total_calls: number;
-  total_writes: number;
-  total_denials: number;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  last_call_at: string;
+  input?: unknown;
+  context?: unknown;
+  dlp_summary?: unknown;
+  output?: unknown;
+  error?: { code: string; message: string };
 };

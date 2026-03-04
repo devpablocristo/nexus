@@ -59,6 +59,7 @@ func (h *Handler) run(c *gin.Context) {
 	resp, err := h.uc.Run(c.Request.Context(), orgID, gwdomain.RunRequest{
 		RequestID:      rid,
 		ToolName:       req.ToolName,
+		ToolID:         req.ToolID,
 		Input:          req.Input,
 		Context:        req.Context,
 		Actor:          actor,
@@ -143,6 +144,7 @@ func (h *Handler) simulate(c *gin.Context) {
 	resp, err := h.uc.Simulate(c.Request.Context(), orgID, gwdomain.RunRequest{
 		RequestID:  rid,
 		ToolName:   req.ToolName,
+		ToolID:     req.ToolID,
 		Input:      req.Input,
 		Context:    req.Context,
 		Actor:      actor,

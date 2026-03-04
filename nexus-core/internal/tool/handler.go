@@ -19,7 +19,10 @@ type toolUsecase interface {
 	Create(ctx context.Context, orgID uuid.UUID, req CreateRequest) (tooldomain.Tool, error)
 	List(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error)
 	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
+	GetByID(ctx context.Context, orgID, toolID uuid.UUID) (tooldomain.Tool, error)
+	ResolveRef(ctx context.Context, orgID uuid.UUID, ref string) (tooldomain.Tool, error)
 	UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch ToolPatch) (tooldomain.Tool, error)
+	DeleteByName(ctx context.Context, orgID uuid.UUID, name string) error
 }
 
 type Handler struct {
@@ -35,6 +38,7 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.GET("/tools", h.list)
 	rg.GET("/tools/:name", h.get)
 	rg.PUT("/tools/:name", h.update)
+	rg.DELETE("/tools/:name", h.delete)
 }
 
 type createToolRequest struct {
@@ -108,8 +112,8 @@ func (h *Handler) get(c *gin.Context) {
 		return
 	}
 	orgID := mustOrgID(c)
-	name := c.Param("name")
-	t, err := h.uc.GetByName(c.Request.Context(), orgID, name)
+	ref := c.Param("name")
+	t, err := h.uc.ResolveRef(c.Request.Context(), orgID, ref)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -118,6 +122,7 @@ func (h *Handler) get(c *gin.Context) {
 }
 
 type updateToolRequest struct {
+	Name           *string         `json:"name"`
 	Description    *string         `json:"description"`
 	Method         *string         `json:"method"`
 	URL            *string         `json:"url"`
@@ -136,17 +141,26 @@ func (h *Handler) update(c *gin.Context) {
 		return
 	}
 	orgID := mustOrgID(c)
-	name := c.Param("name")
+	ref := c.Param("name")
+	t, err := h.uc.ResolveRef(c.Request.Context(), orgID, ref)
+	if err != nil {
+		httperr.WriteFrom(c, err)
+		return
+	}
 	var req updateToolRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httperr.BadRequest(c, "invalid json")
+		return
+	}
+	if req.Name != nil {
+		httperr.Write(c, http.StatusBadRequest, types.ErrCodeValidation, "tool name is immutable and cannot be changed")
 		return
 	}
 	var desc **string
 	if req.Description != nil {
 		desc = &req.Description
 	}
-	updated, err := h.uc.UpdateByName(c.Request.Context(), orgID, name, ToolPatch{
+	updated, err := h.uc.UpdateByName(c.Request.Context(), orgID, t.Name, ToolPatch{
 		Description:    desc,
 		Method:         req.Method,
 		URL:            req.URL,
@@ -163,6 +177,25 @@ func (h *Handler) update(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toResp(updated))
+}
+
+func (h *Handler) delete(c *gin.Context) {
+	if !authz.CanAccess(scopesFromCtx(c), roleFromCtx(c), authz.ScopeToolsWrite) {
+		httperr.Write(c, http.StatusForbidden, types.ErrCodeUnauthorized, authz.ScopeToolsWrite+" scope required")
+		return
+	}
+	orgID := mustOrgID(c)
+	ref := c.Param("name")
+	t, err := h.uc.ResolveRef(c.Request.Context(), orgID, ref)
+	if err != nil {
+		httperr.WriteFrom(c, err)
+		return
+	}
+	if err := h.uc.DeleteByName(c.Request.Context(), orgID, t.Name); err != nil {
+		httperr.WriteFrom(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func toResp(t tooldomain.Tool) dto.ToolResponse {

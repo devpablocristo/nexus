@@ -1,134 +1,119 @@
-import type {
-  ActionItem,
-  AlertRuleItem,
-  ApprovalItem,
-  AssistantResponse,
-  AuditEventItem,
-  EventItem,
-  IncidentItem,
-  PolicyProposalItem,
-  SessionItem,
-} from './types';
+import type { AuditItem, EgressRuleItem, PolicyItem, ToolItem } from './types';
 
-const baseUrl =
-  import.meta.env.VITE_NEXUS_SAAS_URL || import.meta.env.VITE_NEXUS_CORE_URL || 'http://localhost:8082';
-const apiKey = import.meta.env.VITE_NEXUS_API_KEY || '';
-const scopes = import.meta.env.VITE_NEXUS_SCOPES || 'admin:console:read,admin:console:write,audit:read';
+const coreUrl =
+  import.meta.env.VITE_NEXUS_CORE_URL || 'http://localhost:8080';
 
-const baseHeaders: HeadersInit = {
-  'Content-Type': 'application/json',
-  'X-NEXUS-CORE-KEY': apiKey,
-  'X-NEXUS-SCOPES': scopes,
-  'X-NEXUS-ACTOR': 'tower/ui',
-};
+const STORAGE_KEY = 'nexus_api_key';
+const ALL_SCOPES = 'tools:read,tools:write,policy:read,policy:write,egress:read,egress:write,audit:read,gateway:run,admin:console:read,admin:console:write';
+
+function getApiKey(): string {
+  return localStorage.getItem(STORAGE_KEY) || import.meta.env.VITE_NEXUS_API_KEY || 'nexus-core-local-key';
+}
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: { ...baseHeaders, ...(init?.headers || {}) },
-  });
-
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    'X-NEXUS-CORE-KEY': getApiKey(),
+    'X-NEXUS-SCOPES': ALL_SCOPES,
+    'X-NEXUS-ACTOR': 'tower/ui',
+    ...(init?.headers || {}),
+  };
+  const res = await fetch(`${coreUrl}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API ${res.status}: ${text}`);
   }
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
   return res.json() as Promise<T>;
 }
 
-export async function getEvents(cursor = 0, limit = 100): Promise<{ items: EventItem[]; next_cursor: number }> {
-  return call(`/v1/events?cursor=${cursor}&limit=${limit}`);
+// ── Tools ────────────────────────────────────────────────────────────────────
+
+export async function getTools(): Promise<{ items: ToolItem[] }> {
+  return call('/v1/tools');
 }
 
-export type AuditQueryParams = {
+export type CreateToolPayload = {
+  name: string;
+  kind: 'http';
+  description?: string;
+  method: string;
+  url: string;
+  input_schema?: Record<string, unknown>;
+  action_type: string;
+  classification: string;
+  sensitivity?: string;
+  risk_level?: number;
+  enabled?: boolean;
+};
+
+export async function createTool(payload: CreateToolPayload): Promise<ToolItem> {
+  return call('/v1/tools', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateTool(name: string, patch: Partial<ToolItem>): Promise<ToolItem> {
+  return call(`/v1/tools/${name}`, { method: 'PUT', body: JSON.stringify(patch) });
+}
+
+export async function deleteTool(name: string): Promise<void> {
+  await call<void>(`/v1/tools/${name}`, { method: 'DELETE' });
+}
+
+// ── Egress Rules ─────────────────────────────────────────────────────────────
+
+export async function getEgressRules(toolName: string): Promise<{ items: EgressRuleItem[] }> {
+  return call(`/v1/tools/${toolName}/egress-rules`);
+}
+
+export async function createEgressRule(toolName: string, host: string): Promise<void> {
+  await call(`/v1/tools/${toolName}/egress-rules`, {
+    method: 'POST',
+    body: JSON.stringify({ host, enabled: true }),
+  });
+}
+
+export async function deleteEgressRules(toolName: string): Promise<void> {
+  await call(`/v1/tools/${toolName}/egress-rules`, { method: 'DELETE' });
+}
+
+// ── Policies ─────────────────────────────────────────────────────────────────
+
+export async function getToolPolicies(toolName: string): Promise<{ items: PolicyItem[] }> {
+  return call(`/v1/tools/${toolName}/policies`);
+}
+
+export async function createToolPolicy(
+  toolName: string,
+  payload: { name?: string; effect: 'allow' | 'deny'; priority: number; conditions: Record<string, unknown>; enabled: boolean },
+): Promise<PolicyItem> {
+  return call(`/v1/tools/${toolName}/policies`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updatePolicy(id: string, patch: { enabled?: boolean; priority?: number }): Promise<PolicyItem> {
+  return call(`/v1/policies/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
+}
+
+// ── Audit ────────────────────────────────────────────────────────────────────
+
+export type AuditQuery = {
   tool_name?: string;
-  decision?: 'allow' | 'deny';
-  status?: 'success' | 'error' | 'blocked';
-  from?: string; // RFC3339
-  to?: string; // RFC3339
+  decision?: string;
+  status?: string;
+  from?: string;
+  to?: string;
   limit?: number;
 };
 
-export async function getAuditEvents(params: AuditQueryParams = {}): Promise<{ items: AuditEventItem[] }> {
-  const q = new URLSearchParams();
-  if (params.tool_name) q.set('tool_name', params.tool_name);
-  if (params.decision) q.set('decision', params.decision);
-  if (params.status) q.set('status', params.status);
-  if (params.from) q.set('from', params.from);
-  if (params.to) q.set('to', params.to);
-  q.set('limit', String(params.limit ?? 200));
-  return call(`/v1/audit?${q.toString()}`);
-}
-
-export async function getActions(): Promise<{ items: ActionItem[] }> {
-  return call('/v1/actions?limit=100');
-}
-
-export async function getIncidents(): Promise<{ items: IncidentItem[] }> {
-  return call('/v1/incidents?limit=100');
-}
-
-export async function getPolicyProposals(): Promise<{ items: PolicyProposalItem[] }> {
-  return call('/v1/policy-proposals?limit=100');
-}
-
-export async function approveProposal(id: string): Promise<PolicyProposalItem> {
-  return call(`/v1/policy-proposals/${id}/approve`, { method: 'POST', body: '{}' });
-}
-
-export async function rejectProposal(id: string): Promise<PolicyProposalItem> {
-  return call(`/v1/policy-proposals/${id}/reject`, { method: 'POST', body: '{}' });
-}
-
-export async function shadowProposal(id: string): Promise<PolicyProposalItem> {
-  return call(`/v1/policy-proposals/${id}/shadow`, { method: 'POST', body: '{}' });
-}
-
-export async function queryAssistant(query: string): Promise<AssistantResponse> {
-  return call('/v1/assistant/query', { method: 'POST', body: JSON.stringify({ query }) });
-}
-
-// -- Approvals --
-
-export async function getApprovals(): Promise<{ items: ApprovalItem[] }> {
-  return call('/v1/approvals');
-}
-
-export async function approveApproval(id: string): Promise<{ status: string }> {
-  return call(`/v1/approvals/${id}/approve`, { method: 'POST', body: JSON.stringify({}) });
-}
-
-export async function rejectApproval(id: string): Promise<{ status: string }> {
-  return call(`/v1/approvals/${id}/reject`, { method: 'POST', body: JSON.stringify({}) });
-}
-
-// -- Alert Rules --
-
-export async function getAlertRules(): Promise<{ items: AlertRuleItem[] }> {
-  return call('/v1/alert-rules');
-}
-
-export async function createAlertRule(rule: {
-  name: string;
-  metric: string;
-  threshold: number;
-  webhook_url: string;
-  window_seconds?: number;
-  cooldown_seconds?: number;
-  enabled?: boolean;
-}): Promise<AlertRuleItem> {
-  return call('/v1/alert-rules', { method: 'POST', body: JSON.stringify(rule) });
-}
-
-export async function deleteAlertRule(id: string): Promise<{ status: string }> {
-  return call(`/v1/alert-rules/${id}`, { method: 'DELETE' });
-}
-
-// -- Sessions --
-
-export async function getSession(sessionId: string): Promise<SessionItem> {
-  return call(`/v1/sessions/${sessionId}`);
-}
-
-export async function aiOperatorsTick(): Promise<{ status: string }> {
-  return call('/v1/assistant/tick', { method: 'POST', body: JSON.stringify({}) });
+export async function getAuditLog(query: AuditQuery = {}): Promise<{ items: AuditItem[] }> {
+  const params = new URLSearchParams();
+  if (query.tool_name) params.set('tool_name', query.tool_name);
+  if (query.decision) params.set('decision', query.decision);
+  if (query.status) params.set('status', query.status);
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  if (query.limit) params.set('limit', String(query.limit));
+  const qs = params.toString();
+  return call(`/v1/audit${qs ? `?${qs}` : ''}`);
 }

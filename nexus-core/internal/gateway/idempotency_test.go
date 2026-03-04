@@ -24,6 +24,9 @@ type fakeToolRepo struct{ tool tooldomain.Tool }
 func (f fakeToolRepo) GetByName(context.Context, uuid.UUID, string) (tooldomain.Tool, error) {
 	return f.tool, nil
 }
+func (f fakeToolRepo) GetByID(context.Context, uuid.UUID, uuid.UUID) (tooldomain.Tool, error) {
+	return f.tool, nil
+}
 
 type fakePolicyRepo struct{}
 

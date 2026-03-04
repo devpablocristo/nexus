@@ -3,6 +3,7 @@ package dto
 type RunRequest struct {
 	RequestID string         `json:"request_id"`
 	ToolName  string         `json:"tool_name"`
+	ToolID    string         `json:"tool_id"`
 	Input     map[string]any `json:"input"`
 	Context   map[string]any `json:"context"`
 }

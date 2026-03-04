@@ -379,3 +379,119 @@ Servicio Python con operadores IA/ML. Consume APIs de Nexus (sin acceso directo 
 | `/v1/assistant/query` | Respuestas de asistente (summary, tables, actions) para Tower |
 | `/v1/internal/tick` | Tick manual para procesamiento por lotes |
 | Diagnóstico, policy proposals | Funcionalidad IA que propone acciones; las aplica nexus-control-operators vía API |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+El payload completo que un consumer envía a `POST /v1/run` ahora es:
+
+```json
+{
+  "request_id": "opcional-uuid-generado-por-el-consumer",
+  "tool_name": "my-service",
+  "tool_id": "5dca11d1-5ee8-4b73-90ab-5e67fe8d31b6",
+  "input": {
+    "msg": "hello from consumer"
+  },
+  "context": {
+    "source": "my-agent",
+    "session_id": "abc-123"
+  }
+}
+```
+
+Donde:
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `request_id` | string | No | UUID para tracing. Si no se envía, Nexus genera uno |
+| `tool_name` | string | Uno de los dos | Nombre de la tool (inmutable, legible) |
+| `tool_id` | string | Uno de los dos | UUID de la tool. Si ambos vienen, `tool_id` gana |
+| `input` | object | Sí | Payload que recibe la tool. Se valida contra su JSON Schema |
+| `context` | object | No | Metadata del consumer (actor, session, etc.). Usado por policies y DLP |
+
+Además, hay headers opcionales:
+
+| Header | Descripción |
+|--------|-------------|
+| `X-NEXUS-CORE-KEY` | API key (requerido) |
+| `X-NEXUS-SCOPES` | Scopes del consumer (mínimo `gateway:run`) |
+| `X-NEXUS-ACTOR` | Identidad del llamante (para audit) |
+| `X-NEXUS-ROLE` | Rol del llamante (para policies) |
+| `X-Timeout-Ms` | Budget de timeout en ms |
+| `Idempotency-Key` | Clave de idempotencia (para write tools) |
+
+
+
+Sí, es así. El pipeline completo de `POST /v1/run` en orden es:
+
+| Paso | Nombre | Qué hace |
+|------|--------|----------|
+| 1 | **Auth** | Valida API key, extrae org_id, scopes, actor, role |
+| 2 | **Authz** | Verifica que tenga scope `gateway:run` |
+| 3 | **Tool resolution** | Busca la tool por `tool_id` o `tool_name` |
+| 4 | **Idempotency** | Si es write tool y viene `Idempotency-Key`, verifica replay/conflicto |
+| 5 | **Tool validation** | Verifica que la tool esté `enabled` y sea `kind: http` |
+| 6 | **Context enrichment** | Inyecta actor, role, scopes, auth_method al context |
+| 7 | **DLP** | Escanea input y context buscando datos sensibles (emails, tokens, etc.) |
+| 8 | **Schema validation** | Valida el `input` contra el JSON Schema de la tool |
+
+
+
+| 9 | **Policy evaluation** | Evalúa las policies asociadas a la tool → `allow` o `deny` |
+
+
+
+
+| 10 | **Action overrides** | Verifica si hay un override runtime activo (kill switch por tool) |
+| 11 | **Tenant rate limit** | Rate limit global del tenant (org) |
+| 12 | **Tool rate limit** | Rate limit específico de la tool (de la policy) |
+| 13 | **URL + Egress** | SSRF protection + verifica que el host esté en la allowlist |
+| 14 | **Secrets injection** | Carga secrets asociados a la tool e inyecta como headers |
+| 15 | **Timeout budget** | Verifica que quede tiempo antes de ejecutar |
+| 16 | **HTTP execution** | Llama al upstream (el backend real detrás de la tool) |
+| 17 | **Output schema** | Valida la respuesta del upstream contra el output schema (best-effort) |
+| 18 | **Audit** | Graba todo en el audit log (hash-chained) |
+| 19 | **Response** | Devuelve resultado al consumer |
+
+Ese es el valor de Nexus: el consumer hace un solo `POST /v1/run` y Nexus ejecuta 19 pasos de governance, seguridad y observabilidad antes de tocar el upstream.

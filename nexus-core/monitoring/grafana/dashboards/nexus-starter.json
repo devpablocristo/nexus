@@ -1,42 +1,177 @@
 {
   "id": null,
-  "title": "Nexus Starter Overview",
+  "uid": "nexus-gateway-overview",
+  "title": "Nexus Gateway Overview",
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
-  "refresh": "15s",
+  "version": 3,
+  "refresh": "10s",
   "panels": [
     {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Runs",
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "sum(nexus_run_total_prom)", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {"thresholds": {"steps": [{"color": "blue", "value": null}]}}
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Allow Rate",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(nexus_run_total_prom{decision=\"allow\"}[5m])) / sum(rate(nexus_run_total_prom[5m]))", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "green", "value": 0.9}]}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Deny Rate",
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(nexus_run_total_prom{decision=\"deny\"}[5m])) / sum(rate(nexus_run_total_prom[5m]))", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.1}, {"color": "red", "value": 0.3}]}
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Error Rate",
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "sum(rate(nexus_run_total_prom{status=\"error\"}[5m])) / sum(rate(nexus_run_total_prom[5m]))", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.05}, {"color": "red", "value": 0.1}]}
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Latency p95",
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(nexus_run_latency_ms_prom_bucket[5m])) by (le))", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 500}, {"color": "red", "value": 2000}]}
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Latency p50",
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+      "targets": [
+        {"expr": "histogram_quantile(0.5, sum(rate(nexus_run_latency_ms_prom_bucket[5m])) by (le))", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "orange", "value": 200}, {"color": "red", "value": 1000}]}
+        }
+      }
+    },
+    {
+      "id": 7,
       "type": "timeseries",
-      "title": "HTTP Requests/s",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "title": "Run Throughput",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [
+        {"expr": "sum(rate(nexus_run_total_prom[5m])) by (status)", "refId": "A", "legendFormat": "{{status}}"}
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Run Latency Percentiles (ms)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [
+        {"expr": "histogram_quantile(0.99, sum(rate(nexus_run_latency_ms_prom_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p99"},
+        {"expr": "histogram_quantile(0.95, sum(rate(nexus_run_latency_ms_prom_bucket[5m])) by (le))", "refId": "B", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.50, sum(rate(nexus_run_latency_ms_prom_bucket[5m])) by (le))", "refId": "C", "legendFormat": "p50"}
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Decisions Over Time",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [
+        {"expr": "sum(rate(nexus_run_total_prom{decision=\"allow\"}[5m]))", "refId": "A", "legendFormat": "allow"},
+        {"expr": "sum(rate(nexus_run_total_prom{decision=\"deny\"}[5m]))", "refId": "B", "legendFormat": "deny"}
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Blocked Requests by Tool",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [
+        {"expr": "sum(rate(nexus_run_total_prom{decision=\"deny\"}[5m])) by (tool_name)", "refId": "A", "legendFormat": "{{tool_name}}"}
+      ]
+    },
+    {
+      "id": 11,
+      "type": "bargauge",
+      "title": "Top Tools by Volume",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "targets": [
+        {"expr": "topk(10, sum by (tool_name) (increase(nexus_run_total_prom[1h])))", "refId": "A", "legendFormat": "{{tool_name}}"}
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Latency by Tool (p95)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(nexus_run_latency_ms_prom_bucket[5m])) by (le, tool_name))", "refId": "A", "legendFormat": "{{tool_name}}"}
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "HTTP Requests/s (all endpoints)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
       "targets": [
         {"expr": "sum(rate(nexus_gateway_req_count{code!~\"5..\"}[5m]))", "refId": "A", "legendFormat": "2xx/4xx"},
         {"expr": "sum(rate(nexus_gateway_req_count{code=~\"5..\"}[5m]))", "refId": "B", "legendFormat": "5xx"}
       ]
     },
     {
+      "id": 14,
       "type": "timeseries",
-      "title": "Run Throughput",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "title": "Error Runs by Tool",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
       "targets": [
-        {"expr": "sum(rate(nexus_run_total_prom[5m])) by (status)", "refId": "A", "legendFormat": "{{status}}"}
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Run Latency p95 (ms)",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-      "targets": [
-        {"expr": "histogram_quantile(0.95, sum(rate(nexus_run_latency_ms_prom_bucket[5m])) by (le,status))", "refId": "A", "legendFormat": "{{status}}"}
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Blocked Decisions/s",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-      "targets": [
-        {"expr": "sum(rate(nexus_run_total_prom{decision=\"deny\"}[5m])) by (tool_name)", "refId": "A", "legendFormat": "{{tool_name}}"}
+        {"expr": "sum(rate(nexus_run_total_prom{status=\"error\"}[5m])) by (tool_name)", "refId": "A", "legendFormat": "{{tool_name}}"}
       ]
     }
   ]

@@ -17,7 +17,9 @@ type RepositoryPort interface {
 	Create(ctx context.Context, orgID uuid.UUID, t tooldomain.Tool) (tooldomain.Tool, error)
 	List(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool, error)
 	GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error)
+	GetByID(ctx context.Context, orgID, toolID uuid.UUID) (tooldomain.Tool, error)
 	UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch ToolPatch) (tooldomain.Tool, error)
+	DeleteByName(ctx context.Context, orgID uuid.UUID, name string) error
 	CountByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
 }
 
@@ -159,6 +161,22 @@ func (u *Usecases) List(ctx context.Context, orgID uuid.UUID) ([]tooldomain.Tool
 
 func (u *Usecases) GetByName(ctx context.Context, orgID uuid.UUID, name string) (tooldomain.Tool, error) {
 	return u.repo.GetByName(ctx, orgID, name)
+}
+
+func (u *Usecases) GetByID(ctx context.Context, orgID, toolID uuid.UUID) (tooldomain.Tool, error) {
+	return u.repo.GetByID(ctx, orgID, toolID)
+}
+
+// ResolveRef resolves a tool by UUID if ref is a valid UUID, otherwise by name.
+func (u *Usecases) ResolveRef(ctx context.Context, orgID uuid.UUID, ref string) (tooldomain.Tool, error) {
+	if id, err := uuid.Parse(ref); err == nil {
+		return u.repo.GetByID(ctx, orgID, id)
+	}
+	return u.repo.GetByName(ctx, orgID, ref)
+}
+
+func (u *Usecases) DeleteByName(ctx context.Context, orgID uuid.UUID, name string) error {
+	return u.repo.DeleteByName(ctx, orgID, name)
 }
 
 func (u *Usecases) UpdateByName(ctx context.Context, orgID uuid.UUID, name string, patch ToolPatch) (tooldomain.Tool, error) {

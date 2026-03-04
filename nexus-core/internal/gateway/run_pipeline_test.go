@@ -24,6 +24,9 @@ type fakeToolRepoNotFound struct{}
 func (fakeToolRepoNotFound) GetByName(context.Context, uuid.UUID, string) (tooldomain.Tool, error) {
 	return tooldomain.Tool{}, types.NewHTTPError(http.StatusNotFound, types.ErrCodeNotFound, "tool not found")
 }
+func (fakeToolRepoNotFound) GetByID(context.Context, uuid.UUID, uuid.UUID) (tooldomain.Tool, error) {
+	return tooldomain.Tool{}, types.NewHTTPError(http.StatusNotFound, types.ErrCodeNotFound, "tool not found")
+}
 
 type fakePolicyRepoWithPolicies struct {
 	policies []policydomain.Policy
