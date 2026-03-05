@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -26,6 +28,32 @@ class AssistantQueryResponse(BaseModel):
     actions: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class AssistantRateLimiter:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._windows: dict[str, tuple[int, int]] = {}
+
+    def allow(self, key: str, limit_per_min: int) -> bool:
+        now_window = int(time.time() // 60)
+        with self._lock:
+            # Keep only current/previous minute to avoid unbounded growth.
+            stale = [k for k, (window, _) in self._windows.items() if now_window-window > 1]
+            for k in stale:
+                del self._windows[k]
+
+            window, count = self._windows.get(key, (now_window, 0))
+            if window != now_window:
+                window, count = now_window, 0
+            if count >= limit_per_min:
+                self._windows[key] = (window, count)
+                return False
+            self._windows[key] = (window, count + 1)
+            return True
+
+
+assistant_rate_limiter = AssistantRateLimiter()
+
+
 def _settings(request: Request) -> Settings:
     return cast(Settings, request.app.state.settings)
 
@@ -41,6 +69,16 @@ async def verify_operator_key(
     settings = _settings(request)
     if settings.operator_internal_key and x_operator_key != settings.operator_internal_key:
         raise HTTPException(status_code=401, detail='invalid operator key')
+
+
+async def rate_limit_assistant_query(
+    request: Request,
+    x_operator_key: str | None = Header(default=None, alias='X-Operator-Key'),
+) -> None:
+    settings = _settings(request)
+    identity = x_operator_key or "anonymous"
+    if not assistant_rate_limiter.allow(identity, settings.assistant_rate_limit_per_min):
+        raise HTTPException(status_code=429, detail='rate limit exceeded')
 
 
 @router.get('/healthz')
@@ -74,6 +112,7 @@ async def assistant_query(
     request: Request,
     payload: AssistantQueryRequest,
     _: None = Depends(verify_operator_key),
+    __: None = Depends(rate_limit_assistant_query),
 ) -> AssistantQueryResponse:
     engine = _engine(request)
     settings = _settings(request)

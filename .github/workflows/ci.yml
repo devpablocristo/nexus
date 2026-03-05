@@ -99,6 +99,43 @@ jobs:
       - name: Build (verify production build)
         run: npm run build
 
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Go vulnerability check (nexus-core)
+        continue-on-error: true
+        run: cd nexus-core && govulncheck ./...
+      - name: Go vulnerability check (nexus-saas)
+        continue-on-error: true
+        run: cd nexus-saas && govulncheck ./...
+      - name: Go vulnerability check (nexus-control-operators)
+        continue-on-error: true
+        run: cd nexus-control-operators && govulncheck ./...
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Python dependency audit
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          cd nexus-ai-operators && pip-audit .
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Node dependency audit
+        continue-on-error: true
+        run: cd nexus-tower && npm audit --audit-level=high
+
   docker-build:
     runs-on: ubuntu-latest
     needs: [nexus-core, nexus-saas, nexus-control-operators, nexus-ai-operators, nexus-tower]

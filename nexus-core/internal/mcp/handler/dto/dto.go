@@ -1,9 +1,9 @@
 package dto
 
 type JSONRPCRequest struct {
-	JSONRPC string         `json:"jsonrpc"`
+	JSONRPC string         `json:"jsonrpc" binding:"required"`
 	ID      any            `json:"id"`
-	Method  string         `json:"method"`
+	Method  string         `json:"method" binding:"required"`
 	Params  map[string]any `json:"params"`
 }
 

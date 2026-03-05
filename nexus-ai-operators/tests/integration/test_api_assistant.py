@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
-from tests.integration.conftest import auth_headers
+from tests.integration.conftest import auth_headers, build_app, make_mock_client, make_settings
 
 
 @pytest.mark.asyncio
@@ -90,3 +90,26 @@ async def test_assistant_query_with_optional_actor_field(
     assert response.status_code == 200
     body = response.json()
     assert "status" in body["summary"]
+
+
+@pytest.mark.asyncio
+async def test_assistant_query_rate_limit_exceeded() -> None:
+    rate_key = "rate-limit-key"
+    app = build_app(
+        test_settings=make_settings(
+            OPERATOR_ASSISTANT_RATE_LIMIT_PER_MIN=1,
+            OPERATOR_INTERNAL_KEY=rate_key,
+        ),
+        mock_client=make_mock_client(),
+        start_engine_loop=False,
+    )
+    transport = ASGITransport(app=app)
+    payload = {"org_id": "org-rate", "query": "status?"}
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first = await client.post("/v1/assistant/query", json=payload, headers=auth_headers(rate_key))
+        second = await client.post("/v1/assistant/query", json=payload, headers=auth_headers(rate_key))
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json()["detail"] == "rate limit exceeded"

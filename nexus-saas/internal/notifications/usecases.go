@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"nexus-saas/cmd/config"
+	saasmetrics "nexus-saas/internal/shared/metrics"
 	notificationdomain "nexus-saas/internal/notifications/usecases/domain"
 	"nexus/pkg/types"
 )
@@ -241,6 +242,10 @@ func (u *Usecases) notifyRecipient(
 	if sendErr != nil {
 		return sendErr
 	}
+	saasmetrics.NotificationsSent.WithLabelValues(
+		string(notifType),
+		string(notificationdomain.ChannelEmail),
+	).Inc()
 	return nil
 }
 

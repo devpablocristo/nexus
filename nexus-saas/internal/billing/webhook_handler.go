@@ -3,10 +3,13 @@ package billing
 import (
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	saasmetrics "nexus-saas/internal/shared/metrics"
 )
 
 const (
@@ -71,6 +74,7 @@ func (h *Handler) handleStripeWebhook(c *gin.Context) {
 		})
 		return
 	}
+	saasmetrics.WebhooksReceived.WithLabelValues("stripe", strings.TrimSpace(string(event.Type))).Inc()
 	if err := h.uc.HandleWebhookEvent(c.Request.Context(), event); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{"code": "INTERNAL", "message": "failed processing stripe webhook"},

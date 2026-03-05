@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     action_ttl_seconds: int = Field(default=300, alias='OPERATOR_ACTION_TTL_SECONDS')
 
     operator_internal_key: str = Field(default='operator-internal-key', alias='OPERATOR_INTERNAL_KEY')
+    cors_allowed_origins: str = Field(
+        default='http://localhost:5173,http://localhost:5174',
+        alias='NEXUS_CORS_ALLOWED_ORIGINS',
+    )
+    max_body_bytes: int = Field(default=1048576, alias='OPERATOR_MAX_BODY_BYTES')
+    assistant_rate_limit_per_min: int = Field(default=30, alias='OPERATOR_ASSISTANT_RATE_LIMIT_PER_MIN')
 
     # LLM configuration — infra decides, code stays the same
     llm_backend: str = Field(default='fallback', alias='LLM_BACKEND')  # ollama | anthropic | fallback

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ func TestClient_DoJSON_Success(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL, "test-key", 2*time.Second, zerolog.Nop())
+	client.retryBackoffBase = time.Millisecond
 
 	var out map[string]any
 	err := client.DoJSON(context.Background(), "POST", "/test", map[string]string{"foo": "bar"}, &out)
@@ -46,11 +48,43 @@ func TestClient_DoJSON_ServerError(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL, "test-key", 2*time.Second, zerolog.Nop())
+	client.retryBackoffBase = time.Millisecond
 
 	var out map[string]any
 	err := client.DoJSON(context.Background(), "GET", "/fail", nil, &out)
 	if err == nil {
 		t.Fatalf("expected error for 500 response")
+	}
+}
+
+func TestClient_DoJSON_RetryAndRecover(t *testing.T) {
+	t.Parallel()
+
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		call := atomic.AddInt32(&calls, 1)
+		if call <= 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":"temporary"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "test-key", 2*time.Second, zerolog.Nop())
+	client.retryBackoffBase = time.Millisecond
+	client.retryAttempts = 3
+
+	var out map[string]any
+	err := client.DoJSON(context.Background(), "GET", "/retry", nil, &out)
+	if err != nil {
+		t.Fatalf("expected retry to recover: %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("expected 3 attempts, got %d", calls)
 	}
 }
 

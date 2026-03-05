@@ -25,8 +25,8 @@ type Handler struct {
 }
 
 type appendEventRequest struct {
-	OrgID     string         `json:"org_id"`
-	EventType string         `json:"event_type"`
+	OrgID     string         `json:"org_id" binding:"required"`
+	EventType string         `json:"event_type" binding:"required"`
 	Payload   map[string]any `json:"payload"`
 }
 

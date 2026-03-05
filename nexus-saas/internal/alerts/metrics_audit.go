@@ -2,6 +2,7 @@ package alerts
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,14 @@ func (s *AuditMetricsSource) ErrorRate(ctx context.Context, orgID uuid.UUID, too
 }
 
 func (s *AuditMetricsSource) RateLimitedCount(ctx context.Context, orgID uuid.UUID, toolName *string, windowSeconds int) (float64, error) {
+	exists, err := s.auditEventsExists(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+
 	since := time.Now().Add(-time.Duration(windowSeconds) * time.Second)
 	q := s.db.WithContext(ctx).Table("audit_events").
 		Where("org_id = ? AND created_at >= ?", orgID, since).
@@ -35,12 +44,23 @@ func (s *AuditMetricsSource) RateLimitedCount(ctx context.Context, orgID uuid.UU
 	}
 	var count int64
 	if err := q.Count(&count).Error; err != nil {
+		if isMissingAuditEventsTable(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return float64(count), nil
 }
 
 func (s *AuditMetricsSource) decisionRate(ctx context.Context, orgID uuid.UUID, toolName *string, windowSeconds int, decision string) (float64, error) {
+	exists, err := s.auditEventsExists(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+
 	since := time.Now().Add(-time.Duration(windowSeconds) * time.Second)
 	base := s.db.WithContext(ctx).Table("audit_events").
 		Where("org_id = ? AND created_at >= ?", orgID, since)
@@ -50,6 +70,9 @@ func (s *AuditMetricsSource) decisionRate(ctx context.Context, orgID uuid.UUID, 
 
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
+		if isMissingAuditEventsTable(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	if total == 0 {
@@ -58,12 +81,23 @@ func (s *AuditMetricsSource) decisionRate(ctx context.Context, orgID uuid.UUID, 
 
 	var matched int64
 	if err := base.Where("decision = ?", decision).Count(&matched).Error; err != nil {
+		if isMissingAuditEventsTable(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return float64(matched) / float64(total), nil
 }
 
 func (s *AuditMetricsSource) statusRate(ctx context.Context, orgID uuid.UUID, toolName *string, windowSeconds int, status string) (float64, error) {
+	exists, err := s.auditEventsExists(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+
 	since := time.Now().Add(-time.Duration(windowSeconds) * time.Second)
 	base := s.db.WithContext(ctx).Table("audit_events").
 		Where("org_id = ? AND created_at >= ?", orgID, since)
@@ -73,6 +107,9 @@ func (s *AuditMetricsSource) statusRate(ctx context.Context, orgID uuid.UUID, to
 
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
+		if isMissingAuditEventsTable(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	if total == 0 {
@@ -81,9 +118,28 @@ func (s *AuditMetricsSource) statusRate(ctx context.Context, orgID uuid.UUID, to
 
 	var matched int64
 	if err := base.Where("status = ?", status).Count(&matched).Error; err != nil {
+		if isMissingAuditEventsTable(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return float64(matched) / float64(total), nil
+}
+
+func isMissingAuditEventsTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "relation \"audit_events\" does not exist")
+}
+
+func (s *AuditMetricsSource) auditEventsExists(ctx context.Context) (bool, error) {
+	var exists bool
+	if err := s.db.WithContext(ctx).Raw("SELECT to_regclass('audit_events') IS NOT NULL").Scan(&exists).Error; err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 var _ MetricsSource = (*AuditMetricsSource)(nil)

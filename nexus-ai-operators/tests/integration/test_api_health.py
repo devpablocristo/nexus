@@ -51,3 +51,9 @@ async def test_metrics_returns_prometheus_output(client: AsyncClient) -> None:
     assert "nexus_operator_events_consumed_total" in text
     assert "nexus_operator_actions_applied_total" in text
     assert "nexus_operator_last_cursor" in text
+
+
+@pytest.mark.asyncio
+async def test_metrics_allows_unauthenticated_access(client: AsyncClient) -> None:
+    response = await client.get("/metrics")
+    assert response.status_code == 200

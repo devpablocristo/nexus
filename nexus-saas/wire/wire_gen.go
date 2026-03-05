@@ -108,7 +108,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	apiCallsMiddlewareFunc := usagemetering.NewAPICallsMiddleware(usagemeteringRepository)
 	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, billingHandler, eventsHandler, actionsHandler, incidentsHandler, notificationsHandler, alertsHandler, sessionHandler, policyproposalHandler, assistantHandler, oidcHandler, orgHandler, usersHandler, clerkwebhookHandler, contractsHandler, coreproxyHandler, apiCallsMiddlewareFunc)
 	server := NewHTTPServer(apiConfig, engine)
-	app := NewApp(server)
+	app := NewApp(server, alertsUsecases, serviceConfig, logger)
 	return app, func() {
 		cleanup()
 	}, nil

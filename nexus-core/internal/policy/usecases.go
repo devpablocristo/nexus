@@ -25,7 +25,7 @@ type ToolLookupPort interface {
 }
 
 type CreateRequest struct {
-	Effect         string         `json:"effect"`
+	Effect         string         `json:"effect" binding:"required"`
 	Priority       int            `json:"priority"`
 	Conditions     map[string]any `json:"conditions"`
 	Limits         map[string]any `json:"limits"`

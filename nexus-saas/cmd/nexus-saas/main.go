@@ -25,6 +25,10 @@ func main() {
 	}
 	defer cleanup()
 
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+	app.StartBackgroundWorkers(workerCtx)
+
 	go func() {
 		_ = app.Server.ListenAndServe()
 	}()
@@ -33,6 +37,7 @@ func main() {
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
 
+	workerCancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*1e9)
 	defer cancel()
 	_ = app.Server.Shutdown(ctx)

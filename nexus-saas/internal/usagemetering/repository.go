@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	saasmetrics "nexus-saas/internal/shared/metrics"
 )
 
 const (
@@ -44,13 +46,17 @@ func NewRepository(db *gorm.DB) *Repository {
 func (r *Repository) Increment(ctx context.Context, orgID uuid.UUID, counter string) error {
 	now := time.Now().UTC()
 	period := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	return r.db.WithContext(ctx).Exec(
+	err := r.db.WithContext(ctx).Exec(
 		`INSERT INTO org_usage_counters (org_id, period, counter, value, updated_at)
 		 VALUES (?, ?, ?, 1, now())
 		 ON CONFLICT (org_id, period, counter)
 		 DO UPDATE SET value = org_usage_counters.value + 1, updated_at = now()`,
 		orgID, period, counter,
 	).Error
+	if err == nil {
+		saasmetrics.UsageMeteringEvents.WithLabelValues(orgID.String(), counter).Inc()
+	}
+	return err
 }
 
 // IncrementEvent performs idempotent usage ingestion keyed by eventID.
@@ -60,7 +66,8 @@ func (r *Repository) IncrementEvent(ctx context.Context, eventID string, orgID u
 	}
 	now := time.Now().UTC()
 	period := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	incremented := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Exec(
 			`INSERT INTO saas_usage_event_dedup (event_id, org_id, counter, created_at)
 			 VALUES (?, ?, ?, now())
@@ -73,12 +80,20 @@ func (r *Repository) IncrementEvent(ctx context.Context, eventID string, orgID u
 		if res.RowsAffected == 0 {
 			return nil
 		}
-		return tx.Exec(
+		if err := tx.Exec(
 			`INSERT INTO org_usage_counters (org_id, period, counter, value, updated_at)
 			 VALUES (?, ?, ?, 1, now())
 			 ON CONFLICT (org_id, period, counter)
 			 DO UPDATE SET value = org_usage_counters.value + 1, updated_at = now()`,
 			orgID, period, counter,
-		).Error
+		).Error; err != nil {
+			return err
+		}
+		incremented = true
+		return nil
 	})
+	if err == nil && incremented {
+		saasmetrics.UsageMeteringEvents.WithLabelValues(orgID.String(), counter).Inc()
+	}
+	return err
 }

@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 type ServiceConfig struct {
 	LogLevel               string
 	SwaggerCDN             bool
@@ -73,4 +75,6 @@ type ServiceConfig struct {
 	SMTPFromEmail       string
 	SMTPUsername        string
 	SMTPPassword        string
+
+	AlertEvalInterval time.Duration
 }

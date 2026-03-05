@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"nexus-saas/cmd/config"
+	saasmetrics "nexus-saas/internal/shared/metrics"
 	"nexus-saas/internal/users"
 )
 
@@ -122,6 +123,7 @@ func (h *Handler) handle(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid webhook payload"}})
 		return
 	}
+	saasmetrics.WebhooksReceived.WithLabelValues("clerk", strings.TrimSpace(evt.Type)).Inc()
 
 	if err := h.dispatch(c.Request.Context(), evt); err != nil {
 		h.logger.Error().Err(err).Str("type", evt.Type).Msg("failed processing clerk webhook")

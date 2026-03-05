@@ -2,11 +2,13 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 
 	gwdto "nexus-core/internal/gateway/handler/dto"
@@ -41,7 +43,11 @@ func (h *Handler) run(c *gin.Context) {
 	}
 	var req gwdto.RunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httperr.BadRequest(c, "invalid json")
+		httperr.BadRequest(c, runRequestBindErrorMessage(err))
+		return
+	}
+	if strings.TrimSpace(req.ToolName) == "" && strings.TrimSpace(req.ToolID) == "" {
+		httperr.BadRequest(c, "tool_name or tool_id required")
 		return
 	}
 
@@ -130,7 +136,11 @@ func (h *Handler) simulate(c *gin.Context) {
 	}
 	var req gwdto.RunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httperr.BadRequest(c, "invalid json")
+		httperr.BadRequest(c, runRequestBindErrorMessage(err))
+		return
+	}
+	if strings.TrimSpace(req.ToolName) == "" && strings.TrimSpace(req.ToolID) == "" {
+		httperr.BadRequest(c, "tool_name or tool_id required")
 		return
 	}
 	orgID := mustOrgID(c)
@@ -222,6 +232,31 @@ func parseTimeoutMS(raw string) int {
 		return 0
 	}
 	return n
+}
+
+func runRequestBindErrorMessage(err error) string {
+	var validationErrs validator.ValidationErrors
+	if errors.As(err, &validationErrs) {
+		missingInput := false
+		for _, ferr := range validationErrs {
+			switch ferr.Field() {
+			case "Input":
+				if ferr.Tag() == "required" {
+					missingInput = true
+				}
+			}
+		}
+		if missingInput {
+			return "input required"
+		}
+	}
+
+	// Gin may return validator output as plain text; keep compatibility with existing e2e assertions.
+	raw := err.Error()
+	if strings.Contains(raw, "RunRequest.Input") {
+		return "input required"
+	}
+	return "invalid json"
 }
 
 func parseIdempotencyKey(raw string) *string {

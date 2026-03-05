@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"time"
@@ -11,11 +12,13 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"nexus-saas/cmd/config"
+	"nexus-saas/internal/alerts"
 	gormdb "nexus/pkg/databases/sql/gorm"
 )
 
 type App struct {
-	Server *http.Server
+	Server            *http.Server
+	startBackgroundFn func(ctx context.Context)
 }
 
 func NewLogger(cfg config.ServiceConfig) zerolog.Logger {
@@ -56,8 +59,47 @@ func NewHTTPServer(cfg config.APIConfig, router *gin.Engine) *http.Server {
 	}
 }
 
-func NewApp(server *http.Server) *App {
-	return &App{Server: server}
+func NewApp(server *http.Server, alertsUC *alerts.Usecases, cfg config.ServiceConfig, logger zerolog.Logger) *App {
+	interval := cfg.AlertEvalInterval
+	startFn := func(ctx context.Context) {
+		if alertsUC == nil {
+			return
+		}
+		if interval <= 0 {
+			return
+		}
+		workerLog := logger.With().Str("component", "alerts-evaluator").Logger()
+		ticker := time.NewTicker(interval)
+		go func() {
+			workerLog.Info().Dur("interval", interval).Msg("alert evaluator started")
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					fired, err := alertsUC.EvaluateAll(ctx)
+					if err != nil {
+						workerLog.Error().Err(err).Msg("alert evaluation failed")
+						continue
+					}
+					workerLog.Info().Int("fired", fired).Msg("alert evaluation completed")
+				case <-ctx.Done():
+					workerLog.Info().Msg("alert evaluator stopped")
+					return
+				}
+			}
+		}()
+	}
+	return &App{
+		Server:            server,
+		startBackgroundFn: startFn,
+	}
+}
+
+func (a *App) StartBackgroundWorkers(ctx context.Context) {
+	if a == nil || a.startBackgroundFn == nil {
+		return
+	}
+	a.startBackgroundFn(ctx)
 }
 
 func itoa(i int) string {

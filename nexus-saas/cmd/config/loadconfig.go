@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"nexus/pkg/config/godotenv"
 )
@@ -118,4 +119,19 @@ func mustBoolDefault(key string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+func mustDurationDefault(key string, def time.Duration) (time.Duration, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s invalid duration: %w", key, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%s must be > 0", key)
+	}
+	return d, nil
 }

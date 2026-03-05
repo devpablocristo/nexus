@@ -49,6 +49,7 @@ func NewRouter(
 		ginserver.EngineOptions{},
 		ginmw.RequestID(),
 		ginmw.Recovery(l),
+		ginmw.SecurityHeaders(),
 		ginmw.CORS(cfg.CORSAllowedOrigins, cfg.CORSAllowedMethods, cfg.CORSAllowedHeaders),
 		ginmw.BodyLimit(httpCfg.MaxBodyBytes),
 		ginmw.LoggerMiddleware(l),

@@ -1,9 +1,9 @@
 package dto
 
 type UpsertSecretRequest struct {
-	SecretType string `json:"secret_type"`
-	KeyName    string `json:"key_name"`
-	Value      string `json:"value"`
+	SecretType string `json:"secret_type" binding:"required"`
+	KeyName    string `json:"key_name" binding:"required"`
+	Value      string `json:"value" binding:"required"`
 	Enabled    *bool  `json:"enabled"`
 }
 

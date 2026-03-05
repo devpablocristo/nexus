@@ -53,12 +53,13 @@ func NewRouter(
 	usageMeteringMw usagemetering.APICallsMiddlewareFunc,
 ) *gin.Engine {
 	_ = db
-	_ = httpCfg
 	r := ginserver.NewEngine(
 		ginserver.EngineOptions{},
 		ginmw.RequestID(),
 		ginmw.Recovery(l),
+		ginmw.SecurityHeaders(),
 		ginmw.CORS(cfg.CORSAllowedOrigins, cfg.CORSAllowedMethods, cfg.CORSAllowedHeaders),
+		ginmw.BodyLimit(httpCfg.MaxBodyBytes),
 		ginmw.LoggerMiddleware(l),
 	)
 	prom := ginprometheus.NewPrometheus("nexus_saas")

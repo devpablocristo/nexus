@@ -21,12 +21,12 @@ type ListAlertRulesResponse struct {
 }
 
 type CreateAlertRuleRequest struct {
-	Name            string  `json:"name"`
-	Metric          string  `json:"metric"`
+	Name            string  `json:"name" binding:"required"`
+	Metric          string  `json:"metric" binding:"required"`
 	Threshold       float64 `json:"threshold"`
 	WindowSeconds   int     `json:"window_seconds"`
 	ToolName        *string `json:"tool_name,omitempty"`
-	WebhookURL      string  `json:"webhook_url"`
+	WebhookURL      string  `json:"webhook_url" binding:"required"`
 	CooldownSeconds int     `json:"cooldown_seconds"`
 	Enabled         bool    `json:"enabled"`
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"time"
 )
 
 // loadDB carga configuración de base de datos.
@@ -181,5 +182,10 @@ func loadNotifications(cfg *Config) error {
 	cfg.Service.SMTPFromEmail = mustStrDefault("SMTP_FROM_EMAIL", "")
 	cfg.Service.SMTPUsername = mustStrDefault("SMTP_USERNAME", "")
 	cfg.Service.SMTPPassword = mustStrDefault("SMTP_PASSWORD", "")
+	alertEvalInterval, err := mustDurationDefault("NEXUS_ALERT_EVAL_INTERVAL", time.Minute)
+	if err != nil {
+		return err
+	}
+	cfg.Service.AlertEvalInterval = alertEvalInterval
 	return nil
 }

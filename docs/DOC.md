@@ -99,6 +99,12 @@ Panel de control web.
 | `sdks/python-sdk` | Python | `NexusClient` (sync), `AsyncNexusClient` (async), integración LangChain (`NexusTool`, `NexusToolkit`), integración OpenAI Agents SDK (`nexus_function_tools`) |
 | `sdks/typescript-sdk` | TypeScript | `NexusClient`: run, simulate, tools, policies, audit, approvals |
 
+### Exposición de métricas (`/metrics`)
+
+- `nexus-ai-operators`: requiere `X-Operator-Key` para acceder a `/metrics`.
+- `nexus-core` y `nexus-saas`: endpoints de métricas son para scraping interno (Prometheus en red privada).
+- En producción, no exponer `/metrics` públicamente por Internet.
+
 ### 7. Paquetes compartidos (pkgs/)
 
 | Paquete | Descripción |

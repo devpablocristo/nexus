@@ -48,8 +48,8 @@ services:
     restart: unless-stopped
     image: mailhog/mailhog:v1.0.1
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "${NEXUS_MAILHOG_SMTP_PORT:-1025}:1025"
+      - "${NEXUS_MAILHOG_UI_PORT:-8025}:8025"
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "1025"]
       interval: 5s
@@ -68,7 +68,7 @@ services:
       NEXUS_REDIS_URL: "${NEXUS_REDIS_URL}"
       NEXUS_AI_OPERATORS_URL: "${NEXUS_AI_OPERATORS_URL}"
       NEXUS_AI_OPERATORS_INTERNAL_KEY: "${NEXUS_AI_OPERATORS_INTERNAL_KEY}"
-      NEXUS_CORS_ALLOWED_ORIGINS: "${NEXUS_CORS_ALLOWED_ORIGINS:-*}"
+      NEXUS_CORS_ALLOWED_ORIGINS: "${NEXUS_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174}"
       NEXUS_EGRESS_ALLOWLIST: "${NEXUS_EGRESS_ALLOWLIST:-mock-tools:8081}"
       NEXUS_SAAS_URL: "${NEXUS_SAAS_URL:-http://nexus-saas:8082}"
       NEXUS_SAAS_INTERNAL_KEY: "${NEXUS_SAAS_INTERNAL_KEY}"
@@ -123,6 +123,7 @@ services:
       SMTP_FROM_EMAIL: "${SMTP_FROM_EMAIL:-noreply@nexus.local}"
       SMTP_USERNAME: "${SMTP_USERNAME:-}"
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      NEXUS_ALERT_EVAL_INTERVAL: "${NEXUS_ALERT_EVAL_INTERVAL:-60s}"
       NEXUS_HTTP_PORT: 8082
     depends_on:
       postgres-saas:
@@ -251,6 +252,7 @@ services:
     image: prom/prometheus:v2.54.1
     volumes:
       - ./nexus-core/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./nexus-core/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     ports:
       - "${NEXUS_PROMETHEUS_PORT}:9090"
     depends_on:

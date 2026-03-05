@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	actionsvc "nexus-saas/internal/actions"
 	"nexus-saas/cmd/config"
+	actionsvc "nexus-saas/internal/actions"
 	"nexus-saas/internal/admin"
 	admindomain "nexus-saas/internal/admin/usecases/domain"
 	eventsvc "nexus-saas/internal/events"
@@ -71,13 +71,13 @@ func (h *Handler) requireInternalKey(c *gin.Context) {
 
 type usageEventRequest struct {
 	EventID string `json:"event_id"`
-	OrgID   string `json:"org_id"`
-	Counter string `json:"counter"`
+	OrgID   string `json:"org_id" binding:"required"`
+	Counter string `json:"counter" binding:"required"`
 }
 
 type operationalEventRequest struct {
-	OrgID     string         `json:"org_id"`
-	EventType string         `json:"event_type"`
+	OrgID     string         `json:"org_id" binding:"required"`
+	EventType string         `json:"event_type" binding:"required"`
 	Payload   map[string]any `json:"payload"`
 }
 

@@ -20,7 +20,7 @@ type TenantSettings struct {
 }
 
 type UpsertTenantSettingsRequest struct {
-	PlanCode   string         `json:"plan_code"`
+	PlanCode   string         `json:"plan_code" binding:"required"`
 	HardLimits map[string]any `json:"hard_limits"`
 }
 

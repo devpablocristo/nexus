@@ -17,6 +17,7 @@ import (
 	"nexus-saas/internal/admin"
 	admindomain "nexus-saas/internal/admin/usecases/domain"
 	billingdomain "nexus-saas/internal/billing/usecases/domain"
+	saasmetrics "nexus-saas/internal/shared/metrics"
 	"nexus/pkg/types"
 )
 
@@ -167,6 +168,7 @@ func (u *Usecases) CreateCheckoutSession(ctx context.Context, orgID uuid.UUID, p
 	if session == nil || strings.TrimSpace(session.URL) == "" {
 		return "", types.NewHTTPError(http.StatusInternalServerError, types.ErrCodeInternal, "stripe checkout session missing url")
 	}
+	saasmetrics.BillingCheckouts.WithLabelValues(string(plan)).Inc()
 	return session.URL, nil
 }
 

@@ -14,6 +14,10 @@ WORKDIR /workspace/nexus-ai-operators
 
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
 
+RUN useradd -m -u 1000 app \
+    && chown -R app:app /workspace
+USER app
+
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
   CMD wget -qO- http://localhost:8000/readyz >/dev/null 2>&1 || exit 1

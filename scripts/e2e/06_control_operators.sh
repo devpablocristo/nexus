@@ -140,8 +140,43 @@ ok "generated 5 successful requests"
 echo "▸ 3.2 Wait for operators to consume events"
 sleep 3
 
+collect_metrics() {
+  curl -fsS "${OPS_BASE}/metrics" 2>/dev/null || true
+}
+
+extract_metric() {
+  local metrics="$1" pattern="$2"
+  echo "$metrics" | grep "$pattern" | head -1 | awk '{print $2}'
+}
+
+# Workers can start with exponential backoff if they boot before seed keys are present.
+# Wait up to 40s so the test is stable in local and CI runs.
+wait_for_operator_progress() {
+  local attempts=20
+  local delay=2
+  local metrics sentry_offset coord_offset events_ok core_reqs
+  for _ in $(seq 1 "$attempts"); do
+    metrics="$(collect_metrics)"
+    sentry_offset="$(extract_metric "$metrics" 'nexus_operators_consumer_offset{consumer_group="agents.sentry.v1"}')"
+    coord_offset="$(extract_metric "$metrics" 'nexus_operators_consumer_offset{consumer_group="agents.coordinator.v1"}')"
+    events_ok="$(extract_metric "$metrics" 'nexus_operators_events_processed_total.*status="ok"')"
+    core_reqs="$(extract_metric "$metrics" 'nexus_operators_core_requests_total.*status="200"')"
+
+    if [[ -n "$sentry_offset" ]] && [[ -n "$coord_offset" ]] && [[ -n "$events_ok" ]] && [[ -n "$core_reqs" ]] \
+      && (( $(echo "$sentry_offset > 0" | bc -l 2>/dev/null || echo 0) )) \
+      && (( $(echo "$coord_offset > 0" | bc -l 2>/dev/null || echo 0) )) \
+      && (( $(echo "$events_ok > 0" | bc -l 2>/dev/null || echo 0) )) \
+      && (( $(echo "$core_reqs > 0" | bc -l 2>/dev/null || echo 0) )); then
+      echo "$metrics"
+      return 0
+    fi
+    sleep "$delay"
+  done
+  return 1
+}
+
 echo "▸ 3.3 Verify consumer offsets are advancing"
-METRICS_AFTER="$(curl -fsS "${OPS_BASE}/metrics" 2>/dev/null || echo '')"
+METRICS_AFTER="$(wait_for_operator_progress || collect_metrics)"
 SENTRY_OFFSET="$(echo "$METRICS_AFTER" | grep 'nexus_operators_consumer_offset{consumer_group="agents.sentry.v1"}' | awk '{print $2}' || echo '0')"
 COORD_OFFSET="$(echo "$METRICS_AFTER" | grep 'nexus_operators_consumer_offset{consumer_group="agents.coordinator.v1"}' | awk '{print $2}' || echo '0')"
 

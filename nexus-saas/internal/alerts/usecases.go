@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
 	domain "nexus-saas/internal/alerts/usecases/domain"
+	saasmetrics "nexus-saas/internal/shared/metrics"
 )
 
 type RepoPort interface {
@@ -57,6 +59,7 @@ func (u *Usecases) Delete(ctx context.Context, orgID, id uuid.UUID) error {
 }
 
 func (u *Usecases) EvaluateAll(ctx context.Context) (int, error) {
+	saasmetrics.AlertsEvaluated.Inc()
 	rules, err := u.repo.ListEnabled(ctx)
 	if err != nil {
 		return 0, err
@@ -93,6 +96,11 @@ func (u *Usecases) EvaluateAll(ctx context.Context) (int, error) {
 		if err := u.repo.MarkFired(ctx, rule.ID); err != nil {
 			u.log.Error().Err(err).Str("rule_id", rule.ID.String()).Msg("mark_fired_failed")
 		}
+		label := strings.TrimSpace(rule.Name)
+		if label == "" {
+			label = rule.ID.String()
+		}
+		saasmetrics.AlertsFired.WithLabelValues(label).Inc()
 		fired++
 	}
 	return fired, nil

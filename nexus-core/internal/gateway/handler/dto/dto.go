@@ -4,7 +4,7 @@ type RunRequest struct {
 	RequestID string         `json:"request_id"`
 	ToolName  string         `json:"tool_name"`
 	ToolID    string         `json:"tool_id"`
-	Input     map[string]any `json:"input"`
+	Input     map[string]any `json:"input" binding:"required"`
 	Context   map[string]any `json:"context"`
 }
 

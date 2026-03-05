@@ -42,17 +42,17 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 }
 
 type createToolRequest struct {
-	Name           string         `json:"name"`
-	Kind           string         `json:"kind"`
+	Name           string         `json:"name" binding:"required"`
+	Kind           string         `json:"kind" binding:"required"`
 	Description    *string        `json:"description"`
-	Method         string         `json:"method"`
-	URL            string         `json:"url"`
-	InputSchema    map[string]any `json:"input_schema"`
+	Method         string         `json:"method" binding:"required"`
+	URL            string         `json:"url" binding:"required"`
+	InputSchema    map[string]any `json:"input_schema" binding:"required"`
 	OutputSchema   map[string]any `json:"output_schema"`
-	ActionType     string         `json:"action_type"`
+	ActionType     string         `json:"action_type" binding:"required"`
 	Classification string         `json:"classification"`
 	Sensitivity    string         `json:"sensitivity"`
-	RiskLevel      int            `json:"risk_level"`
+	RiskLevel      int            `json:"risk_level" binding:"required"`
 	Enabled        bool           `json:"enabled"`
 }
 
