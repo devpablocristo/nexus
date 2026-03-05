@@ -2,8 +2,10 @@ package contracts
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,11 +19,12 @@ import (
 )
 
 type Handler struct {
-	cfg      config.ServiceConfig
-	admin    entitlementsStore
-	metering usageSink
-	events   *eventsvc.Usecases
-	actions  *actionsvc.Usecases
+	cfg           config.ServiceConfig
+	admin         entitlementsStore
+	metering      usageSink
+	events        *eventsvc.Usecases
+	actions       *actionsvc.Usecases
+	notifications notificationPort
 }
 
 type entitlementsStore interface {
@@ -30,15 +33,28 @@ type entitlementsStore interface {
 
 type usageSink interface {
 	IncrementEvent(ctx context.Context, eventID string, orgID uuid.UUID, counter string) error
+	GetCounter(ctx context.Context, orgID uuid.UUID, counter string, period time.Time) (int64, error)
 }
 
-func NewHandler(cfg config.ServiceConfig, adminRepo *admin.Repository, meteringRepo *usagemetering.Repository, eventsUC *eventsvc.Usecases, actionsUC *actionsvc.Usecases) *Handler {
+type notificationPort interface {
+	Notify(ctx context.Context, orgID uuid.UUID, notifType string, data map[string]string) error
+}
+
+func NewHandler(
+	cfg config.ServiceConfig,
+	adminRepo *admin.Repository,
+	meteringRepo *usagemetering.Repository,
+	eventsUC *eventsvc.Usecases,
+	actionsUC *actionsvc.Usecases,
+	notifications notificationPort,
+) *Handler {
 	return &Handler{
-		cfg:      cfg,
-		admin:    adminRepo,
-		metering: meteringRepo,
-		events:   eventsUC,
-		actions:  actionsUC,
+		cfg:           cfg,
+		admin:         adminRepo,
+		metering:      meteringRepo,
+		events:        eventsUC,
+		actions:       actionsUC,
+		notifications: notifications,
 	}
 }
 
@@ -101,6 +117,7 @@ func (h *Handler) ingestUsageEvent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "INTERNAL", "message": "failed to ingest usage event"}})
 		return
 	}
+	h.checkUsageThresholds(c.Request.Context(), orgID, counter)
 	c.JSON(http.StatusAccepted, gin.H{"ok": true})
 }
 
@@ -144,11 +161,15 @@ func (h *Handler) getEntitlements(c *gin.Context) {
 	}
 	if !ok {
 		settings.PlanCode = "starter"
+		settings.Status = admindomain.TenantStatusActive
 		settings.HardLimits = map[string]any{
 			"tools_max":            20,
 			"run_rpm":              300,
 			"audit_retention_days": 30,
 		}
+	}
+	if strings.TrimSpace(settings.Status) == "" {
+		settings.Status = admindomain.TenantStatusActive
 	}
 	if settings.HardLimits == nil {
 		settings.HardLimits = map[string]any{}
@@ -156,6 +177,7 @@ func (h *Handler) getEntitlements(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"org_id":      orgID.String(),
 		"plan_code":   settings.PlanCode,
+		"status":      settings.Status,
 		"hard_limits": settings.HardLimits,
 	})
 }
@@ -186,4 +208,92 @@ func (h *Handler) getRuntimeOverrides(c *gin.Context) {
 		"tenant_rpm_override": overrides.TenantRPMOverride,
 		"tool_rpm_override":   overrides.ToolRPMOverride,
 	})
+}
+
+func (h *Handler) checkUsageThresholds(ctx context.Context, orgID uuid.UUID, metricName string) {
+	if h.notifications == nil {
+		return
+	}
+	settings, ok, err := h.admin.GetTenantSettings(ctx, orgID)
+	if err != nil || !ok {
+		return
+	}
+
+	limit := usageLimitForCounter(metricName, settings.HardLimits)
+	if limit <= 0 {
+		return
+	}
+	period := usagePeriodUTC(time.Now().UTC())
+	current, err := h.metering.GetCounter(ctx, orgID, metricName, period)
+	if err != nil || current <= 0 {
+		return
+	}
+	pct := float64(current) / float64(limit) * 100
+
+	notifType := ""
+	threshold := ""
+	switch {
+	case pct >= 100:
+		notifType = "usage_limit_reached"
+		threshold = "100"
+	case pct >= 95:
+		notifType = "usage_warning_95"
+		threshold = "95"
+	case pct >= 80:
+		notifType = "usage_warning_80"
+		threshold = "80"
+	default:
+		return
+	}
+
+	periodKey := period.Format("2006-01")
+	data := map[string]string{
+		"metric":       metricName,
+		"current":      fmt.Sprintf("%d", current),
+		"limit":        fmt.Sprintf("%d", limit),
+		"pct":          threshold,
+		"action_url":   "/billing",
+		"reference_id": fmt.Sprintf("usage:%s:%s:%s:%s", orgID.String(), metricName, threshold, periodKey),
+		"dedup_bucket": periodKey,
+	}
+	go func(payload map[string]string) {
+		_ = h.notifications.Notify(context.Background(), orgID, notifType, payload)
+	}(data)
+}
+
+func usageLimitForCounter(counter string, hardLimits map[string]any) int64 {
+	if hardLimits == nil {
+		return 0
+	}
+	if v, ok := hardLimits[counter]; ok {
+		return asInt64(v)
+	}
+	switch counter {
+	case usagemetering.CounterAPICalls:
+		return asInt64(hardLimits["run_rpm"])
+	default:
+		return 0
+	}
+}
+
+func asInt64(v any) int64 {
+	switch t := v.(type) {
+	case int:
+		return int64(t)
+	case int32:
+		return int64(t)
+	case int64:
+		return t
+	case float32:
+		return int64(t)
+	case float64:
+		return int64(t)
+	default:
+		return 0
+	}
+}
+
+func usagePeriodUTC(now time.Time) time.Time {
+	now = now.UTC()
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 }

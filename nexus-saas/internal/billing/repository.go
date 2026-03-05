@@ -193,6 +193,24 @@ func (r *Repository) GetUsageSummary(ctx context.Context, orgID uuid.UUID, perio
 	return out, nil
 }
 
+func (r *Repository) FindPastDueBefore(ctx context.Context, cutoff time.Time) ([]billingdomain.TenantBilling, error) {
+	var rows []models.TenantSettings
+	if err := r.db.WithContext(ctx).
+		Where("billing_status = ? AND updated_at <= ? AND COALESCE(status, 'active') = 'active' AND deleted_at IS NULL", billingdomain.BillingPastDue, cutoff).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]billingdomain.TenantBilling, 0, len(rows))
+	for _, row := range rows {
+		item, err := toTenantBillingDomain(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
 func toTenantBillingDomain(in models.TenantSettings) (billingdomain.TenantBilling, error) {
 	limits, err := decodeHardLimits(in.HardLimits)
 	if err != nil {

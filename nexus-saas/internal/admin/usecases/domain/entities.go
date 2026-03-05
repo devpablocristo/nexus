@@ -9,11 +9,19 @@ import (
 type TenantSettings struct {
 	OrgID      uuid.UUID
 	PlanCode   string
+	Status     string
+	DeletedAt  *time.Time
 	HardLimits map[string]any
 	UpdatedBy  *string
 	UpdatedAt  time.Time
 	CreatedAt  time.Time
 }
+
+const (
+	TenantStatusActive    = "active"
+	TenantStatusSuspended = "suspended"
+	TenantStatusDeleted   = "deleted"
+)
 
 type AdminActivityEvent struct {
 	ID           uuid.UUID

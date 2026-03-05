@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     )
     max_body_bytes: int = Field(default=1048576, alias='OPERATOR_MAX_BODY_BYTES')
     assistant_rate_limit_per_min: int = Field(default=30, alias='OPERATOR_ASSISTANT_RATE_LIMIT_PER_MIN')
+    dlq_path: str = Field(default='data/dead_letters.jsonl', alias='NEXUS_DLQ_PATH')
 
     # LLM configuration — infra decides, code stays the same
     llm_backend: str = Field(default='fallback', alias='LLM_BACKEND')  # ollama | anthropic | fallback

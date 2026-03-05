@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,12 +21,18 @@ const (
 type RepositoryPort interface {
 	GetTenantSettings(ctx context.Context, orgID uuid.UUID) (admindomain.TenantSettings, bool, error)
 	UpsertTenantSettings(ctx context.Context, s admindomain.TenantSettings) (admindomain.TenantSettings, error)
+	UpdateTenantLifecycle(ctx context.Context, orgID uuid.UUID, status string, deletedAt *time.Time, updatedBy *string) (admindomain.TenantSettings, error)
 	CreateAdminActivityEvent(ctx context.Context, ev admindomain.AdminActivityEvent) error
 	ListAdminActivityEvents(ctx context.Context, orgID uuid.UUID, limit int) ([]admindomain.AdminActivityEvent, error)
 }
 
+type NotificationPort interface {
+	Notify(ctx context.Context, orgID uuid.UUID, notifType string, data map[string]string) error
+}
+
 type Usecases struct {
-	repo RepositoryPort
+	repo          RepositoryPort
+	notifications NotificationPort
 }
 
 type BootstrapResponse struct {
@@ -46,6 +53,13 @@ type UpsertTenantSettingsRequest struct {
 
 func NewUsecases(repo RepositoryPort) *Usecases {
 	return &Usecases{repo: repo}
+}
+
+func NewUsecasesWithNotifications(repo RepositoryPort, notifications NotificationPort) *Usecases {
+	return &Usecases{
+		repo:          repo,
+		notifications: notifications,
+	}
 }
 
 func (u *Usecases) GetBootstrap(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, authMethod string) (BootstrapResponse, error) {
@@ -108,9 +122,19 @@ func (u *Usecases) UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, ac
 	if req.HardLimits == nil {
 		req.HardLimits = defaultHardLimits(req.PlanCode)
 	}
+	status := admindomain.TenantStatusActive
+	var deletedAt *time.Time
+	if current, ok, err := u.repo.GetTenantSettings(ctx, orgID); err == nil && ok {
+		if strings.TrimSpace(current.Status) != "" {
+			status = current.Status
+		}
+		deletedAt = current.DeletedAt
+	}
 	settings, err := u.repo.UpsertTenantSettings(ctx, admindomain.TenantSettings{
 		OrgID:      orgID,
 		PlanCode:   req.PlanCode,
+		Status:     status,
+		DeletedAt:  deletedAt,
 		HardLimits: req.HardLimits,
 		UpdatedBy:  actor,
 		UpdatedAt:  time.Now().UTC(),
@@ -129,6 +153,97 @@ func (u *Usecases) UpsertTenantSettings(ctx context.Context, orgID uuid.UUID, ac
 		},
 	})
 	return settings, nil
+}
+
+func (u *Usecases) SuspendTenant(ctx context.Context, actorOrgID, targetOrgID uuid.UUID, actor, role *string, scopes []string) (admindomain.TenantSettings, error) {
+	if err := ensureWritableTargetOrg(actorOrgID, targetOrgID, role, scopes); err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	settings, err := u.getOrDefaultSettings(ctx, targetOrgID)
+	if err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	stored, err := u.repo.UpdateTenantLifecycle(ctx, targetOrgID, admindomain.TenantStatusSuspended, nil, actor)
+	if err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        targetOrgID,
+		Actor:        actor,
+		Action:       "tenant.suspend",
+		ResourceType: "tenant_settings",
+		Payload: map[string]any{
+			"previous_status": settings.Status,
+			"status":          stored.Status,
+		},
+	})
+	u.notifyTenantAsync(targetOrgID, "tenant_suspended", map[string]string{
+		"org_id":       targetOrgID.String(),
+		"plan_code":    stored.PlanCode,
+		"action_url":   "/billing",
+		"reference_id": targetOrgID.String() + ":suspend",
+	})
+	return stored, nil
+}
+
+func (u *Usecases) ReactivateTenant(ctx context.Context, actorOrgID, targetOrgID uuid.UUID, actor, role *string, scopes []string) (admindomain.TenantSettings, error) {
+	if err := ensureWritableTargetOrg(actorOrgID, targetOrgID, role, scopes); err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	settings, err := u.getOrDefaultSettings(ctx, targetOrgID)
+	if err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	stored, err := u.repo.UpdateTenantLifecycle(ctx, targetOrgID, admindomain.TenantStatusActive, nil, actor)
+	if err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        targetOrgID,
+		Actor:        actor,
+		Action:       "tenant.reactivate",
+		ResourceType: "tenant_settings",
+		Payload: map[string]any{
+			"previous_status": settings.Status,
+			"status":          stored.Status,
+		},
+	})
+	u.notifyTenantAsync(targetOrgID, "tenant_reactivated", map[string]string{
+		"org_id":       targetOrgID.String(),
+		"plan_code":    stored.PlanCode,
+		"action_url":   "/tools",
+		"reference_id": targetOrgID.String() + ":reactivate",
+	})
+	return stored, nil
+}
+
+func (u *Usecases) DeleteTenant(ctx context.Context, actorOrgID, targetOrgID uuid.UUID, actor, role *string, scopes []string) (admindomain.TenantSettings, error) {
+	if err := ensureWritableTargetOrg(actorOrgID, targetOrgID, role, scopes); err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	settings, err := u.getOrDefaultSettings(ctx, targetOrgID)
+	if err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	now := time.Now().UTC()
+	stored, err := u.repo.UpdateTenantLifecycle(ctx, targetOrgID, admindomain.TenantStatusDeleted, &now, actor)
+	if err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        targetOrgID,
+		Actor:        actor,
+		Action:       "tenant.soft_delete",
+		ResourceType: "tenant_settings",
+		Payload: map[string]any{
+			"previous_status": settings.Status,
+			"status":          stored.Status,
+			"deleted_at":      now.Format(time.RFC3339),
+			"retention":       "30d",
+			"note":            "hard-delete job should purge data after retention window",
+		},
+	})
+	return stored, nil
 }
 
 func (u *Usecases) ListActivity(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, limit int) ([]admindomain.AdminActivityEvent, error) {
@@ -159,6 +274,20 @@ func adminCapabilities(role *string, scopes []string) (bool, bool) {
 	return canRead, canWrite
 }
 
+func ensureWritableTargetOrg(actorOrgID, targetOrgID uuid.UUID, role *string, scopes []string) error {
+	_, canWrite := adminCapabilities(role, scopes)
+	if !canWrite {
+		return types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console write permission required")
+	}
+	if actorOrgID == uuid.Nil || targetOrgID == uuid.Nil {
+		return types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "invalid org_id")
+	}
+	if actorOrgID != targetOrgID {
+		return types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "cross-tenant admin lifecycle is not allowed")
+	}
+	return nil
+}
+
 func (u *Usecases) getOrDefaultSettings(ctx context.Context, orgID uuid.UUID) (admindomain.TenantSettings, error) {
 	settings, ok, err := u.repo.GetTenantSettings(ctx, orgID)
 	if err != nil {
@@ -168,12 +297,16 @@ func (u *Usecases) getOrDefaultSettings(ctx context.Context, orgID uuid.UUID) (a
 		if settings.HardLimits == nil {
 			settings.HardLimits = defaultHardLimits(settings.PlanCode)
 		}
+		if strings.TrimSpace(settings.Status) == "" {
+			settings.Status = admindomain.TenantStatusActive
+		}
 		return settings, nil
 	}
 	defaults := defaultHardLimits("starter")
 	stored, err := u.repo.UpsertTenantSettings(ctx, admindomain.TenantSettings{
 		OrgID:      orgID,
 		PlanCode:   "starter",
+		Status:     admindomain.TenantStatusActive,
 		HardLimits: defaults,
 	})
 	if err != nil {
@@ -197,4 +330,55 @@ func defaultHardLimits(planCode string) map[string]any {
 // que necesitan sincronizar cambios de plan sin duplicar reglas.
 func DefaultHardLimits(planCode string) map[string]any {
 	return defaultHardLimits(planCode)
+}
+
+func (u *Usecases) notifyTenantAsync(orgID uuid.UUID, notifType string, data map[string]string) {
+	if u.notifications == nil {
+		return
+	}
+	payload := map[string]string{}
+	for k, v := range data {
+		payload[k] = v
+	}
+	go func() {
+		_ = u.notifications.Notify(context.Background(), orgID, notifType, payload)
+	}()
+}
+
+// AutoSuspend suspends a tenant without interactive actor context
+// (e.g. dunning worker after grace period).
+func (u *Usecases) AutoSuspend(ctx context.Context, targetOrgID uuid.UUID) error {
+	if targetOrgID == uuid.Nil {
+		return types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "invalid org_id")
+	}
+	settings, err := u.getOrDefaultSettings(ctx, targetOrgID)
+	if err != nil {
+		return err
+	}
+	if settings.Status == admindomain.TenantStatusSuspended || settings.Status == admindomain.TenantStatusDeleted {
+		return nil
+	}
+	systemActor := "system:dunning-worker"
+	stored, err := u.repo.UpdateTenantLifecycle(ctx, targetOrgID, admindomain.TenantStatusSuspended, nil, &systemActor)
+	if err != nil {
+		return err
+	}
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        targetOrgID,
+		Actor:        &systemActor,
+		Action:       "tenant.auto_suspend",
+		ResourceType: "tenant_settings",
+		Payload: map[string]any{
+			"previous_status": settings.Status,
+			"status":          stored.Status,
+			"reason":          "billing_grace_period_expired",
+		},
+	})
+	u.notifyTenantAsync(targetOrgID, "tenant_suspended", map[string]string{
+		"org_id":       targetOrgID.String(),
+		"plan_code":    stored.PlanCode,
+		"action_url":   "/billing",
+		"reference_id": targetOrgID.String() + ":auto-suspend",
+	})
+	return nil
 }

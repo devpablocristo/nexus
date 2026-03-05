@@ -13,6 +13,8 @@ type BootstrapResponse struct {
 
 type TenantSettings struct {
 	PlanCode   string         `json:"plan_code"`
+	Status     string         `json:"status"`
+	DeletedAt  string         `json:"deleted_at,omitempty"`
 	HardLimits map[string]any `json:"hard_limits"`
 	UpdatedBy  *string        `json:"updated_by,omitempty"`
 	UpdatedAt  string         `json:"updated_at,omitempty"`

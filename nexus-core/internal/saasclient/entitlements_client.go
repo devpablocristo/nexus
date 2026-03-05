@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"nexus/pkg/types"
 )
 
 type EntitlementsClient struct {
@@ -40,11 +41,13 @@ func NewEntitlementsClient(log zerolog.Logger) *EntitlementsClient {
 type entitlementsResponse struct {
 	OrgID      string         `json:"org_id"`
 	PlanCode   string         `json:"plan_code"`
+	Status     string         `json:"status"`
 	HardLimits map[string]any `json:"hard_limits"`
 }
 
 // GetRunRPM implements gateway.TenantLimitsPort semantics.
-// It returns 0 when SaaS is unavailable, so core can fallback to defaults.
+// It returns 0 when SaaS is unavailable, so core can fallback to defaults,
+// except when tenant lifecycle state is suspended/deleted.
 func (c *EntitlementsClient) GetRunRPM(ctx context.Context, orgID uuid.UUID) (int, error) {
 	if c.baseURL == "" || c.internalKey == "" {
 		return 0, nil
@@ -70,7 +73,13 @@ func (c *EntitlementsClient) GetRunRPM(ctx context.Context, orgID uuid.UUID) (in
 		return 0, nil
 	}
 	if out.HardLimits == nil {
+		if strings.TrimSpace(out.Status) != "" && !strings.EqualFold(out.Status, "active") {
+			return 0, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "tenant suspended/deleted")
+		}
 		return 0, nil
+	}
+	if strings.TrimSpace(out.Status) != "" && !strings.EqualFold(out.Status, "active") {
+		return 0, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "tenant suspended/deleted")
 	}
 	switch v := out.HardLimits["run_rpm"].(type) {
 	case float64:

@@ -108,6 +108,25 @@ Actions:
 | RPO (max data loss) | <= 5 minutes (PITR) |
 | RTO (restore time)  | <= 30 minutes |
 
+## Periodic Restore Test
+
+Run a restore validation at least monthly using a temporary instance:
+
+```bash
+./scripts/dr/test_restore.sh <snapshot-id> <temp-instance-id>
+```
+
+Requirements:
+- AWS credentials with `rds:RestoreDBInstanceFromDBSnapshot` and `rds:DeleteDBInstance`
+- `psql` installed locally
+- `DB_USER` and `DB_PASSWORD` exported in shell
+
+Validation:
+1. Script restores snapshot to a temporary DB instance.
+2. Script waits for `available` status.
+3. Script runs basic connectivity checks on both `nexus_core` and `nexus_saas`.
+4. Script deletes the temporary instance (`--skip-final-snapshot`).
+
 ## Complete DB Failure Runbook
 
 1. Detect failure from CloudWatch alarm or failed health checks.

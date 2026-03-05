@@ -12,9 +12,6 @@ concurrency:
 jobs:
   nexus-core:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: nexus-core
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -22,16 +19,15 @@ jobs:
           go-version: "1.24"
       - name: Vet
         run: go vet ./...
+        working-directory: nexus-core
       - name: Test
         run: go test ./...
+        working-directory: nexus-core
       - name: Docker build (verify only)
-        run: docker build -t nexus-core:ci .
+        run: docker build -f nexus-core/Dockerfile -t nexus-core:ci .
 
   nexus-saas:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: nexus-saas
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -39,16 +35,15 @@ jobs:
           go-version: "1.24"
       - name: Vet
         run: go vet ./...
+        working-directory: nexus-saas
       - name: Test
         run: go test ./...
+        working-directory: nexus-saas
       - name: Docker build (verify only)
-        run: docker build -t nexus-saas:ci .
+        run: docker build -f nexus-saas/Dockerfile -t nexus-saas:ci .
 
   nexus-control-operators:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: nexus-control-operators
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -56,10 +51,12 @@ jobs:
           go-version: "1.24"
       - name: Vet
         run: go vet ./...
+        working-directory: nexus-control-operators
       - name: Test
         run: go test ./...
+        working-directory: nexus-control-operators
       - name: Docker build (verify only)
-        run: docker build -t nexus-control-operators:ci .
+        run: docker build -f nexus-control-operators/Dockerfile -t nexus-control-operators:ci .
 
   nexus-ai-operators:
     runs-on: ubuntu-latest
@@ -111,13 +108,10 @@ jobs:
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Go vulnerability check (nexus-core)
-        continue-on-error: true
         run: cd nexus-core && govulncheck ./...
       - name: Go vulnerability check (nexus-saas)
-        continue-on-error: true
         run: cd nexus-saas && govulncheck ./...
       - name: Go vulnerability check (nexus-control-operators)
-        continue-on-error: true
         run: cd nexus-control-operators && govulncheck ./...
 
       - uses: actions/setup-python@v5
@@ -133,8 +127,7 @@ jobs:
         with:
           node-version: "20"
       - name: Node dependency audit
-        continue-on-error: true
-        run: cd nexus-tower && npm audit --audit-level=high
+        run: cd nexus-tower && npm audit --audit-level=critical
 
   docker-build:
     runs-on: ubuntu-latest

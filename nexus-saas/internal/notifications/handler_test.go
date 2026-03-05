@@ -14,6 +14,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	notificationdomain "nexus-saas/internal/notifications/usecases/domain"
 	"nexus/pkg/types"
 )
 
@@ -58,8 +59,9 @@ func TestHandler_PreferencesLifecycle(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
-		if len(body.Items) != 6 {
-			t.Fatalf("expected 6 preferences, got %d", len(body.Items))
+		expected := len(notificationdomain.OrderedNotificationTypes())
+		if len(body.Items) != expected {
+			t.Fatalf("expected %d preferences, got %d", expected, len(body.Items))
 		}
 	})
 
@@ -104,6 +106,77 @@ func TestHandler_PreferencesLifecycle(t *testing.T) {
 			t.Fatalf("expected updated disabled preferences, got %+v", seenDisabled)
 		}
 	})
+
+	t.Run("in-app list unread and mark read", func(t *testing.T) {
+		notifID := uuid.New()
+		if err := db.Exec(
+			`INSERT INTO in_app_notifications(id,org_id,actor_id,type,title,body,read_at,created_at) VALUES (?,?,?,?,?,?,NULL,CURRENT_TIMESTAMP)`,
+			notifID.String(),
+			orgID.String(),
+			userExternalID,
+			"payment_failed",
+			"Payment failed",
+			"Please update payment method",
+		).Error; err != nil {
+			t.Fatalf("insert in_app_notifications: %v", err)
+		}
+
+		wCount := httptest.NewRecorder()
+		reqCount := httptest.NewRequest(http.MethodGet, "/v1/notifications/unread-count", nil)
+		r.ServeHTTP(wCount, reqCount)
+		if wCount.Code != http.StatusOK {
+			t.Fatalf("expected unread-count 200, got %d: %s", wCount.Code, wCount.Body.String())
+		}
+		var unread struct {
+			Count int64 `json:"count"`
+		}
+		if err := json.Unmarshal(wCount.Body.Bytes(), &unread); err != nil {
+			t.Fatalf("decode unread-count: %v", err)
+		}
+		if unread.Count != 1 {
+			t.Fatalf("expected unread count 1, got %d", unread.Count)
+		}
+
+		wList := httptest.NewRecorder()
+		reqList := httptest.NewRequest(http.MethodGet, "/v1/notifications?limit=10", nil)
+		r.ServeHTTP(wList, reqList)
+		if wList.Code != http.StatusOK {
+			t.Fatalf("expected list 200, got %d: %s", wList.Code, wList.Body.String())
+		}
+		var listed struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := json.Unmarshal(wList.Body.Bytes(), &listed); err != nil {
+			t.Fatalf("decode list: %v", err)
+		}
+		if len(listed.Items) != 1 {
+			t.Fatalf("expected 1 in-app item, got %d", len(listed.Items))
+		}
+
+		wRead := httptest.NewRecorder()
+		reqRead := httptest.NewRequest(http.MethodPut, "/v1/notifications/"+notifID.String()+"/read", bytes.NewReader([]byte("{}")))
+		reqRead.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(wRead, reqRead)
+		if wRead.Code != http.StatusNoContent {
+			t.Fatalf("expected mark-read 204, got %d: %s", wRead.Code, wRead.Body.String())
+		}
+
+		wCount2 := httptest.NewRecorder()
+		reqCount2 := httptest.NewRequest(http.MethodGet, "/v1/notifications/unread-count", nil)
+		r.ServeHTTP(wCount2, reqCount2)
+		if wCount2.Code != http.StatusOK {
+			t.Fatalf("expected unread-count 200, got %d: %s", wCount2.Code, wCount2.Body.String())
+		}
+		var unread2 struct {
+			Count int64 `json:"count"`
+		}
+		if err := json.Unmarshal(wCount2.Body.Bytes(), &unread2); err != nil {
+			t.Fatalf("decode unread-count after read: %v", err)
+		}
+		if unread2.Count != 0 {
+			t.Fatalf("expected unread count 0, got %d", unread2.Count)
+		}
+	})
 }
 
 func newNotificationsHTTPTestDB(t *testing.T) *gorm.DB {
@@ -119,6 +192,7 @@ func newNotificationsHTTPTestDB(t *testing.T) *gorm.DB {
 		`CREATE TABLE org_members (id TEXT PRIMARY KEY, org_id TEXT NOT NULL, user_id TEXT NOT NULL, role TEXT NOT NULL, joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(org_id, user_id))`,
 		`CREATE TABLE notification_preferences (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, notification_type TEXT NOT NULL, channel TEXT NOT NULL DEFAULT 'email', enabled BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(user_id, notification_type, channel))`,
 		`CREATE TABLE notification_log (id TEXT PRIMARY KEY, org_id TEXT NOT NULL, user_id TEXT NULL, notification_type TEXT NOT NULL, channel TEXT NOT NULL DEFAULT 'email', recipient TEXT NOT NULL, subject TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'sent', dedup_key TEXT NULL UNIQUE, error_message TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE in_app_notifications (id TEXT PRIMARY KEY, org_id TEXT NOT NULL, actor_id TEXT NOT NULL DEFAULT '', type TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', read_at DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 	}
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {

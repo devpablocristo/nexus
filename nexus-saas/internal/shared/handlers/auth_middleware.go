@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -11,6 +12,7 @@ import (
 	"nexus-saas/cmd/config"
 	identitydomain "nexus-saas/internal/identity/usecases/domain"
 	orgdomain "nexus-saas/internal/org/usecases/domain"
+	"nexus-saas/internal/shared/ratelimit"
 	httperr "nexus/pkg/http/errors"
 	"nexus/pkg/types"
 	"nexus/pkg/utils"
@@ -32,11 +34,20 @@ type identityAuthPort interface {
 }
 
 func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth orgAuthPort, idAuth identityAuthPort) gin.HandlerFunc {
+	authLimiter := ratelimit.NewAuthLimiter(10, 5*time.Minute, 15*time.Minute)
+
 	return func(c *gin.Context) {
+		clientIP := strings.TrimSpace(c.ClientIP())
+		if authLimiter.IsBlocked(clientIP) {
+			httperr.Write(c, http.StatusTooManyRequests, types.ErrCodeRateLimited, "too many failed auth attempts, try again later")
+			return
+		}
+
 		if cfg.AuthEnableJWT {
 			if token := bearerToken(c.GetHeader("Authorization")); token != "" {
 				principal, err := idAuth.ResolvePrincipal(c.Request.Context(), token)
 				if err != nil {
+					authLimiter.RecordFailure(clientIP)
 					httperr.Unauthorized(c, "invalid bearer token")
 					return
 				}
@@ -53,6 +64,7 @@ func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth orgAuthPort
 				}
 				c.Set(string(types.CtxKeyScopes), scopes)
 				c.Set(string(types.CtxKeyAuthMethod), "jwt")
+				authLimiter.RecordSuccess(clientIP)
 				c.Next()
 				return
 			}
@@ -66,6 +78,7 @@ func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth orgAuthPort
 
 		apiKey := c.GetHeader(HeaderAPIKey)
 		if apiKey == "" {
+			authLimiter.RecordFailure(clientIP)
 			httperr.Unauthorized(c, "missing api key")
 			return
 		}
@@ -73,6 +86,7 @@ func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth orgAuthPort
 
 		principal, err := auth.ResolvePrincipal(c.Request.Context(), hash)
 		if err != nil {
+			authLimiter.RecordFailure(clientIP)
 			httperr.Unauthorized(c, "invalid api key")
 			return
 		}
@@ -93,6 +107,7 @@ func AuthMiddleware(l zerolog.Logger, cfg config.ServiceConfig, auth orgAuthPort
 		}
 		c.Set(string(types.CtxKeyScopes), effectiveScopes)
 		c.Set(string(types.CtxKeyAuthMethod), "api_key")
+		authLimiter.RecordSuccess(clientIP)
 		_ = l
 		c.Next()
 	}

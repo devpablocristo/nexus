@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { useActiveTool } from '../lib/tool-context';
 import { clerkEnabled } from '../lib/auth';
+import { NotificationBell } from './NotificationBell';
 
 const navItems = [
   { to: '/tools', label: 'Tools' },
@@ -36,6 +37,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <p className="header-note">Manage tools, inspect requests, and monitor Nexus.</p>
           {clerkEnabled && (
             <div className="user-controls">
+              <NotificationBell />
               <UserButton afterSignOutUrl="/login" />
             </div>
           )}

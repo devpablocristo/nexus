@@ -7,8 +7,9 @@ from dataclasses import dataclass
 
 from app.adapters.nexus_core_client import NexusCoreClient
 from app.core.config import Settings
-from app.core.metrics import ACTIONS_APPLIED, EVENTS_CONSUMED, INCIDENTS_OPENED, LAST_CURSOR, PROPOSALS_CREATED
+from app.core.metrics import ACTIONS_APPLIED, DEAD_LETTER_EVENTS, EVENTS_CONSUMED, INCIDENTS_OPENED, LAST_CURSOR, PROPOSALS_CREATED
 from app.domain.models import Event
+from app.engine.dead_letter import DeadLetterLog
 from app.services.observer import compute_signal
 from app.services.playbooks import incident_from_signal, throttle_tenant_playbook
 from app.services.policy_proposer import build_proposal
@@ -30,6 +31,7 @@ class OperatorEngine:
         self.settings = settings
         self.client = client
         self.state = EngineState()
+        self.dead_letter = DeadLetterLog(settings.dlq_path)
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
@@ -103,6 +105,16 @@ class OperatorEngine:
             try:
                 await self.tick_once()
             except Exception as exc:  # noqa: BLE001
+                self.dead_letter.append(
+                    event_id=f"cursor-{self.state.cursor}",
+                    payload={
+                        "cursor": self.state.cursor,
+                        "latest_summary": self.state.latest_summary,
+                    },
+                    error=str(exc),
+                    attempts=1,
+                )
+                DEAD_LETTER_EVENTS.inc()
                 logger.exception('operator_tick_failed error=%s', exc)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self.settings.poll_interval_seconds)

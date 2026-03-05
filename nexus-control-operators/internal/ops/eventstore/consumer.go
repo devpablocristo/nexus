@@ -3,14 +3,16 @@ package eventstore
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
 
-	"nexus-control-operators/internal/shared/coreerr"
-	"nexus-control-operators/internal/shared/metrics"
 	consumerdto "nexus-control-operators/internal/ops/eventstore/consumer/dto"
 	opsdomain "nexus-control-operators/internal/ops/eventstore/usecases/domain"
+	"nexus-control-operators/internal/shared/coreerr"
+	"nexus-control-operators/internal/shared/metrics"
 )
 
 type ConsumerConfig = consumerdto.ConsumerConfig
@@ -35,6 +37,7 @@ type Consumer struct {
 	batchSize     int
 	pollInterval  time.Duration
 	onIdle        func(ctx context.Context) error
+	deadLetter    *DeadLetterLog
 	log           zerolog.Logger
 }
 
@@ -47,12 +50,17 @@ func NewConsumer(service consumerPort, consumerGroup string, cfg consumerdto.Con
 	if poll <= 0 {
 		poll = 700 * time.Millisecond
 	}
+	dlqPath := strings.TrimSpace(cfg.DLQPath)
+	if dlqPath == "" {
+		dlqPath = "data/dead_letters.jsonl"
+	}
 	return &Consumer{
 		service:       service,
 		consumerGroup: consumerGroup,
 		batchSize:     batch,
 		pollInterval:  poll,
 		onIdle:        cfg.OnIdle,
+		deadLetter:    NewDeadLetterLog(dlqPath),
 		log:           log.With().Str("consumer", consumerGroup).Logger(),
 	}
 }
@@ -100,6 +108,19 @@ func (c *Consumer) Run(ctx context.Context, handler EventHandler) error {
 			start := time.Now()
 			if processErr := c.processEvent(ctx, handler, ev); processErr != nil {
 				c.log.Error().Err(processErr).Int64("seq", ev.Sequence).Msg("event permanently failed, skipping")
+				if c.deadLetter != nil {
+					entry := DeadLetterEntry{
+						EventID:  ev.Envelope.ID.String(),
+						Payload:  ev,
+						Error:    processErr.Error(),
+						Attempts: maxHandlerRetries,
+						FailedAt: time.Now().UTC(),
+					}
+					if err := c.deadLetter.Append(entry); err != nil {
+						c.log.Error().Err(err).Int64("seq", ev.Sequence).Msg("failed to append dead-letter entry")
+					}
+					metrics.DeadLetterEvents.Inc()
+				}
 				metrics.EventsProcessed.WithLabelValues(c.consumerGroup, "error").Inc()
 			} else {
 				metrics.EventsProcessed.WithLabelValues(c.consumerGroup, "ok").Inc()
@@ -116,11 +137,13 @@ func (c *Consumer) Run(ctx context.Context, handler EventHandler) error {
 }
 
 func (c *Consumer) processEvent(ctx context.Context, handler EventHandler, ev opsdomain.StoredEvent) error {
+	var lastErr error
 	for attempt := 1; attempt <= maxHandlerRetries; attempt++ {
 		err := handler(ctx, ev)
 		if err == nil {
 			return nil
 		}
+		lastErr = err
 
 		var coreErr *coreerr.CoreError
 		retryable := errors.As(err, &coreErr) && coreErr.IsRetryable()
@@ -132,6 +155,9 @@ func (c *Consumer) processEvent(ctx context.Context, handler EventHandler, ev op
 		if waitErr := backoffWait(ctx, attempt); waitErr != nil {
 			return nil
 		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("max retries exceeded: %w", lastErr)
 	}
 	return errors.New("max retries exceeded")
 }

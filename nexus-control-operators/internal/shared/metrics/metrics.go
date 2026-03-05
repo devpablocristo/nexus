@@ -33,6 +33,11 @@ var (
 		Name:      "core_requests_total",
 		Help:      "HTTP requests to nexus-core.",
 	}, []string{"method", "status"})
+
+	DeadLetterEvents = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "nexus_dead_letter_events_total",
+		Help: "Total number of permanently failed events written to dead-letter logs.",
+	})
 )
 
 func Handler() http.Handler {

@@ -10,6 +10,8 @@ import (
 type TenantSettings struct {
 	OrgID      uuid.UUID `gorm:"type:uuid;primaryKey"`
 	PlanCode   string
+	Status     string
+	DeletedAt  *time.Time
 	HardLimits datatypes.JSON `gorm:"column:hard_limits_json;type:jsonb"`
 	UpdatedBy  *string
 	UpdatedAt  time.Time

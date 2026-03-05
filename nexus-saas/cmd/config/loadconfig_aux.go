@@ -71,6 +71,24 @@ func loadRateLimit(cfg *Config) error {
 	cfg.Service.RateLimitDefaultPerMin = rl
 	cfg.Service.RateLimitBackend = mustStrDefault("NEXUS_RATE_LIMIT_BACKEND", "inmemory")
 	cfg.Service.RedisURL = mustStrDefault("NEXUS_REDIS_URL", "redis://redis:6379/0")
+
+	saasRPS, err := mustIntDefault("NEXUS_SAAS_RATE_LIMIT_RPS", 100)
+	if err != nil {
+		return err
+	}
+	if saasRPS <= 0 {
+		saasRPS = 100
+	}
+	cfg.Service.SaaSRateLimitRPS = float64(saasRPS)
+
+	saasBurst, err := mustIntDefault("NEXUS_SAAS_RATE_LIMIT_BURST", 200)
+	if err != nil {
+		return err
+	}
+	if saasBurst <= 0 {
+		saasBurst = 200
+	}
+	cfg.Service.SaaSRateLimitBurst = saasBurst
 	return nil
 }
 

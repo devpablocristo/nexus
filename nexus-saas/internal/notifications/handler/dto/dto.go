@@ -18,3 +18,22 @@ type PreferenceUpdate struct {
 type UpdatePreferencesRequest struct {
 	Items []PreferenceUpdate `json:"items" binding:"required"`
 }
+
+type InAppNotificationItem struct {
+	ID        string  `json:"id"`
+	OrgID     string  `json:"org_id"`
+	ActorID   string  `json:"actor_id"`
+	Type      string  `json:"type"`
+	Title     string  `json:"title"`
+	Body      string  `json:"body"`
+	ReadAt    *string `json:"read_at,omitempty"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type InAppNotificationsResponse struct {
+	Items []InAppNotificationItem `json:"items"`
+}
+
+type UnreadCountResponse struct {
+	Count int64 `json:"count"`
+}

@@ -254,3 +254,78 @@ func (r *Repository) CreateLog(ctx context.Context, entry notificationdomain.Log
 	}
 	return tx.RowsAffected > 0, nil
 }
+
+func (r *Repository) CreateInAppNotification(ctx context.Context, item notificationdomain.InAppNotification) error {
+	row := models.InAppNotification{
+		ID:        item.ID,
+		OrgID:     item.OrgID,
+		ActorID:   strings.TrimSpace(item.ActorID),
+		Type:      strings.TrimSpace(item.Type),
+		Title:     strings.TrimSpace(item.Title),
+		Body:      strings.TrimSpace(item.Body),
+		ReadAt:    item.ReadAt,
+		CreatedAt: item.CreatedAt,
+	}
+	return r.db.WithContext(ctx).Create(&row).Error
+}
+
+func (r *Repository) ListInAppNotifications(ctx context.Context, orgID uuid.UUID, actorID string, limit, offset int) ([]notificationdomain.InAppNotification, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	actorID = strings.TrimSpace(actorID)
+
+	var rows []models.InAppNotification
+	if err := r.db.WithContext(ctx).
+		Where("org_id = ? AND actor_id = ?", orgID, actorID).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]notificationdomain.InAppNotification, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, notificationdomain.InAppNotification{
+			ID:        row.ID,
+			OrgID:     row.OrgID,
+			ActorID:   row.ActorID,
+			Type:      row.Type,
+			Title:     row.Title,
+			Body:      row.Body,
+			ReadAt:    row.ReadAt,
+			CreatedAt: row.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (r *Repository) CountUnreadInAppNotifications(ctx context.Context, orgID uuid.UUID, actorID string) (int64, error) {
+	actorID = strings.TrimSpace(actorID)
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Table("in_app_notifications").
+		Where("org_id = ? AND actor_id = ? AND read_at IS NULL", orgID, actorID).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *Repository) MarkInAppNotificationRead(ctx context.Context, orgID uuid.UUID, actorID string, id uuid.UUID) error {
+	actorID = strings.TrimSpace(actorID)
+	if id == uuid.Nil || actorID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	return r.db.WithContext(ctx).
+		Model(&models.InAppNotification{}).
+		Where("id = ? AND org_id = ? AND actor_id = ? AND read_at IS NULL", id, orgID, actorID).
+		Update("read_at", now).Error
+}

@@ -17,6 +17,7 @@ var baseEmailTemplate = template.Must(template.ParseFS(emailTemplateFS, "templat
 
 type renderedEmail struct {
 	Subject  string
+	Message  string
 	HTMLBody string
 	TextBody string
 }
@@ -38,6 +39,7 @@ func renderEmailTemplate(notifType notificationdomain.NotificationType, data not
 	}
 	return renderedEmail{
 		Subject:  subject,
+		Message:  view.Message,
 		HTMLBody: html.String(),
 		TextBody: textBody,
 	}, nil
@@ -80,6 +82,49 @@ func buildEmailContent(notifType notificationdomain.NotificationType, data notif
 		subject = "Incident resolved: " + fallback(data.IncidentTitle, "Incident")
 		message = fmt.Sprintf("An incident has been closed for %s.", orgName)
 		actionLabel = "View incident timeline"
+	case notificationdomain.NotificationTenantSuspended:
+		title = "Tenant suspended"
+		subject = "Your tenant has been suspended"
+		message = fmt.Sprintf("Your organization %s is currently suspended. API requests are blocked until reactivation.", orgName)
+		actionLabel = "Review billing"
+	case notificationdomain.NotificationTenantReactivated:
+		title = "Tenant reactivated"
+		subject = "Your tenant is active again"
+		message = fmt.Sprintf("Your organization %s has been reactivated. You can continue using Nexus normally.", orgName)
+		actionLabel = "Open Nexus"
+	case notificationdomain.NotificationUsageWarning80:
+		title = "Usage warning"
+		subject = "Usage warning: 80% threshold reached"
+		message = fmt.Sprintf(
+			"Your organization %s reached 80%% of the %s limit (%s/%s).",
+			orgName,
+			fallback(data.Extra["metric"], "configured"),
+			fallback(data.Extra["current"], "?"),
+			fallback(data.Extra["limit"], "?"),
+		)
+		actionLabel = "Review usage"
+	case notificationdomain.NotificationUsageWarning95:
+		title = "Usage warning"
+		subject = "Usage warning: 95% threshold reached"
+		message = fmt.Sprintf(
+			"Your organization %s reached 95%% of the %s limit (%s/%s).",
+			orgName,
+			fallback(data.Extra["metric"], "configured"),
+			fallback(data.Extra["current"], "?"),
+			fallback(data.Extra["limit"], "?"),
+		)
+		actionLabel = "Review usage"
+	case notificationdomain.NotificationUsageLimitReached:
+		title = "Usage limit reached"
+		subject = "Usage limit reached"
+		message = fmt.Sprintf(
+			"Your organization %s reached the %s limit (%s/%s).",
+			orgName,
+			fallback(data.Extra["metric"], "configured"),
+			fallback(data.Extra["current"], "?"),
+			fallback(data.Extra["limit"], "?"),
+		)
+		actionLabel = "Review limits"
 	default:
 		title = "Nexus notification"
 		subject = "Nexus notification"

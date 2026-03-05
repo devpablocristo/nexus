@@ -25,7 +25,7 @@ type Runner struct {
 	worker   Worker
 }
 
-func NewRunner(eventService *opseventstore.Usecases, worker Worker, batchSize int, pollInterval time.Duration, log zerolog.Logger) *Runner {
+func NewRunner(eventService *opseventstore.Usecases, worker Worker, batchSize int, pollInterval time.Duration, dlqPath string, log zerolog.Logger) *Runner {
 	onIdle := func(context.Context) error { return nil }
 	if iw, ok := worker.(IdleWorker); ok {
 		lastTick := time.Time{}
@@ -47,6 +47,7 @@ func NewRunner(eventService *opseventstore.Usecases, worker Worker, batchSize in
 			BatchSize:    batchSize,
 			PollInterval: pollInterval,
 			OnIdle:       onIdle,
+			DLQPath:      dlqPath,
 		}, log),
 		worker: worker,
 	}

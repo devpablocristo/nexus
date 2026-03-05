@@ -70,6 +70,9 @@ func init() {
 	NotificationsSent.WithLabelValues("subscription_canceled", "email").Add(0)
 	NotificationsSent.WithLabelValues("incident_opened", "email").Add(0)
 	NotificationsSent.WithLabelValues("incident_closed", "email").Add(0)
+	NotificationsSent.WithLabelValues("usage_warning_80", "email").Add(0)
+	NotificationsSent.WithLabelValues("usage_warning_95", "email").Add(0)
+	NotificationsSent.WithLabelValues("usage_limit_reached", "email").Add(0)
 
 	AlertsFired.WithLabelValues("none").Add(0)
 }

@@ -52,6 +52,9 @@ func ensureSaaSSchema(db *gorm.DB) error {
 		`ALTER TABLE tenant_settings ADD COLUMN IF NOT EXISTS stripe_subscription_id text UNIQUE`,
 		`ALTER TABLE tenant_settings ADD COLUMN IF NOT EXISTS billing_status text NOT NULL DEFAULT 'trialing'
 			CHECK (billing_status IN ('trialing','active','past_due','canceled','unpaid'))`,
+		`ALTER TABLE tenant_settings ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active'
+			CHECK (status IN ('active','suspended','deleted'))`,
+		`ALTER TABLE tenant_settings ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
 		`CREATE INDEX IF NOT EXISTS idx_tenant_settings_stripe_customer
 			ON tenant_settings(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL`,
 		`CREATE TABLE IF NOT EXISTS admin_activity_events (
@@ -125,6 +128,18 @@ func ensureSaaSSchema(db *gorm.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_notification_log_org_created ON notification_log(org_id, created_at DESC)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_log_dedup_key ON notification_log(dedup_key)`,
+		`CREATE TABLE IF NOT EXISTS in_app_notifications (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			org_id uuid NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+			actor_id text NOT NULL DEFAULT '',
+			type text NOT NULL,
+			title text NOT NULL,
+			body text NOT NULL DEFAULT '',
+			read_at timestamptz NULL,
+			created_at timestamptz NOT NULL DEFAULT now()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_inapp_notif_org_unread ON in_app_notifications (org_id, read_at) WHERE read_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_inapp_notif_actor_created ON in_app_notifications (actor_id, created_at DESC)`,
 	}
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {

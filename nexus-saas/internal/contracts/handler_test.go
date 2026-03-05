@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -35,6 +36,10 @@ func (s *usageStub) IncrementEvent(_ context.Context, eventID string, _ uuid.UUI
 	}
 	s.seen[eventID]++
 	return nil
+}
+
+func (s *usageStub) GetCounter(_ context.Context, _ uuid.UUID, _ string, _ time.Time) (int64, error) {
+	return 0, nil
 }
 
 func newRouterForTest(h *Handler) *gin.Engine {
@@ -87,4 +92,3 @@ func TestIngestUsage_IsIdempotentByEventID(t *testing.T) {
 		t.Fatalf("expected handler to pass event twice to sink, got %d", usage.seen["ev-1"])
 	}
 }
-

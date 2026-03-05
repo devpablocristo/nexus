@@ -27,6 +27,9 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.GET("/admin/bootstrap", h.bootstrap)
 	rg.GET("/admin/tenant-settings", h.getTenantSettings)
 	rg.PUT("/admin/tenant-settings", h.upsertTenantSettings)
+	rg.PUT("/admin/tenants/:org_id/suspend", h.suspendTenant)
+	rg.PUT("/admin/tenants/:org_id/reactivate", h.reactivateTenant)
+	rg.DELETE("/admin/tenants/:org_id", h.deleteTenant)
 	rg.GET("/admin/activity", h.listActivity)
 }
 
@@ -115,6 +118,8 @@ func (h *Handler) listActivity(c *gin.Context) {
 func toTenantSettingsDTO(s admindomain.TenantSettings) admindto.TenantSettings {
 	return admindto.TenantSettings{
 		PlanCode:   s.PlanCode,
+		Status:     s.Status,
+		DeletedAt:  formatTimePtr(s.DeletedAt),
 		HardLimits: s.HardLimits,
 		UpdatedBy:  s.UpdatedBy,
 		UpdatedAt:  formatTime(s.UpdatedAt),
@@ -122,11 +127,63 @@ func toTenantSettingsDTO(s admindomain.TenantSettings) admindto.TenantSettings {
 	}
 }
 
+func (h *Handler) suspendTenant(c *gin.Context) {
+	actorOrgID := mustOrgID(c)
+	targetOrgID, err := parseOrgParam(c)
+	if err != nil {
+		errors.BadRequest(c, "invalid org_id")
+		return
+	}
+	settings, err := h.uc.SuspendTenant(c.Request.Context(), actorOrgID, targetOrgID, actorFromCtx(c), roleFromCtx(c), scopesFromCtx(c))
+	if err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toTenantSettingsDTO(settings))
+}
+
+func (h *Handler) reactivateTenant(c *gin.Context) {
+	actorOrgID := mustOrgID(c)
+	targetOrgID, err := parseOrgParam(c)
+	if err != nil {
+		errors.BadRequest(c, "invalid org_id")
+		return
+	}
+	settings, err := h.uc.ReactivateTenant(c.Request.Context(), actorOrgID, targetOrgID, actorFromCtx(c), roleFromCtx(c), scopesFromCtx(c))
+	if err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toTenantSettingsDTO(settings))
+}
+
+func (h *Handler) deleteTenant(c *gin.Context) {
+	actorOrgID := mustOrgID(c)
+	targetOrgID, err := parseOrgParam(c)
+	if err != nil {
+		errors.BadRequest(c, "invalid org_id")
+		return
+	}
+	settings, err := h.uc.DeleteTenant(c.Request.Context(), actorOrgID, targetOrgID, actorFromCtx(c), roleFromCtx(c), scopesFromCtx(c))
+	if err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toTenantSettingsDTO(settings))
+}
+
 func formatTime(v time.Time) string {
 	if v.IsZero() {
 		return ""
 	}
 	return v.UTC().Format(time.RFC3339)
+}
+
+func formatTimePtr(v *time.Time) string {
+	if v == nil {
+		return ""
+	}
+	return formatTime(*v)
 }
 
 func mustOrgID(c *gin.Context) uuid.UUID {
@@ -187,4 +244,8 @@ func parseLimit(raw string) int {
 		return 200
 	}
 	return n
+}
+
+func parseOrgParam(c *gin.Context) (uuid.UUID, error) {
+	return uuid.Parse(strings.TrimSpace(c.Param("org_id")))
 }

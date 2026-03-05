@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"nexus-saas/internal/admin/repository/models"
 	admindomain "nexus-saas/internal/admin/usecases/domain"
@@ -33,14 +36,30 @@ func (r *Repository) GetTenantSettings(ctx context.Context, orgID uuid.UUID) (ad
 }
 
 func (r *Repository) UpsertTenantSettings(ctx context.Context, s admindomain.TenantSettings) (admindomain.TenantSettings, error) {
+	status := strings.TrimSpace(strings.ToLower(s.Status))
+	if status == "" {
+		status = admindomain.TenantStatusActive
+	}
 	limits, _ := json.Marshal(s.HardLimits)
 	row := models.TenantSettings{
 		OrgID:      s.OrgID,
 		PlanCode:   s.PlanCode,
+		Status:     status,
+		DeletedAt:  s.DeletedAt,
 		HardLimits: limits,
 		UpdatedBy:  s.UpdatedBy,
 	}
-	if err := r.db.WithContext(ctx).Where("org_id = ?", s.OrgID).Assign(&row).FirstOrCreate(&row).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "org_id"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"plan_code":        row.PlanCode,
+				"hard_limits_json": row.HardLimits,
+				"updated_by":       row.UpdatedBy,
+				"updated_at":       gorm.Expr("NOW()"),
+			}),
+		}).
+		Create(&row).Error; err != nil {
 		return admindomain.TenantSettings{}, err
 	}
 	stored, _, err := r.GetTenantSettings(ctx, s.OrgID)
@@ -48,6 +67,30 @@ func (r *Repository) UpsertTenantSettings(ctx context.Context, s admindomain.Ten
 		return admindomain.TenantSettings{}, err
 	}
 	return stored, nil
+}
+
+func (r *Repository) UpdateTenantLifecycle(ctx context.Context, orgID uuid.UUID, status string, deletedAt *time.Time, updatedBy *string) (admindomain.TenantSettings, error) {
+	updates := map[string]any{
+		"status":     status,
+		"deleted_at": deletedAt,
+		"updated_by": updatedBy,
+		"updated_at": gorm.Expr("NOW()"),
+	}
+	res := r.db.WithContext(ctx).
+		Model(&models.TenantSettings{}).
+		Where("org_id = ?", orgID).
+		Updates(updates)
+	if res.Error != nil {
+		return admindomain.TenantSettings{}, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return admindomain.TenantSettings{}, gorm.ErrRecordNotFound
+	}
+	settings, _, err := r.GetTenantSettings(ctx, orgID)
+	if err != nil {
+		return admindomain.TenantSettings{}, err
+	}
+	return settings, nil
 }
 
 func (r *Repository) CreateAdminActivityEvent(ctx context.Context, ev admindomain.AdminActivityEvent) error {
@@ -149,9 +192,15 @@ func toTenantDomain(m models.TenantSettings) admindomain.TenantSettings {
 	if limits == nil {
 		limits = map[string]any{}
 	}
+	status := strings.TrimSpace(strings.ToLower(m.Status))
+	if status == "" {
+		status = admindomain.TenantStatusActive
+	}
 	return admindomain.TenantSettings{
 		OrgID:      m.OrgID,
 		PlanCode:   m.PlanCode,
+		Status:     status,
+		DeletedAt:  m.DeletedAt,
 		HardLimits: limits,
 		UpdatedBy:  m.UpdatedBy,
 		UpdatedAt:  m.UpdatedAt,

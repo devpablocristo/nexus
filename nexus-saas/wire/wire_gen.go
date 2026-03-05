@@ -47,11 +47,6 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	identityUsecases := identity.NewUsecases(verifier, identityConfig)
 	handlerFunc := NewAuthMiddleware(logger, serviceConfig, usecases, identityUsecases)
 	adminRepository := admin.NewRepository(db)
-	adminUsecases := admin.NewUsecases(adminRepository)
-	handler := admin.NewHandler(adminUsecases)
-	billingRepository := billing.NewRepository(db)
-	tenantSettingsPort := ProvideTenantSettingsPort(adminRepository)
-	stripeClient := ProvideStripeClient(serviceConfig)
 	notificationsRepository := notifications.NewRepository(db)
 	emailSender, err := ProvideNotificationSender(serviceConfig, logger)
 	if err != nil {
@@ -59,6 +54,11 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 		return nil, nil, err
 	}
 	notificationsUsecases := notifications.NewUsecases(serviceConfig, notificationsRepository, emailSender, logger)
+	adminUsecases := ProvideAdminUsecases(adminRepository, notificationsUsecases)
+	handler := admin.NewHandler(adminUsecases)
+	billingRepository := billing.NewRepository(db)
+	tenantSettingsPort := ProvideTenantSettingsPort(adminRepository)
+	stripeClient := ProvideStripeClient(serviceConfig)
 	notificationPort := ProvideBillingNotificationPort(notificationsUsecases)
 	billingUsecases := billing.NewUsecases(serviceConfig, billingRepository, tenantSettingsPort, stripeClient, notificationPort, logger)
 	billingHandler := billing.NewHandler(billingUsecases)
@@ -103,12 +103,12 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	usersHandler := users.NewHandler(usersUsecases)
 	clerkwebhookNotificationPort := ProvideClerkWebhookNotificationPort(notificationsUsecases)
 	clerkwebhookHandler := clerkwebhook.NewHandler(serviceConfig, usersUsecases, clerkwebhookNotificationPort, logger)
-	contractsHandler := contracts.NewHandler(serviceConfig, adminRepository, usagemeteringRepository, eventsUsecases, actionsUsecases)
+	contractsHandler := contracts.NewHandler(serviceConfig, adminRepository, usagemeteringRepository, eventsUsecases, actionsUsecases, notificationsUsecases)
 	coreproxyHandler := coreproxy.NewHandler()
 	apiCallsMiddlewareFunc := usagemetering.NewAPICallsMiddleware(usagemeteringRepository)
 	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, billingHandler, eventsHandler, actionsHandler, incidentsHandler, notificationsHandler, alertsHandler, sessionHandler, policyproposalHandler, assistantHandler, oidcHandler, orgHandler, usersHandler, clerkwebhookHandler, contractsHandler, coreproxyHandler, apiCallsMiddlewareFunc)
 	server := NewHTTPServer(apiConfig, engine)
-	app := NewApp(server, alertsUsecases, serviceConfig, logger)
+	app := NewApp(server, alertsUsecases, billingRepository, adminUsecases, serviceConfig, logger)
 	return app, func() {
 		cleanup()
 	}, nil

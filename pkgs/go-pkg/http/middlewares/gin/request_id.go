@@ -50,6 +50,14 @@ func LoggerMiddleware(l zerolog.Logger) gin.HandlerFunc {
 
 		orgID, _ := c.Get(string(types.CtxKeyOrgID))
 		ev = ev.Str("org_id", toString(orgID))
+		traceID, _ := c.Get(string(types.CtxKeyTraceID))
+		spanID, _ := c.Get(string(types.CtxKeySpanID))
+		if s := toString(traceID); s != "" {
+			ev = ev.Str("trace_id", s)
+		}
+		if s := toString(spanID); s != "" {
+			ev = ev.Str("span_id", s)
+		}
 
 		ev.
 			Str("request_id", RequestIDFromContext(c)).

@@ -10,4 +10,5 @@ type ConsumerConfig struct {
 	BatchSize    int
 	PollInterval time.Duration
 	OnIdle       func(ctx context.Context) error
+	DLQPath      string
 }

@@ -12,7 +12,9 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"nexus-saas/cmd/config"
+	"nexus-saas/internal/admin"
 	"nexus-saas/internal/alerts"
+	"nexus-saas/internal/billing"
 	gormdb "nexus/pkg/databases/sql/gorm"
 )
 
@@ -59,35 +61,58 @@ func NewHTTPServer(cfg config.APIConfig, router *gin.Engine) *http.Server {
 	}
 }
 
-func NewApp(server *http.Server, alertsUC *alerts.Usecases, cfg config.ServiceConfig, logger zerolog.Logger) *App {
+func NewApp(
+	server *http.Server,
+	alertsUC *alerts.Usecases,
+	billingRepo *billing.Repository,
+	adminUC *admin.Usecases,
+	cfg config.ServiceConfig,
+	logger zerolog.Logger,
+) *App {
 	interval := cfg.AlertEvalInterval
 	startFn := func(ctx context.Context) {
-		if alertsUC == nil {
-			return
-		}
-		if interval <= 0 {
-			return
-		}
-		workerLog := logger.With().Str("component", "alerts-evaluator").Logger()
-		ticker := time.NewTicker(interval)
-		go func() {
-			workerLog.Info().Dur("interval", interval).Msg("alert evaluator started")
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					fired, err := alertsUC.EvaluateAll(ctx)
-					if err != nil {
-						workerLog.Error().Err(err).Msg("alert evaluation failed")
-						continue
+		if alertsUC != nil && interval > 0 {
+			workerLog := logger.With().Str("component", "alerts-evaluator").Logger()
+			ticker := time.NewTicker(interval)
+			go func() {
+				workerLog.Info().Dur("interval", interval).Msg("alert evaluator started")
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ticker.C:
+						fired, err := alertsUC.EvaluateAll(ctx)
+						if err != nil {
+							workerLog.Error().Err(err).Msg("alert evaluation failed")
+							continue
+						}
+						workerLog.Info().Int("fired", fired).Msg("alert evaluation completed")
+					case <-ctx.Done():
+						workerLog.Info().Msg("alert evaluator stopped")
+						return
 					}
-					workerLog.Info().Int("fired", fired).Msg("alert evaluation completed")
-				case <-ctx.Done():
-					workerLog.Info().Msg("alert evaluator stopped")
-					return
 				}
-			}
-		}()
+			}()
+		}
+
+		if billingRepo != nil && adminUC != nil {
+			dunningLog := logger.With().Str("component", "billing-dunning").Logger()
+			worker := billing.NewDunningWorker(billingRepo, adminUC, dunningLog)
+			ticker := time.NewTicker(24 * time.Hour)
+			go func() {
+				dunningLog.Info().Dur("interval", 24*time.Hour).Msg("dunning worker started")
+				defer ticker.Stop()
+				worker.RunOnce(ctx)
+				for {
+					select {
+					case <-ticker.C:
+						worker.RunOnce(ctx)
+					case <-ctx.Done():
+						dunningLog.Info().Msg("dunning worker stopped")
+						return
+					}
+				}
+			}()
+		}
 	}
 	return &App{
 		Server:            server,

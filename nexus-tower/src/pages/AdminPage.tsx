@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { EditLimitsModal } from '../components/EditLimitsModal';
 import {
@@ -9,6 +9,9 @@ import {
   getBillingStatus,
   getOrgMembers,
   getTools,
+  deleteTenant,
+  reactivateTenant,
+  suspendTenant,
   getUsageSummary,
   updateAdminTenantSettings,
 } from '../lib/api';
@@ -23,7 +26,9 @@ const USAGE_METRICS: Array<{ key: keyof UsageSummary['counters']; label: string 
 
 export default function AdminPage() {
   const [editingLimits, setEditingLimits] = useState(false);
+  const [tenantActionError, setTenantActionError] = useState('');
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const bootstrapQuery = useQuery({
     queryKey: ['admin-bootstrap'],
@@ -75,6 +80,35 @@ export default function AdminPage() {
     },
   });
 
+  const suspendMutation = useMutation({
+    mutationFn: () => suspendTenant(orgID),
+    onSuccess: () => {
+      setTenantActionError('');
+      queryClient.invalidateQueries({ queryKey: ['admin-bootstrap'] });
+      navigate('/suspended', { replace: true });
+    },
+    onError: (error) => setTenantActionError((error as Error).message),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: () => reactivateTenant(orgID),
+    onSuccess: () => {
+      setTenantActionError('');
+      queryClient.invalidateQueries({ queryKey: ['admin-bootstrap'] });
+    },
+    onError: (error) => setTenantActionError((error as Error).message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteTenant(orgID),
+    onSuccess: () => {
+      setTenantActionError('');
+      queryClient.invalidateQueries({ queryKey: ['admin-bootstrap'] });
+      navigate('/suspended', { replace: true });
+    },
+    onError: (error) => setTenantActionError((error as Error).message),
+  });
+
   const usage = usageQuery.data ?? billingStatusQuery.data?.usage;
   const maxCounterValue = useMemo(() => {
     if (!usage) return 1;
@@ -114,6 +148,7 @@ export default function AdminPage() {
   }
 
   const tenant = bootstrapQuery.data.tenant_settings;
+  const tenantStatus = tenant.status || 'active';
   const membersCount = membersQuery.data?.items.length ?? 0;
   const toolsCount = toolsQuery.data?.items.length ?? 0;
   const billingStatus = billingStatusQuery.data?.billing_status;
@@ -176,6 +211,10 @@ export default function AdminPage() {
             <p className="summary-value">{capitalize(tenant.plan_code)}</p>
           </article>
           <article>
+            <p className="summary-label">Tenant Status</p>
+            <p className={`summary-value tenant-status-${tenantStatus}`}>{capitalize(tenantStatus)}</p>
+          </article>
+          <article>
             <p className="summary-label">Tools</p>
             <p className="summary-value">
               {formatNumber(toolsCount)} / {formatNumber(tenant.hard_limits.tools_max)}
@@ -190,9 +229,54 @@ export default function AdminPage() {
             <p className="summary-value">{formatNumber(tenant.hard_limits.audit_retention_days)} days</p>
           </article>
         </div>
+        {tenant.deleted_at && <p className="muted">Deleted at: {formatDateTime(tenant.deleted_at)}</p>}
         <p className="muted admin-updated-by">
           Last updated {formatDateTime(tenant.updated_at)} by {tenant.updated_by || 'system'}
         </p>
+        {canWriteAdmin && (
+          <div className="admin-tenant-actions">
+            {tenantStatus === 'active' && (
+              <button
+                className="btn-secondary"
+                disabled={suspendMutation.isPending}
+                onClick={() => {
+                  if (window.confirm('Suspend this tenant? Core requests will be rejected until reactivated.')) {
+                    suspendMutation.mutate();
+                  }
+                }}
+              >
+                {suspendMutation.isPending ? 'Suspending...' : 'Suspend Tenant'}
+              </button>
+            )}
+            {tenantStatus !== 'active' && (
+              <button
+                className="btn-secondary"
+                disabled={reactivateMutation.isPending}
+                onClick={() => reactivateMutation.mutate()}
+              >
+                {reactivateMutation.isPending ? 'Reactivating...' : 'Reactivate Tenant'}
+              </button>
+            )}
+            {tenantStatus !== 'deleted' && (
+              <button
+                className="btn-danger-sm"
+                disabled={deleteMutation.isPending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Soft-delete this tenant? Data stays recoverable for 30 days and API traffic will be blocked.',
+                    )
+                  ) {
+                    deleteMutation.mutate();
+                  }
+                }}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Tenant'}
+              </button>
+            )}
+          </div>
+        )}
+        {tenantActionError && <p className="field-error">{tenantActionError}</p>}
       </section>
 
       <section className="billing-section">

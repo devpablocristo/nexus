@@ -52,11 +52,12 @@ func NewRouter(
 		ginmw.SecurityHeaders(),
 		ginmw.CORS(cfg.CORSAllowedOrigins, cfg.CORSAllowedMethods, cfg.CORSAllowedHeaders),
 		ginmw.BodyLimit(httpCfg.MaxBodyBytes),
-		ginmw.LoggerMiddleware(l),
 	)
 	if cfg.OTelEnabled {
 		r.Use(otelgin.Middleware(cfg.OTelServiceName))
 	}
+	r.Use(ginmw.TraceContext())
+	r.Use(ginmw.LoggerMiddleware(l))
 	prom := ginprometheus.NewPrometheus("nexus_gateway")
 	prom.Use(r)
 

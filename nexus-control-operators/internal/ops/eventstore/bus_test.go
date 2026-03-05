@@ -3,6 +3,7 @@ package eventstore
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -22,7 +23,12 @@ func TestConsumer_AckAdvancesOffset(t *testing.T) {
 			{Sequence: 2, Envelope: opsdomain.Envelope{ID: uuid.New()}},
 		},
 	}
-	consumer := NewConsumer(mock, "workers.sentry", ConsumerConfig{BatchSize: 10, PollInterval: 1 * time.Millisecond}, zerolog.Nop())
+	dlqPath := filepath.Join(t.TempDir(), "dead_letters.jsonl")
+	consumer := NewConsumer(mock, "workers.sentry", ConsumerConfig{
+		BatchSize:    10,
+		PollInterval: 1 * time.Millisecond,
+		DLQPath:      dlqPath,
+	}, zerolog.Nop())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -62,7 +68,12 @@ func TestConsumer_SkipsNonRetryableHandlerErrorAndContinues(t *testing.T) {
 			{Sequence: 11, Envelope: opsdomain.Envelope{ID: uuid.New()}},
 		},
 	}
-	consumer := NewConsumer(mock, "workers.coordinator", ConsumerConfig{BatchSize: 10, PollInterval: 1 * time.Millisecond}, zerolog.Nop())
+	dlqPath := filepath.Join(t.TempDir(), "dead_letters.jsonl")
+	consumer := NewConsumer(mock, "workers.coordinator", ConsumerConfig{
+		BatchSize:    10,
+		PollInterval: 1 * time.Millisecond,
+		DLQPath:      dlqPath,
+	}, zerolog.Nop())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

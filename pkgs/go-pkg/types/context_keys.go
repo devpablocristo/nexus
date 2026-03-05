@@ -9,4 +9,6 @@ const (
 	CtxKeyRole       ctxKey = "role"
 	CtxKeyScopes     ctxKey = "scopes"
 	CtxKeyAuthMethod ctxKey = "auth_method"
+	CtxKeyTraceID    ctxKey = "trace_id"
+	CtxKeySpanID     ctxKey = "span_id"
 )

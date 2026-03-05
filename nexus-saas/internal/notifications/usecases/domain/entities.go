@@ -16,6 +16,11 @@ const (
 	NotificationSubscriptionCancel NotificationType = "subscription_canceled"
 	NotificationIncidentOpened     NotificationType = "incident_opened"
 	NotificationIncidentClosed     NotificationType = "incident_closed"
+	NotificationTenantSuspended    NotificationType = "tenant_suspended"
+	NotificationTenantReactivated  NotificationType = "tenant_reactivated"
+	NotificationUsageWarning80     NotificationType = "usage_warning_80"
+	NotificationUsageWarning95     NotificationType = "usage_warning_95"
+	NotificationUsageLimitReached  NotificationType = "usage_limit_reached"
 )
 
 const ChannelEmail = "email"
@@ -27,6 +32,11 @@ var orderedNotificationTypes = []NotificationType{
 	NotificationSubscriptionCancel,
 	NotificationIncidentOpened,
 	NotificationIncidentClosed,
+	NotificationTenantSuspended,
+	NotificationTenantReactivated,
+	NotificationUsageWarning80,
+	NotificationUsageWarning95,
+	NotificationUsageLimitReached,
 }
 
 func OrderedNotificationTypes() []NotificationType {
@@ -49,6 +59,16 @@ func ParseNotificationType(raw string) (NotificationType, bool) {
 		return NotificationIncidentOpened, true
 	case NotificationIncidentClosed:
 		return NotificationIncidentClosed, true
+	case NotificationTenantSuspended:
+		return NotificationTenantSuspended, true
+	case NotificationTenantReactivated:
+		return NotificationTenantReactivated, true
+	case NotificationUsageWarning80:
+		return NotificationUsageWarning80, true
+	case NotificationUsageWarning95:
+		return NotificationUsageWarning95, true
+	case NotificationUsageLimitReached:
+		return NotificationUsageLimitReached, true
 	default:
 		return "", false
 	}
@@ -56,7 +76,7 @@ func ParseNotificationType(raw string) (NotificationType, bool) {
 
 func IsOrgWideNotification(t NotificationType) bool {
 	switch t {
-	case NotificationPlanUpgraded, NotificationPaymentFailed, NotificationSubscriptionCancel, NotificationIncidentOpened, NotificationIncidentClosed:
+	case NotificationPlanUpgraded, NotificationPaymentFailed, NotificationSubscriptionCancel, NotificationIncidentOpened, NotificationIncidentClosed, NotificationTenantSuspended, NotificationTenantReactivated, NotificationUsageWarning80, NotificationUsageWarning95, NotificationUsageLimitReached:
 		return true
 	default:
 		return false
@@ -108,4 +128,15 @@ type LogEntry struct {
 	DedupKey         *string
 	ErrorMessage     *string
 	CreatedAt        time.Time
+}
+
+type InAppNotification struct {
+	ID        uuid.UUID  `json:"id"`
+	OrgID     uuid.UUID  `json:"org_id"`
+	ActorID   string     `json:"actor_id"`
+	Type      string     `json:"type"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	ReadAt    *time.Time `json:"read_at"`
+	CreatedAt time.Time  `json:"created_at"`
 }

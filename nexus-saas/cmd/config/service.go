@@ -33,6 +33,8 @@ type ServiceConfig struct {
 	CORSAllowedOrigins     string
 	CORSAllowedMethods     string
 	CORSAllowedHeaders     string
+	SaaSRateLimitRPS       float64
+	SaaSRateLimitBurst     int
 
 	// Circuit breaker
 	CBFailureThreshold int

@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -23,6 +24,14 @@ func (r *repoStub) UpsertTenantSettings(_ context.Context, s admindomain.TenantS
 	r.settings = s
 	r.has = true
 	return s, nil
+}
+
+func (r *repoStub) UpdateTenantLifecycle(_ context.Context, _ uuid.UUID, status string, deletedAt *time.Time, updatedBy *string) (admindomain.TenantSettings, error) {
+	r.settings.Status = status
+	r.settings.DeletedAt = deletedAt
+	r.settings.UpdatedBy = updatedBy
+	r.has = true
+	return r.settings, nil
 }
 
 func (r *repoStub) CreateAdminActivityEvent(_ context.Context, ev admindomain.AdminActivityEvent) error {
@@ -74,5 +83,35 @@ func TestListActivityRequiresReadPermission(t *testing.T) {
 	_, err := svc.ListActivity(context.Background(), orgID, nil, nil, []string{"tools:read"}, 10)
 	if err == nil {
 		t.Fatalf("expected forbidden")
+	}
+}
+
+func TestSuspendAndReactivateTenant(t *testing.T) {
+	repo := &repoStub{
+		settings: admindomain.TenantSettings{
+			PlanCode:   "growth",
+			Status:     admindomain.TenantStatusActive,
+			HardLimits: map[string]any{"run_rpm": 1200},
+		},
+		has: true,
+	}
+	svc := NewUsecases(repo)
+	orgID := uuid.New()
+	role := "admin"
+
+	suspended, err := svc.SuspendTenant(context.Background(), orgID, orgID, nil, &role, nil)
+	if err != nil {
+		t.Fatalf("SuspendTenant error: %v", err)
+	}
+	if suspended.Status != admindomain.TenantStatusSuspended {
+		t.Fatalf("expected suspended status, got %s", suspended.Status)
+	}
+
+	reactivated, err := svc.ReactivateTenant(context.Background(), orgID, orgID, nil, &role, nil)
+	if err != nil {
+		t.Fatalf("ReactivateTenant error: %v", err)
+	}
+	if reactivated.Status != admindomain.TenantStatusActive {
+		t.Fatalf("expected active status, got %s", reactivated.Status)
 	}
 }

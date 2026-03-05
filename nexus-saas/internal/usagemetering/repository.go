@@ -2,6 +2,7 @@ package usagemetering
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -96,4 +97,23 @@ func (r *Repository) IncrementEvent(ctx context.Context, eventID string, orgID u
 		saasmetrics.UsageMeteringEvents.WithLabelValues(orgID.String(), counter).Inc()
 	}
 	return err
+}
+
+func (r *Repository) GetCounter(ctx context.Context, orgID uuid.UUID, counter string, period time.Time) (int64, error) {
+	period = time.Date(period.UTC().Year(), period.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
+	var row struct {
+		Value int64 `gorm:"column:value"`
+	}
+	err := r.db.WithContext(ctx).
+		Table("org_usage_counters").
+		Select("value").
+		Where("org_id = ? AND period = ? AND counter = ?", orgID, period.Format("2006-01-02"), counter).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return row.Value, nil
 }

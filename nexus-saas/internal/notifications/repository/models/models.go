@@ -33,3 +33,16 @@ type NotificationLog struct {
 }
 
 func (NotificationLog) TableName() string { return "notification_log" }
+
+type InAppNotification struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
+	OrgID     uuid.UUID `gorm:"type:uuid;index"`
+	ActorID   string    `gorm:"index"`
+	Type      string
+	Title     string
+	Body      string
+	ReadAt    *time.Time
+	CreatedAt time.Time
+}
+
+func (InAppNotification) TableName() string { return "in_app_notifications" }

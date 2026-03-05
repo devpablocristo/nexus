@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	ginprometheus "github.com/zsais/go-gin-prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"nexus-saas/cmd/config"
 	"nexus-saas/internal/actions"
 	"nexus-saas/internal/admin"
@@ -22,6 +23,7 @@ import (
 	"nexus-saas/internal/org"
 	"nexus-saas/internal/policyproposal"
 	"nexus-saas/internal/session"
+	sharedratelimit "nexus-saas/internal/shared/ratelimit"
 	"nexus-saas/internal/usagemetering"
 	"nexus-saas/internal/users"
 	ginmw "nexus/pkg/http/middlewares/gin"
@@ -60,8 +62,12 @@ func NewRouter(
 		ginmw.SecurityHeaders(),
 		ginmw.CORS(cfg.CORSAllowedOrigins, cfg.CORSAllowedMethods, cfg.CORSAllowedHeaders),
 		ginmw.BodyLimit(httpCfg.MaxBodyBytes),
-		ginmw.LoggerMiddleware(l),
 	)
+	if cfg.OTelEnabled {
+		r.Use(otelgin.Middleware(cfg.OTelServiceName))
+	}
+	r.Use(ginmw.TraceContext())
+	r.Use(ginmw.LoggerMiddleware(l))
 	prom := ginprometheus.NewPrometheus("nexus_saas")
 	prom.Use(r)
 
@@ -81,6 +87,8 @@ func NewRouter(
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
+	tenantLimiter := sharedratelimit.NewTenantLimiter(cfg.SaaSRateLimitRPS, cfg.SaaSRateLimitBurst)
+	v1.Use(tenantLimiter.Middleware())
 	v1.Use(gin.HandlerFunc(usageMeteringMw))
 	adminH.Register(v1)
 	billingH.Register(v1)

@@ -238,6 +238,16 @@ func newNotificationsTestDB(t *testing.T) *gorm.DB {
 			error_message TEXT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
+		`CREATE TABLE in_app_notifications (
+			id TEXT PRIMARY KEY,
+			org_id TEXT NOT NULL,
+			actor_id TEXT NOT NULL DEFAULT '',
+			type TEXT NOT NULL,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL DEFAULT '',
+			read_at DATETIME NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 	}
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {

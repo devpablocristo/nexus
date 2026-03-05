@@ -245,6 +245,12 @@ textarea {
   color: var(--muted);
 }
 
+.error-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .icon-btn {
   background: transparent;
   border: none;
@@ -377,6 +383,9 @@ textarea {
 .status-canceled,
 .status-unpaid { color: #f09f92; }
 .status-unavailable { color: #b3c4e4; }
+.tenant-status-active { color: #9fd8b8; }
+.tenant-status-suspended { color: #f6c27f; }
+.tenant-status-deleted { color: #f09f92; }
 .billing-section {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -536,6 +545,12 @@ textarea {
   margin-bottom: 0;
 }
 
+.admin-tenant-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .admin-modal-card {
   max-width: 520px;
 }
@@ -643,18 +658,285 @@ textarea {
   justify-content: flex-end;
 }
 
+.notification-bell {
+  position: relative;
+}
+
+.notification-bell-button {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(17, 27, 47, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.notification-bell-button svg {
+  width: 16px;
+  height: 16px;
+  fill: #d5e2f9;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #d45757;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: min(420px, 88vw);
+  max-height: 420px;
+  overflow: auto;
+  z-index: 30;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #10192a;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  padding: 10px;
+}
+
+.notification-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.notification-dropdown-header a {
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.notification-dropdown-list {
+  display: grid;
+  gap: 8px;
+}
+
+.notification-dropdown-item {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.01);
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.notification-dropdown-item.unread {
+  border-color: rgba(127, 163, 214, 0.65);
+  background: rgba(127, 163, 214, 0.09);
+}
+
+.notification-dropdown-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notification-dropdown-body {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notification-dropdown-time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.notifications-page-header {
+  display: grid;
+  gap: 6px;
+}
+
+.notifications-page-header h2 {
+  margin: 0;
+}
+
+.notifications-feed {
+  display: grid;
+  gap: 10px;
+}
+
+.notifications-feed-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.notifications-feed-item.unread {
+  border-color: rgba(127, 163, 214, 0.65);
+  background: rgba(127, 163, 214, 0.09);
+}
+
+.notifications-feed-main {
+  display: grid;
+  gap: 4px;
+}
+
+.notifications-feed-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.notifications-feed-body {
+  margin: 0;
+  color: var(--muted);
+}
+
+.notifications-feed-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.notifications-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Onboarding + Error pages */
+.not-found-page,
+.suspended-page,
+.onboarding-page {
+  gap: 16px;
+}
+
+.not-found-code {
+  margin: 0;
+  font-size: 48px;
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 0.05em;
+}
+
+.not-found-link {
+  display: inline-flex;
+  width: fit-content;
+  text-decoration: none;
+}
+
+.suspended-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.suspended-actions a {
+  text-decoration: none;
+}
+
+.onboarding-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.onboarding-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.onboarding-steps span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.onboarding-steps span.active {
+  color: var(--ink);
+  border-color: rgba(127, 163, 214, 0.6);
+  background: rgba(127, 163, 214, 0.12);
+}
+
+.onboarding-section {
+  display: grid;
+  gap: 12px;
+}
+
+.onboarding-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.onboarding-form-grid label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.onboarding-form-grid label.full {
+  grid-column: 1 / -1;
+}
+
+.onboarding-form-grid input,
+.onboarding-form-grid select {
+  width: 100%;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.onboarding-output {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @media (max-width: 980px) {
   .billing-summary,
   .limits-grid,
   .plan-grid,
   .admin-overview-grid,
-  .admin-limits-grid {
+  .admin-limits-grid,
+  .onboarding-form-grid {
     grid-template-columns: 1fr;
   }
   .billing-header,
   .admin-hero,
   .admin-section-title,
-  .notification-card {
+  .notification-card,
+  .onboarding-header {
     flex-direction: column;
     align-items: flex-start;
   }

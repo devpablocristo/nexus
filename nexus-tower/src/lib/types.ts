@@ -177,6 +177,8 @@ export type BillingStatus = {
 
 export type AdminTenantSettings = {
   plan_code: string;
+  status: 'active' | 'suspended' | 'deleted' | string;
+  deleted_at?: string;
   hard_limits: {
     tools_max: number;
     run_rpm: number;
@@ -212,4 +214,15 @@ export type NotificationPreference = {
   notification_type: string;
   channel: string;
   enabled: boolean;
+};
+
+export type InAppNotification = {
+  id: string;
+  org_id: string;
+  actor_id: string;
+  type: string;
+  title: string;
+  body: string;
+  read_at?: string | null;
+  created_at: string;
 };

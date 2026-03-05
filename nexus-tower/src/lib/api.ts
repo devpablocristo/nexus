@@ -12,6 +12,7 @@ import type {
   EgressRuleItem,
   IncidentItem,
   NotificationPreference,
+  InAppNotification,
   OrgMemberItem,
   PolicyItem,
   SecretItem,
@@ -211,6 +212,31 @@ export async function getAdminActivity(limit = 50): Promise<{ items: AdminActivi
   return requestJSON('saas', `/v1/admin/activity?${qs}`);
 }
 
+export async function suspendTenant(orgID: string): Promise<AdminTenantSettings> {
+  return requestJSON('saas', `/v1/admin/tenants/${orgID}/suspend`, {
+    method: 'PUT',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function reactivateTenant(orgID: string): Promise<AdminTenantSettings> {
+  return requestJSON('saas', `/v1/admin/tenants/${orgID}/reactivate`, {
+    method: 'PUT',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function deleteTenant(orgID: string): Promise<AdminTenantSettings> {
+  return requestJSON('saas', `/v1/admin/tenants/${orgID}`, { method: 'DELETE' });
+}
+
+export async function runTool(toolName: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return requestJSON('core', '/v1/run', {
+    method: 'POST',
+    body: JSON.stringify({ tool_name: toolName, input }),
+  });
+}
+
 export async function getNotificationPreferences(): Promise<{ items: NotificationPreference[] }> {
   return requestJSON('saas', '/v1/notifications/preferences');
 }
@@ -221,5 +247,21 @@ export async function updateNotificationPreferences(
   await requestJSON<void>('saas', '/v1/notifications/preferences', {
     method: 'PUT',
     body: JSON.stringify({ items }),
+  });
+}
+
+export async function getInAppNotifications(limit = 10, offset = 0): Promise<{ items: InAppNotification[] }> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) }).toString();
+  return requestJSON('saas', `/v1/notifications?${params}`);
+}
+
+export async function getInAppNotificationUnreadCount(): Promise<{ count: number }> {
+  return requestJSON('saas', '/v1/notifications/unread-count');
+}
+
+export async function markInAppNotificationRead(id: string): Promise<void> {
+  await requestJSON<void>('saas', `/v1/notifications/${id}/read`, {
+    method: 'PUT',
+    body: JSON.stringify({}),
   });
 }

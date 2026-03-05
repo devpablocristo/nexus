@@ -36,6 +36,7 @@ type WorkerConfig struct {
 	LogLevel       string
 	DataDir        string
 	IdleIntervalMS int
+	DLQPath        string
 }
 
 func loadWorkerConfig() (WorkerConfig, error) {
@@ -49,6 +50,7 @@ func loadWorkerConfig() (WorkerConfig, error) {
 		DataDir:        envOrDefault("OPERATOR_DATA_DIR", "/app/data"),
 		IdleIntervalMS: envIntOrDefault("OPERATOR_IDLE_INTERVAL_MS", 15000),
 	}
+	cfg.DLQPath = envOrDefault("NEXUS_DLQ_PATH", strings.TrimRight(cfg.DataDir, "/")+"/dead_letters.jsonl")
 	if cfg.InternalKey == "" {
 		return cfg, &configError{"OPERATOR_INTERNAL_KEY or NEXUS_AI_OPERATORS_INTERNAL_KEY required"}
 	}
@@ -101,7 +103,7 @@ func main() {
 	var wg sync.WaitGroup
 	for _, w := range workers {
 		wg.Add(1)
-		r := agentruntime.NewRunner(opsEventSvc, w, cfg.BatchSize, pollInterval, log)
+		r := agentruntime.NewRunner(opsEventSvc, w, cfg.BatchSize, pollInterval, cfg.DLQPath, log)
 		go func(name string) {
 			defer wg.Done()
 			if runErr := r.Run(ctx); runErr != nil {

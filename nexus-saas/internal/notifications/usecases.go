@@ -12,8 +12,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"nexus-saas/cmd/config"
-	saasmetrics "nexus-saas/internal/shared/metrics"
 	notificationdomain "nexus-saas/internal/notifications/usecases/domain"
+	saasmetrics "nexus-saas/internal/shared/metrics"
 	"nexus/pkg/types"
 )
 
@@ -177,6 +177,42 @@ func (u *Usecases) UpdatePreferencesByExternalID(ctx context.Context, userExtern
 	return nil
 }
 
+func (u *Usecases) ListInAppNotifications(ctx context.Context, orgID uuid.UUID, actor string, limit, offset int) ([]notificationdomain.InAppNotification, error) {
+	if orgID == uuid.Nil {
+		return nil, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "invalid org_id")
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return nil, types.NewHTTPError(http.StatusUnauthorized, types.ErrCodeUnauthorized, "missing user actor")
+	}
+	return u.repo.ListInAppNotifications(ctx, orgID, actor, limit, offset)
+}
+
+func (u *Usecases) GetUnreadInAppCount(ctx context.Context, orgID uuid.UUID, actor string) (int64, error) {
+	if orgID == uuid.Nil {
+		return 0, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "invalid org_id")
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return 0, types.NewHTTPError(http.StatusUnauthorized, types.ErrCodeUnauthorized, "missing user actor")
+	}
+	return u.repo.CountUnreadInAppNotifications(ctx, orgID, actor)
+}
+
+func (u *Usecases) MarkInAppRead(ctx context.Context, orgID uuid.UUID, actor string, notificationID uuid.UUID) error {
+	if orgID == uuid.Nil {
+		return types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "invalid org_id")
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return types.NewHTTPError(http.StatusUnauthorized, types.ErrCodeUnauthorized, "missing user actor")
+	}
+	if notificationID == uuid.Nil {
+		return types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "invalid notification id")
+	}
+	return u.repo.MarkInAppNotificationRead(ctx, orgID, actor, notificationID)
+}
+
 func (u *Usecases) notifyRecipient(
 	ctx context.Context,
 	orgID *uuid.UUID,
@@ -239,6 +275,24 @@ func (u *Usecases) notifyRecipient(
 			u.logger.Warn().Err(logErr).Str("notification_type", string(notifType)).Str("recipient", recipient.Email).Msg("failed writing notification_log")
 		}
 	}
+	if sendErr == nil && orgID != nil {
+		createErr := u.repo.CreateInAppNotification(ctx, notificationdomain.InAppNotification{
+			ID:        uuid.New(),
+			OrgID:     *orgID,
+			ActorID:   recipient.ExternalID,
+			Type:      string(notifType),
+			Title:     rendered.Subject,
+			Body:      rendered.Message,
+			CreatedAt: u.now().UTC(),
+		})
+		if createErr != nil {
+			u.logger.Warn().
+				Err(createErr).
+				Str("notification_type", string(notifType)).
+				Str("recipient", recipient.Email).
+				Msg("failed writing in_app_notifications")
+		}
+	}
 	if sendErr != nil {
 		return sendErr
 	}
@@ -263,8 +317,11 @@ func (u *Usecases) buildDedupKey(userID uuid.UUID, notifType notificationdomain.
 	if referenceID == "" {
 		return nil
 	}
-	hourBucket := u.now().UTC().Format("2006010215")
-	v := fmt.Sprintf("%s|%s|%s|%s", notifType, userID.String(), referenceID, hourBucket)
+	bucket := strings.TrimSpace(dataValue(data, "dedup_bucket"))
+	if bucket == "" {
+		bucket = u.now().UTC().Format("2006010215")
+	}
+	v := fmt.Sprintf("%s|%s|%s|%s", notifType, userID.String(), referenceID, bucket)
 	return &v
 }
 

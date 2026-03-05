@@ -1,4 +1,5 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import { ToolProvider } from '../lib/tool-context';
 import { Shell } from '../components/Shell';
@@ -25,13 +26,37 @@ import AdminPage from '../pages/AdminPage';
 import AdminActivityPage from '../pages/AdminActivityPage';
 import NotificationPreferencesPage from '../pages/NotificationPreferencesPage';
 import DeveloperPage from '../pages/DeveloperPage';
+import NotFoundPage from '../pages/NotFoundPage';
+import SuspendedPage from '../pages/SuspendedPage';
+import OnboardingPage from '../pages/OnboardingPage';
+import NotificationsPage from '../pages/NotificationsPage';
+import { getTools } from '../lib/api';
+
+function OnboardingGuard() {
+  const location = useLocation();
+  const toolsQuery = useQuery({ queryKey: ['tools'], queryFn: getTools });
+  const isOnboardingRoute = location.pathname.startsWith('/onboarding');
+  const isSuspendedRoute = location.pathname.startsWith('/suspended');
+  const toolsCount = toolsQuery.data?.items.length ?? 0;
+
+  if (toolsQuery.isLoading || toolsQuery.isError || isSuspendedRoute) {
+    return <Outlet />;
+  }
+  if (toolsCount === 0 && !isOnboardingRoute) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  if (toolsCount > 0 && isOnboardingRoute) {
+    return <Navigate to="/tools" replace />;
+  }
+  return <Outlet />;
+}
 
 function ProtectedLayout() {
   return (
     <ProtectedRoute>
       <ToolProvider>
         <Shell>
-          <Outlet />
+          <OnboardingGuard />
         </Shell>
       </ToolProvider>
     </ProtectedRoute>
@@ -66,9 +91,12 @@ export function App() {
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/billing/success" element={<BillingSuccessPage />} />
           <Route path="/settings/notifications" element={<NotificationPreferencesPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/suspended" element={<SuspendedPage />} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/tools" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
   );
