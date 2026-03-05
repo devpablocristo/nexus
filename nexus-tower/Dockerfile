@@ -21,7 +21,7 @@ RUN npm install
 COPY nexus-tower /workspace
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine
 ARG VITE_NEXUS_SAAS_URL=http://localhost:8082
 ARG VITE_NEXUS_CORE_URL=http://localhost:8080
 ARG VITE_NEXUS_GRAFANA_URL=http://localhost:3001
