@@ -62,4 +62,15 @@ type ServiceConfig struct {
 	StripePriceGrowth     string
 	StripePriceEnterprise string
 	TowerBaseURL          string
+
+	// Notifications.
+	NotificationBackend string
+	AWSRegion           string
+	SESFromEmail        string
+	SESFromName         string
+	SMTPHost            string
+	SMTPPort            int
+	SMTPFromEmail       string
+	SMTPUsername        string
+	SMTPPassword        string
 }

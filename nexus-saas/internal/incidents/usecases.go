@@ -3,8 +3,10 @@ package incidents
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 
 	eventdomain "nexus-saas/internal/events/usecases/domain"
 	incidentdomain "nexus-saas/internal/incidents/usecases/domain"
@@ -26,6 +28,10 @@ type MeteringPort interface {
 	Increment(ctx context.Context, orgID uuid.UUID, counter string) error
 }
 
+type NotificationPort interface {
+	Notify(ctx context.Context, orgID uuid.UUID, notifType string, data map[string]string) error
+}
+
 type CreateRequest struct {
 	Severity         string
 	Title            string
@@ -38,10 +44,12 @@ type Usecases struct {
 	repo     RepositoryPort
 	events   EventSink
 	metering MeteringPort
+	logger   zerolog.Logger
+	notify   NotificationPort
 }
 
-func NewUsecases(repo RepositoryPort, events EventSink, metering MeteringPort) *Usecases {
-	return &Usecases{repo: repo, events: events, metering: metering}
+func NewUsecases(repo RepositoryPort, events EventSink, metering MeteringPort, logger zerolog.Logger, notify NotificationPort) *Usecases {
+	return &Usecases{repo: repo, events: events, metering: metering, logger: logger, notify: notify}
 }
 
 func (u *Usecases) Create(ctx context.Context, orgID uuid.UUID, actor *string, req CreateRequest) (incidentdomain.Incident, error) {
@@ -72,16 +80,22 @@ func (u *Usecases) Create(ctx context.Context, orgID uuid.UUID, actor *string, r
 	}
 	if u.events != nil {
 		_, _ = u.events.Append(ctx, orgID, "incident.opened", map[string]any{
-			"incident_id":         created.ID.String(),
-			"severity":            string(created.Severity),
-			"status":              string(created.Status),
-			"title":               created.Title,
-			"related_action_ids":  created.RelatedActionIDs,
-			"evidence_refs":       created.EvidenceRefs,
-			"created_by":          created.CreatedBy,
-			"opened_at":           created.OpenedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+			"incident_id":        created.ID.String(),
+			"severity":           string(created.Severity),
+			"status":             string(created.Status),
+			"title":              created.Title,
+			"related_action_ids": created.RelatedActionIDs,
+			"evidence_refs":      created.EvidenceRefs,
+			"created_by":         created.CreatedBy,
+			"opened_at":          created.OpenedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}
+	u.notifyAsync(orgID, "incident_opened", map[string]string{
+		"incident_id":       created.ID.String(),
+		"incident_title":    created.Title,
+		"incident_severity": string(created.Severity),
+		"reference_id":      created.ID.String(),
+	})
 	return created, nil
 }
 
@@ -112,5 +126,30 @@ func (u *Usecases) Close(ctx context.Context, orgID, id uuid.UUID, actor *string
 			"closed_at":   closed.ClosedAt,
 		})
 	}
+	u.notifyAsync(orgID, "incident_closed", map[string]string{
+		"incident_id":       closed.ID.String(),
+		"incident_title":    closed.Title,
+		"incident_severity": string(closed.Severity),
+		"reference_id":      closed.ID.String(),
+	})
 	return closed, nil
+}
+
+func (u *Usecases) notifyAsync(orgID uuid.UUID, notifType string, data map[string]string) {
+	if u.notify == nil {
+		return
+	}
+	payload := make(map[string]string, len(data))
+	for k, v := range data {
+		payload[k] = strings.TrimSpace(v)
+	}
+	go func() {
+		if err := u.notify.Notify(context.Background(), orgID, notifType, payload); err != nil {
+			u.logger.Error().
+				Err(err).
+				Str("org_id", orgID.String()).
+				Str("notification_type", notifType).
+				Msg("failed async incident notification")
+		}
+	}()
 }

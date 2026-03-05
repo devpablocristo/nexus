@@ -19,6 +19,7 @@ import (
 	"nexus-saas/internal/events"
 	"nexus-saas/internal/identity"
 	"nexus-saas/internal/incidents"
+	"nexus-saas/internal/notifications"
 	"nexus-saas/internal/org"
 	"nexus-saas/internal/policyproposal"
 	"nexus-saas/internal/session"
@@ -51,7 +52,15 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	billingRepository := billing.NewRepository(db)
 	tenantSettingsPort := ProvideTenantSettingsPort(adminRepository)
 	stripeClient := ProvideStripeClient(serviceConfig)
-	billingUsecases := billing.NewUsecases(serviceConfig, billingRepository, tenantSettingsPort, stripeClient)
+	notificationsRepository := notifications.NewRepository(db)
+	emailSender, err := ProvideNotificationSender(serviceConfig, logger)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	notificationsUsecases := notifications.NewUsecases(serviceConfig, notificationsRepository, emailSender, logger)
+	notificationPort := ProvideBillingNotificationPort(notificationsUsecases)
+	billingUsecases := billing.NewUsecases(serviceConfig, billingRepository, tenantSettingsPort, stripeClient, notificationPort, logger)
 	billingHandler := billing.NewHandler(billingUsecases)
 	eventsRepository := events.NewRepository(db)
 	usagemeteringRepository := usagemetering.NewRepository(db)
@@ -66,8 +75,10 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	incidentsRepository := incidents.NewRepository(db)
 	incidentsEventSink := ProvideIncidentsEventSink(eventsUsecases)
 	incidentsMeteringPort := ProvideIncidentsMeteringPort(usagemeteringRepository)
-	incidentsUsecases := incidents.NewUsecases(incidentsRepository, incidentsEventSink, incidentsMeteringPort)
+	incidentsNotificationPort := ProvideIncidentsNotificationPort(notificationsUsecases)
+	incidentsUsecases := incidents.NewUsecases(incidentsRepository, incidentsEventSink, incidentsMeteringPort, logger, incidentsNotificationPort)
 	incidentsHandler := incidents.NewHandler(incidentsUsecases)
+	notificationsHandler := notifications.NewHandler(notificationsUsecases)
 	alertsRepository := alerts.NewRepository(db)
 	auditMetricsSource := alerts.NewAuditMetricsSource(db)
 	alertsUsecases := alerts.NewUsecases(alertsRepository, auditMetricsSource, logger)
@@ -90,11 +101,12 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	usersRepository := users.NewRepository(db)
 	usersUsecases := users.NewUsecases(usersRepository)
 	usersHandler := users.NewHandler(usersUsecases)
-	clerkwebhookHandler := clerkwebhook.NewHandler(serviceConfig, usersUsecases, logger)
+	clerkwebhookNotificationPort := ProvideClerkWebhookNotificationPort(notificationsUsecases)
+	clerkwebhookHandler := clerkwebhook.NewHandler(serviceConfig, usersUsecases, clerkwebhookNotificationPort, logger)
 	contractsHandler := contracts.NewHandler(serviceConfig, adminRepository, usagemeteringRepository, eventsUsecases, actionsUsecases)
 	coreproxyHandler := coreproxy.NewHandler()
 	apiCallsMiddlewareFunc := usagemetering.NewAPICallsMiddleware(usagemeteringRepository)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, billingHandler, eventsHandler, actionsHandler, incidentsHandler, alertsHandler, sessionHandler, policyproposalHandler, assistantHandler, oidcHandler, orgHandler, usersHandler, clerkwebhookHandler, contractsHandler, coreproxyHandler, apiCallsMiddlewareFunc)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, billingHandler, eventsHandler, actionsHandler, incidentsHandler, notificationsHandler, alertsHandler, sessionHandler, policyproposalHandler, assistantHandler, oidcHandler, orgHandler, usersHandler, clerkwebhookHandler, contractsHandler, coreproxyHandler, apiCallsMiddlewareFunc)
 	server := NewHTTPServer(apiConfig, engine)
 	app := NewApp(server)
 	return app, func() {

@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -20,6 +18,7 @@ import (
 	"nexus-saas/internal/events"
 	"nexus-saas/internal/identity"
 	"nexus-saas/internal/incidents"
+	"nexus-saas/internal/notifications"
 	"nexus-saas/internal/org"
 	"nexus-saas/internal/policyproposal"
 	"nexus-saas/internal/session"
@@ -40,6 +39,7 @@ func NewRouter(
 	eventsH *events.Handler,
 	actionsH *actions.Handler,
 	incidentsH *incidents.Handler,
+	notificationsH *notifications.Handler,
 	alertsH *alerts.Handler,
 	sessionH *session.Handler,
 	proposalH *policyproposal.Handler,
@@ -64,9 +64,7 @@ func NewRouter(
 	prom := ginprometheus.NewPrometheus("nexus_saas")
 	prom.Use(r)
 
-	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
-	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
-	r.GET("/readyz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
+	registerHealthAndDocs(r, serviceConfigForRoutes{SwaggerCDN: cfg.SwaggerCDN})
 
 	oidcGroup := r.Group("/v1")
 	oidcH.Register(oidcGroup)
@@ -79,7 +77,6 @@ func NewRouter(
 	orgH.Register(onboardGroup)
 
 	contractsH.RegisterInternal(r)
-	coreProxyH.RegisterRoot(r)
 
 	v1 := r.Group("/v1")
 	v1.Use(authMw)
@@ -89,6 +86,7 @@ func NewRouter(
 	eventsH.Register(v1)
 	actionsH.Register(v1)
 	incidentsH.Register(v1)
+	notificationsH.Register(v1)
 	alertsH.Register(v1)
 	sessionH.Register(v1)
 	proposalH.Register(v1)

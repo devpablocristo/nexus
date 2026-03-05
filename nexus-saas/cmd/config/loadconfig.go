@@ -55,6 +55,9 @@ func Load() (Config, error) {
 	if err := loadBilling(&cfg); err != nil {
 		return Config{}, err
 	}
+	if err := loadNotifications(&cfg); err != nil {
+		return Config{}, err
+	}
 
 	cfg.Migrations.Dir = mustStrDefault("NEXUS_MIGRATIONS_DIR", "./migrations")
 

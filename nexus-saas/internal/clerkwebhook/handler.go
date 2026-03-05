@@ -11,9 +11,9 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"sync"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -31,14 +31,16 @@ const (
 	maxWebhookBodyBytes = 2 * 1024 * 1024
 	maxClockSkew        = 5 * time.Minute
 
-	webhookRateLimit    = 60
-	webhookRateWindow   = 1 * time.Minute
+	webhookRateLimit  = 60
+	webhookRateWindow = 1 * time.Minute
 )
 
 var sigV1Regexp = regexp.MustCompile(`v1,([A-Za-z0-9+/=_-]+)`)
 
 type Handler struct {
 	uc            *users.Usecases
+	notifications NotificationPort
+	towerBaseURL  string
 	webhookSecret string
 	now           func() time.Time
 	logger        zerolog.Logger
@@ -48,9 +50,19 @@ type Handler struct {
 	rateReset time.Time
 }
 
-func NewHandler(cfg config.ServiceConfig, uc *users.Usecases, l zerolog.Logger) *Handler {
+type NotificationPort interface {
+	NotifyUser(ctx context.Context, userExternalID string, notifType string, data map[string]string) error
+}
+
+func NewHandler(cfg config.ServiceConfig, uc *users.Usecases, notifications NotificationPort, l zerolog.Logger) *Handler {
+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.TowerBaseURL), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:5173"
+	}
 	return &Handler{
 		uc:            uc,
+		notifications: notifications,
+		towerBaseURL:  baseURL,
 		webhookSecret: strings.TrimSpace(cfg.ClerkWebhookSecret),
 		now:           time.Now,
 		logger:        l,
@@ -121,8 +133,10 @@ func (h *Handler) handle(c *gin.Context) {
 
 func (h *Handler) dispatch(ctx context.Context, evt clerkEventEnvelope) error {
 	switch strings.TrimSpace(evt.Type) {
-	case "user.created", "user.updated":
-		return h.onUserUpsert(ctx, evt.Data)
+	case "user.created":
+		return h.onUserUpsert(ctx, evt.Data, true)
+	case "user.updated":
+		return h.onUserUpsert(ctx, evt.Data, false)
 	case "user.deleted":
 		return h.onUserDeleted(ctx, evt.Data)
 	case "organization.created":
@@ -136,7 +150,7 @@ func (h *Handler) dispatch(ctx context.Context, evt clerkEventEnvelope) error {
 	}
 }
 
-func (h *Handler) onUserUpsert(ctx context.Context, raw json.RawMessage) error {
+func (h *Handler) onUserUpsert(ctx context.Context, raw json.RawMessage, sendWelcome bool) error {
 	var data clerkUserData
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return err
@@ -147,7 +161,22 @@ func (h *Handler) onUserUpsert(ctx context.Context, raw json.RawMessage) error {
 	}
 	name := users.FormatUserName(data.FirstName, data.LastName, email)
 	_, err = h.uc.SyncUser(ctx, data.ID, email, name, nullable(data.ImageURL))
-	return err
+	if err != nil {
+		return err
+	}
+	if sendWelcome && h.notifications != nil {
+		payload := map[string]string{
+			"recipient_name":  name,
+			"action_url":      h.towerBaseURL + "/tools",
+			"preferences_url": h.towerBaseURL + "/settings/notifications",
+		}
+		go func(userExternalID string, data map[string]string) {
+			if notifyErr := h.notifications.NotifyUser(context.Background(), userExternalID, "welcome", data); notifyErr != nil {
+				h.logger.Error().Err(notifyErr).Str("user_external_id", userExternalID).Msg("failed async welcome notification")
+			}
+		}(data.ID, payload)
+	}
+	return nil
 }
 
 func (h *Handler) onUserDeleted(ctx context.Context, raw json.RawMessage) error {

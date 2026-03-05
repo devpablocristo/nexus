@@ -20,6 +20,7 @@ var BillingSet = wire.NewSet(
 	billing.NewRepository,
 	ProvideStripeClient,
 	ProvideTenantSettingsPort,
+	ProvideBillingNotificationPort,
 	billing.NewUsecases,
 	billing.NewHandler,
 )

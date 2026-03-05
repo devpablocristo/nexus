@@ -25,6 +25,7 @@ RUN addgroup -g 1000 app && adduser -D -u 1000 -G app app
 COPY --from=builder /out/nexus-saas /app/nexus-saas
 COPY --from=builder /out/migrate /app/migrate
 COPY nexus-saas/migrations /app/migrations
+COPY nexus-saas/docs/openapi.yaml /app/docs/openapi.yaml
 RUN chown -R app:app /app
 
 USER app

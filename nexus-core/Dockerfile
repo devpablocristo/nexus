@@ -28,6 +28,7 @@ COPY --from=builder /out/mock-tools /app/mock-tools
 COPY --from=builder /out/migrate /app/migrate
 COPY --from=builder /out/cleanup-idempotency /app/cleanup-idempotency
 COPY nexus-core/migrations /app/migrations
+COPY nexus-core/docs/openapi.yaml /app/docs/openapi.yaml
 RUN chown -R app:app /app
 
 USER app

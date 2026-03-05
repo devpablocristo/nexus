@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 
 	eventdomain "nexus-saas/internal/events/usecases/domain"
 	incidentdomain "nexus-saas/internal/incidents/usecases/domain"
@@ -69,7 +70,7 @@ func TestCreate_CallsMetering(t *testing.T) {
 	repo := &stubIncidentRepo{}
 	events := &stubEventSink{}
 	metering := &stubIncidentMetering{}
-	svc := NewUsecases(repo, events, metering)
+	svc := NewUsecases(repo, events, metering, zerolog.Nop(), nil)
 
 	_, err := svc.Create(context.Background(), uuid.New(), nil, validCreateReq())
 	if err != nil {
@@ -85,7 +86,7 @@ func TestCreate_CallsMetering(t *testing.T) {
 }
 
 func TestCreate_NilMeteringDoesNotPanic(t *testing.T) {
-	svc := NewUsecases(&stubIncidentRepo{}, nil, nil)
+	svc := NewUsecases(&stubIncidentRepo{}, nil, nil, zerolog.Nop(), nil)
 	_, err := svc.Create(context.Background(), uuid.New(), nil, validCreateReq())
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +96,7 @@ func TestCreate_NilMeteringDoesNotPanic(t *testing.T) {
 func TestCreate_RepoError_DoesNotCallMetering(t *testing.T) {
 	repo := &stubIncidentRepo{err: errors.New("db down")}
 	metering := &stubIncidentMetering{}
-	svc := NewUsecases(repo, nil, metering)
+	svc := NewUsecases(repo, nil, metering, zerolog.Nop(), nil)
 
 	_, err := svc.Create(context.Background(), uuid.New(), nil, validCreateReq())
 	if err == nil {
@@ -107,7 +108,7 @@ func TestCreate_RepoError_DoesNotCallMetering(t *testing.T) {
 }
 
 func TestCreate_InvalidSeverity_ReturnsError(t *testing.T) {
-	svc := NewUsecases(&stubIncidentRepo{}, nil, nil)
+	svc := NewUsecases(&stubIncidentRepo{}, nil, nil, zerolog.Nop(), nil)
 	req := validCreateReq()
 	req.Severity = "UNKNOWN"
 
@@ -118,7 +119,7 @@ func TestCreate_InvalidSeverity_ReturnsError(t *testing.T) {
 }
 
 func TestCreate_MissingTitle_ReturnsError(t *testing.T) {
-	svc := NewUsecases(&stubIncidentRepo{}, nil, nil)
+	svc := NewUsecases(&stubIncidentRepo{}, nil, nil, zerolog.Nop(), nil)
 	req := validCreateReq()
 	req.Title = ""
 

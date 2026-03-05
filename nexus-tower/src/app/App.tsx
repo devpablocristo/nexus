@@ -23,6 +23,8 @@ import BillingPage from '../pages/BillingPage';
 import BillingSuccessPage from '../pages/BillingSuccessPage';
 import AdminPage from '../pages/AdminPage';
 import AdminActivityPage from '../pages/AdminActivityPage';
+import NotificationPreferencesPage from '../pages/NotificationPreferencesPage';
+import DeveloperPage from '../pages/DeveloperPage';
 
 function ProtectedLayout() {
   return (
@@ -60,8 +62,10 @@ export function App() {
           <Route path="/assistant" element={<AssistantPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/activity" element={<AdminActivityPage />} />
+          <Route path="/developer" element={<DeveloperPage />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/billing/success" element={<BillingSuccessPage />} />
+          <Route path="/settings/notifications" element={<NotificationPreferencesPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/tools" replace />} />

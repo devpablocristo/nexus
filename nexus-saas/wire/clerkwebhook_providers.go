@@ -7,5 +7,6 @@ import (
 )
 
 var ClerkWebhookSet = wire.NewSet(
+	ProvideClerkWebhookNotificationPort,
 	clerkwebhook.NewHandler,
 )

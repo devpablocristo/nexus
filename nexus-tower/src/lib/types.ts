@@ -207,3 +207,9 @@ export type AdminActivityItem = {
   payload: Record<string, unknown>;
   created_at: string;
 };
+
+export type NotificationPreference = {
+  notification_type: string;
+  channel: string;
+  enabled: boolean;
+};

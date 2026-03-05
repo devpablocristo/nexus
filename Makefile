@@ -10,7 +10,7 @@ COMPOSE := docker compose
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
 	core-test saas-test control-operators-test ai-operators-test tower-test tower-qa qa \
-	e2e e2e-first e2e-core e2e-jwt e2e-operators quickstart-admin \
+	e2e e2e-first e2e-core e2e-jwt e2e-operators e2e-all quickstart-admin \
 	core-dev saas-dev control-dev ai-operators-dev tower-dev reset-nexus logs-tail up-ready status \
 	bootstrap demo sdk-test-python sdk-test
 
@@ -123,6 +123,14 @@ e2e-jwt:
 
 e2e-operators:
 	bash scripts/e2e/06_control_operators.sh
+
+e2e-all:
+	bash scripts/e2e/01_run_echo.sh
+	bash scripts/e2e/03_full_core_e2e.sh
+	bash scripts/e2e/04_core_gateway_isolated.sh
+	bash scripts/e2e/05_core_jwt_auth.sh
+	bash scripts/e2e/06_control_operators.sh
+	bash scripts/e2e/07_ai_operators.sh
 
 quickstart-admin:
 	bash scripts/admin/quickstart_admin.sh

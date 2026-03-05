@@ -44,7 +44,7 @@ func TestHandler_ProcessesClerkWebhookEvents(t *testing.T) {
 
 	secret := "whsec_" + base64.StdEncoding.EncodeToString([]byte("super-secret"))
 	cfg := config.ServiceConfig{ClerkWebhookSecret: secret}
-	h := NewHandler(cfg, uc, zerolog.Nop())
+	h := NewHandler(cfg, uc, nil, zerolog.Nop())
 	h.now = func() time.Time { return time.Unix(1730000000, 0) }
 
 	r := gin.New()

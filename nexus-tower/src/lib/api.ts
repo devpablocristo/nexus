@@ -11,6 +11,7 @@ import type {
   EventItem,
   EgressRuleItem,
   IncidentItem,
+  NotificationPreference,
   OrgMemberItem,
   PolicyItem,
   SecretItem,
@@ -208,4 +209,17 @@ export async function updateAdminTenantSettings(req: {
 export async function getAdminActivity(limit = 50): Promise<{ items: AdminActivityItem[] }> {
   const qs = new URLSearchParams({ limit: String(limit) }).toString();
   return requestJSON('saas', `/v1/admin/activity?${qs}`);
+}
+
+export async function getNotificationPreferences(): Promise<{ items: NotificationPreference[] }> {
+  return requestJSON('saas', '/v1/notifications/preferences');
+}
+
+export async function updateNotificationPreferences(
+  items: Array<{ notification_type: string; enabled: boolean }>,
+): Promise<void> {
+  await requestJSON<void>('saas', '/v1/notifications/preferences', {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
+  });
 }

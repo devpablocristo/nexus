@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"github.com/stripe/stripe-go/v81"
 
 	"nexus-saas/cmd/config"
@@ -23,10 +24,16 @@ type TenantSettingsPort interface {
 	UpsertTenantSettings(ctx context.Context, s admindomain.TenantSettings) (admindomain.TenantSettings, error)
 }
 
+type NotificationPort interface {
+	Notify(ctx context.Context, orgID uuid.UUID, notifType string, data map[string]string) error
+}
+
 type Usecases struct {
 	repo            *Repository
 	tenantSettings  TenantSettingsPort
 	stripe          StripeClientPort
+	notifications   NotificationPort
+	logger          zerolog.Logger
 	stripeEnabled   bool
 	webhookSecret   string
 	priceStarter    string
@@ -35,11 +42,20 @@ type Usecases struct {
 	towerBaseURL    string
 }
 
-func NewUsecases(cfg config.ServiceConfig, repo *Repository, tenantSettings TenantSettingsPort, stripeClient *StripeClient) *Usecases {
+func NewUsecases(
+	cfg config.ServiceConfig,
+	repo *Repository,
+	tenantSettings TenantSettingsPort,
+	stripeClient *StripeClient,
+	notifications NotificationPort,
+	logger zerolog.Logger,
+) *Usecases {
 	return &Usecases{
 		repo:            repo,
 		tenantSettings:  tenantSettings,
 		stripe:          stripeClient,
+		notifications:   notifications,
+		logger:          logger,
 		stripeEnabled:   strings.TrimSpace(cfg.StripeSecretKey) != "",
 		webhookSecret:   strings.TrimSpace(cfg.StripeWebhookSecret),
 		priceStarter:    strings.TrimSpace(cfg.StripePriceStarter),
@@ -234,7 +250,19 @@ func (u *Usecases) handleCheckoutCompleted(ctx context.Context, raw json.RawMess
 	if plan == "" {
 		plan = billingdomain.PlanStarter
 	}
-	return u.applySubscriptionState(ctx, orgID, plan, billingdomain.BillingActive, payload.Customer, payload.Subscription)
+	if err := u.applySubscriptionState(ctx, orgID, plan, billingdomain.BillingActive, payload.Customer, payload.Subscription); err != nil {
+		return err
+	}
+	orgName, _ := u.repo.GetOrgName(ctx, orgID)
+	u.notifyAsync(orgID, "plan_upgraded", map[string]string{
+		"org_name":        orgName,
+		"plan_code":       string(plan),
+		"action_url":      u.towerBaseURL + "/billing",
+		"preferences_url": u.towerBaseURL + "/settings/notifications",
+		"reference_id":    payload.Subscription,
+		"subscription_id": payload.Subscription,
+	})
+	return nil
 }
 
 func (u *Usecases) handleSubscriptionUpdated(ctx context.Context, raw json.RawMessage) error {
@@ -298,7 +326,19 @@ func (u *Usecases) handleSubscriptionDeleted(ctx context.Context, raw json.RawMe
 	if err := u.applyPlanSettings(ctx, orgID, billingdomain.PlanStarter); err != nil {
 		return err
 	}
-	return u.repo.ClearSubscription(ctx, orgID, billingdomain.BillingCanceled)
+	if err := u.repo.ClearSubscription(ctx, orgID, billingdomain.BillingCanceled); err != nil {
+		return err
+	}
+	orgName, _ := u.repo.GetOrgName(ctx, orgID)
+	u.notifyAsync(orgID, "subscription_canceled", map[string]string{
+		"org_name":        orgName,
+		"plan_code":       string(billingdomain.PlanStarter),
+		"action_url":      u.towerBaseURL + "/billing",
+		"preferences_url": u.towerBaseURL + "/settings/notifications",
+		"reference_id":    payload.ID,
+		"subscription_id": payload.ID,
+	})
+	return nil
 }
 
 func (u *Usecases) handleInvoicePayment(ctx context.Context, raw json.RawMessage, status billingdomain.BillingStatus) error {
@@ -322,7 +362,20 @@ func (u *Usecases) handleInvoicePayment(ctx context.Context, raw json.RawMessage
 	if !ok {
 		return nil
 	}
-	return u.repo.UpdateBillingStatusByOrgID(ctx, orgID, status)
+	if err := u.repo.UpdateBillingStatusByOrgID(ctx, orgID, status); err != nil {
+		return err
+	}
+	if status == billingdomain.BillingPastDue {
+		orgName, _ := u.repo.GetOrgName(ctx, orgID)
+		u.notifyAsync(orgID, "payment_failed", map[string]string{
+			"org_name":        orgName,
+			"action_url":      u.towerBaseURL + "/billing",
+			"preferences_url": u.towerBaseURL + "/settings/notifications",
+			"reference_id":    payload.Subscription,
+			"subscription_id": payload.Subscription,
+		})
+	}
+	return nil
 }
 
 func (u *Usecases) applySubscriptionState(
@@ -530,6 +583,25 @@ func valueOrEmpty(v *string) string {
 		return ""
 	}
 	return strings.TrimSpace(*v)
+}
+
+func (u *Usecases) notifyAsync(orgID uuid.UUID, notifType string, data map[string]string) {
+	if u.notifications == nil {
+		return
+	}
+	payload := make(map[string]string, len(data))
+	for k, v := range data {
+		payload[k] = strings.TrimSpace(v)
+	}
+	go func() {
+		if err := u.notifications.Notify(context.Background(), orgID, notifType, payload); err != nil {
+			u.logger.Error().
+				Err(err).
+				Str("org_id", orgID.String()).
+				Str("notification_type", notifType).
+				Msg("failed async billing notification")
+		}
+	}()
 }
 
 func (u *Usecases) String() string {

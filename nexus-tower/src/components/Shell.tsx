@@ -13,10 +13,12 @@ const navItems = [
   { to: '/events', label: 'Events' },
   { to: '/assistant', label: 'Assistant' },
   { to: '/settings/keys', label: 'API Keys' },
+  { to: '/developer', label: 'Developer' },
   { to: '/admin', label: 'Admin' },
   { to: '/billing', label: 'Billing' },
   { to: '/org-selector', label: 'Organizations' },
   { to: '/settings', label: 'Profile' },
+  { to: '/settings/notifications', label: 'Notifications' },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {

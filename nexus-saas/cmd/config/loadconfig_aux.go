@@ -165,3 +165,21 @@ func loadBilling(cfg *Config) error {
 	cfg.Service.TowerBaseURL = mustStrDefault("TOWER_BASE_URL", "http://localhost:5173")
 	return nil
 }
+
+// loadNotifications carga configuración de envío de notificaciones (opcional).
+func loadNotifications(cfg *Config) error {
+	cfg.Service.NotificationBackend = mustStrDefault("NOTIFICATION_BACKEND", "noop")
+	cfg.Service.AWSRegion = mustStrDefault("AWS_REGION", "us-east-1")
+	cfg.Service.SESFromEmail = mustStrDefault("AWS_SES_FROM_EMAIL", "")
+	cfg.Service.SESFromName = mustStrDefault("AWS_SES_FROM_NAME", "Nexus")
+	cfg.Service.SMTPHost = mustStrDefault("SMTP_HOST", "localhost")
+	smtpPort, err := mustIntDefault("SMTP_PORT", 1025)
+	if err != nil {
+		return err
+	}
+	cfg.Service.SMTPPort = smtpPort
+	cfg.Service.SMTPFromEmail = mustStrDefault("SMTP_FROM_EMAIL", "")
+	cfg.Service.SMTPUsername = mustStrDefault("SMTP_USERNAME", "")
+	cfg.Service.SMTPPassword = mustStrDefault("SMTP_PASSWORD", "")
+	return nil
+}

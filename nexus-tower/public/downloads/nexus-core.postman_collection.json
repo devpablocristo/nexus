@@ -1,0 +1,228 @@
+{
+	"info": {
+		"name": "Nexus Core",
+		"description": "Nexus Core API — Tool governance gateway for AI agents",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "apikey",
+		"apikey": [
+			{ "key": "key", "value": "X-NEXUS-CORE-KEY", "type": "string" },
+			{ "key": "value", "value": "{{api_key}}", "type": "string" },
+			{ "key": "in", "value": "header", "type": "string" }
+		]
+	},
+	"variable": [
+		{ "key": "base_url", "value": "http://localhost:8080" },
+		{ "key": "api_key", "value": "nexus-core-local-key" },
+		{ "key": "tool_name", "value": "my-service" },
+		{ "key": "tool_id", "value": "5dca11d1-5ee8-4b73-90ab-5e67fe8d31b6" }
+	],
+	"item": [
+		{
+			"name": "Gateway",
+			"item": [
+				{
+					"name": "Run tool (by name)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "gateway:run" },
+							{ "key": "X-NEXUS-ACTOR", "value": "postman/pablo" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": { "raw": "{{base_url}}/v1/run", "host": ["{{base_url}}"], "path": ["v1", "run"] },
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tool_name\": \"{{tool_name}}\",\n  \"input\": {\n    \"msg\": \"hello from postman\"\n  },\n  \"context\": {\n    \"source\": \"postman\",\n    \"environment\": \"local\"\n  }\n}"
+						}
+					}
+				},
+				{
+					"name": "Run tool (by ID)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "gateway:run" },
+							{ "key": "X-NEXUS-ACTOR", "value": "postman/pablo" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": { "raw": "{{base_url}}/v1/run", "host": ["{{base_url}}"], "path": ["v1", "run"] },
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tool_id\": \"{{tool_id}}\",\n  \"input\": {\n    \"msg\": \"hello by id\"\n  }\n}"
+						}
+					}
+				},
+				{
+					"name": "Run tool (with idempotency)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "gateway:run" },
+							{ "key": "X-NEXUS-ACTOR", "value": "postman/pablo" },
+							{ "key": "Idempotency-Key", "value": "postman-idem-001" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": { "raw": "{{base_url}}/v1/run", "host": ["{{base_url}}"], "path": ["v1", "run"] },
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tool_name\": \"{{tool_name}}\",\n  \"input\": {\n    \"msg\": \"idempotent call\"\n  }\n}"
+						}
+					}
+				},
+				{
+					"name": "Simulate (dry run)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "gateway:simulate" },
+							{ "key": "X-NEXUS-ACTOR", "value": "postman/pablo" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": { "raw": "{{base_url}}/v1/run/simulate", "host": ["{{base_url}}"], "path": ["v1", "run", "simulate"] },
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tool_name\": \"{{tool_name}}\",\n  \"input\": {\n    \"msg\": \"dry run test\"\n  },\n  \"context\": {\n    \"source\": \"postman\"\n  }\n}"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Tools (Admin)",
+			"item": [
+				{
+					"name": "List tools",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "tools:read" }
+						],
+						"url": { "raw": "{{base_url}}/v1/tools", "host": ["{{base_url}}"], "path": ["v1", "tools"] }
+					}
+				},
+				{
+					"name": "Get tool (by name)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "tools:read" }
+						],
+						"url": { "raw": "{{base_url}}/v1/tools/{{tool_name}}", "host": ["{{base_url}}"], "path": ["v1", "tools", "{{tool_name}}"] }
+					}
+				},
+				{
+					"name": "Get tool (by UUID)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "tools:read" }
+						],
+						"url": { "raw": "{{base_url}}/v1/tools/{{tool_id}}", "host": ["{{base_url}}"], "path": ["v1", "tools", "{{tool_id}}"] }
+					}
+				},
+				{
+					"name": "Create tool",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "tools:write" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": { "raw": "{{base_url}}/v1/tools", "host": ["{{base_url}}"], "path": ["v1", "tools"] },
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"new-tool\",\n  \"kind\": \"http\",\n  \"method\": \"POST\",\n  \"url\": \"http://mock-tools:8081/echo\",\n  \"action_type\": \"read\",\n  \"input_schema\": { \"type\": \"object\" },\n  \"classification\": \"internal\",\n  \"sensitivity\": \"low\",\n  \"risk_level\": 1,\n  \"enabled\": true\n}"
+						}
+					}
+				},
+				{
+					"name": "Update tool",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "tools:write" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": { "raw": "{{base_url}}/v1/tools/{{tool_name}}", "host": ["{{base_url}}"], "path": ["v1", "tools", "{{tool_name}}"] },
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"description\": \"Updated via Postman\",\n  \"enabled\": true\n}"
+						}
+					}
+				},
+				{
+					"name": "Delete tool",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "tools:write" }
+						],
+						"url": { "raw": "{{base_url}}/v1/tools/{{tool_name}}", "host": ["{{base_url}}"], "path": ["v1", "tools", "{{tool_name}}"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Egress Rules",
+			"item": [
+				{
+					"name": "List egress rules",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "egress:read" }
+						],
+						"url": { "raw": "{{base_url}}/v1/egress/rules?tool_name={{tool_name}}", "host": ["{{base_url}}"], "path": ["v1", "egress", "rules"], "query": [{ "key": "tool_name", "value": "{{tool_name}}" }] }
+					}
+				},
+				{
+					"name": "Create egress rule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "egress:write" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"url": { "raw": "{{base_url}}/v1/egress/rules", "host": ["{{base_url}}"], "path": ["v1", "egress", "rules"] },
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tool_name\": \"{{tool_name}}\",\n  \"host\": \"mock-tools\",\n  \"enabled\": true\n}"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Policies",
+			"item": [
+				{
+					"name": "List policies for tool",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "policy:read" }
+						],
+						"url": { "raw": "{{base_url}}/v1/policies?tool_name={{tool_name}}", "host": ["{{base_url}}"], "path": ["v1", "policies"], "query": [{ "key": "tool_name", "value": "{{tool_name}}" }] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Audit",
+			"item": [
+				{
+					"name": "List audit events",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "X-NEXUS-SCOPES", "value": "audit:read" }
+						],
+						"url": { "raw": "{{base_url}}/v1/audit/events?limit=10", "host": ["{{base_url}}"], "path": ["v1", "audit", "events"], "query": [{ "key": "limit", "value": "10" }] }
+					}
+				}
+			]
+		}
+	]
+}
