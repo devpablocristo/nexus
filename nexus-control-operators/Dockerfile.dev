@@ -6,5 +6,5 @@ COPY nexus-control-operators/go.mod nexus-control-operators/go.sum ./nexus-contr
 COPY pkgs/go-pkg ./pkgs/go-pkg
 WORKDIR /src/nexus-control-operators
 RUN go mod download
-EXPOSE 8082
+EXPOSE 8090
 CMD ["air", "-c", ".air.toml"]

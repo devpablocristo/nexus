@@ -2,19 +2,39 @@
 
 ## Control Principles
 
-- `nexus-core` enforces execution policies deterministically.
+- `nexus-core` enforces execution policies deterministically. No LLM in the run pipeline.
 - AI never bypasses enforcement and never writes directly to database state.
 - All operator actions are append-only auditable events in Nexus Core.
 - Human-in-the-loop approval can block executions until explicitly approved or rejected.
 
 ## Data and Action Flow
 
-1. Runtime emits events into `operational_events`.
-2. `nexus-control-operators` consumes internal operational streams and executes deterministic controls.
-3. `nexus-ai-operators` consumes `/v1/events` with cursor and proposes AI-assisted actions.
-4. Control actions are applied via `/v1/actions/apply`, incidents/proposals via API.
-5. Humans supervise from `nexus-tower` and approve/reject proposal outcomes.
-6. Alert rules fire webhooks when metrics (deny_rate, error_rate, rate_limited_count) exceed thresholds.
+1. `nexus-core` processes `/v1/run` requests, applies the full governance pipeline, and writes audit events.
+2. A DB trigger copies audit entries into `operational_events` as `tool.call.completed`.
+3. `nexus-control-operators` polls `/internal/operators/events` and consumes events with four deterministic workers (sentry, coordinator, mitigation, recovery).
+4. `nexus-ai-operators` consumes events via nexus-saas API and proposes AI-assisted actions (diagnosis, comms, policy suggestions).
+5. Control actions are applied via the Action Engine (dry-run → apply → rollback lifecycle).
+6. Humans supervise from `nexus-tower` and approve/reject proposals.
+7. Alert rules fire webhooks when metrics (deny_rate, error_rate, rate_limited_count) exceed thresholds.
+
+## Workers
+
+### Deterministic (nexus-control-operators, Go)
+
+| Worker | Consumes | Produces | Role |
+|--------|----------|----------|------|
+| Sentry | `tool.call.completed`, `policy.denied`, `quota.exceeded`, `tool_degraded` | `anomaly.detected`, `incident.opened` | Anomaly detection (EWMA baselines) |
+| Coordinator | `incident.opened`, `anomaly.detected`, `incident.state_changed` | `incident.state_changed` | Incident state machine (OPEN→DIAGNOSING→MITIGATING→MONITORING→RESOLVED/ESCALATED) |
+| Mitigation | `recommended_actions.created` | `action.applied` | Dry-run and apply remediation actions |
+| Recovery | `action.applied` | `action.rolled_back`, `incident.state_changed` | Post-mitigation monitoring and rollback |
+
+### AI-assisted (nexus-ai-operators, Python)
+
+| Worker | Role |
+|--------|------|
+| Diagnostician | Intelligent diagnosis of incidents |
+| Comms | Incident communication drafts |
+| Executive Q&A | Assistant queries from Tower UI |
 
 ## Human-in-the-Loop (HITL)
 
@@ -31,12 +51,17 @@
 
 ## Ask-Agent Flow
 
-- UI: `POST /v1/assistant/query` on Nexus Core.
-- Core proxy: forwards to nexus-ai-operators `/v1/assistant/query` using internal key.
+- UI: `POST /v1/assistant/query` on nexus-saas.
+- SaaS forwards to nexus-ai-operators `/v1/assistant/query` using internal key.
 - Response is structured (`summary`, `tables`, `actions`) and rendered in Tower.
 
 ## Determinism Boundary
 
-- In scope deterministic: `/v1/run`, `/mcp`, `/a2a` and policy/limits/egress/approval enforcement.
-- Out of scope deterministic: nexus-ai-operators narrative/summarization endpoint.
-- Enforcement decisions are never delegated to LLM.
+| Component | Deterministic | AI/LLM |
+|-----------|:---:|:---:|
+| Gateway `/v1/run`, `/mcp`, `/a2a` | Yes | No |
+| Policy evaluation, DLP, egress | Yes | No |
+| Sentry, Coordinator, Mitigation, Recovery | Yes | No |
+| Diagnostician, Comms, Executive Q&A | No | Yes |
+
+Enforcement decisions are never delegated to LLM.

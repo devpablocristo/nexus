@@ -110,7 +110,8 @@ class LLMClient:
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
                 data = response.json()
-                return data.get('message', {}).get('content', 'No response from LLM.')
+                content: str = data.get('message', {}).get('content', 'No response from LLM.')
+                return content
         except httpx.HTTPStatusError as exc:
             logger.error('Ollama API %s: %s', exc.response.status_code, exc.response.text[:200])
             return self._fallback(system_prompt, user_message)

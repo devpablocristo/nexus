@@ -1,11 +1,45 @@
 #!/usr/bin/env bash
-# =============================================================================
-# Full E2E test for nexus-core — exercises every feature against the live stack.
-#
-# Prerequisites: docker compose up (stack running)
-# Usage: ./scripts/e2e/03_full_core_e2e.sh
-# =============================================================================
 set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+NAME
+    03_full_core_e2e.sh — comprehensive nexus-core feature test suite
+
+SYNOPSIS
+    03_full_core_e2e.sh [-h|--help]
+
+DESCRIPTION
+    Exercises every nexus-core feature against the live stack:
+      1.  Tools CRUD (create, list, get by name/UUID, update, immutability, duplicates)
+      2.  Egress rules (create, list, run without/with egress)
+      3.  Gateway run (by name, by UUID, both, invalid, nonexistent)
+      4.  Schema validation (valid/invalid input)
+      5.  Tool disabled/enabled
+      6.  Policies (deny, disable, allow, update)
+      7.  Secrets (create, list, inject, delete)
+      8.  Simulate/dry-run
+      9.  Idempotency (NEW, REPLAY, CONFLICT)
+      10. Audit log + export (JSONL, CSV)
+      11. Authz scope enforcement
+      12. Tool deletion
+
+    Creates a temporary tool, runs all tests, then cleans up on exit.
+    Reports pass/fail counts at the end.
+
+ENVIRONMENT
+    NEXUS_HTTP_PORT     Core HTTP port          (default: 8080)
+    NEXUS_DEMO_API_KEY  API key from seed       (default: nexus-core-local-key)
+
+PREREQUISITES
+    Stack running (docker compose up), migrations applied, seed done.
+
+EXAMPLES
+    ./scripts/e2e/03_full_core_e2e.sh
+EOF
+  exit 0
+}
+[[ "${1:-}" =~ ^(-h|--help)$ ]] && usage
 
 HTTP_PORT="${NEXUS_HTTP_PORT:-8080}"
 API_KEY="${NEXUS_DEMO_API_KEY:-nexus-core-local-key}"

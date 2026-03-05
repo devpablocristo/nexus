@@ -2,6 +2,9 @@ package recovery
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -20,17 +23,18 @@ type Config struct {
 	RequiredSuccesses int
 	MonitoringWindow  time.Duration
 	IdleInterval      time.Duration
+	DataDir           string
 	Now               func() time.Time
 }
 
 type mitigationTrack struct {
-	OrgID              uuid.UUID
-	IncidentID         string
-	ActionID           string
-	ActionType         string
-	SuccessCount       int
-	MonitoringDeadline time.Time
-	TTLDeadline        *time.Time
+	OrgID              uuid.UUID `json:"org_id"`
+	IncidentID         string    `json:"incident_id"`
+	ActionID           string    `json:"action_id"`
+	ActionType         string    `json:"action_type"`
+	SuccessCount       int       `json:"success_count"`
+	MonitoringDeadline time.Time `json:"monitoring_deadline"`
+	TTLDeadline        *time.Time `json:"ttl_deadline,omitempty"`
 }
 
 type Worker struct {
@@ -41,6 +45,7 @@ type Worker struct {
 	now               func() time.Time
 	mu                sync.Mutex
 	tracks            map[string]mitigationTrack
+	dataDir           string
 }
 
 func NewWorker(emitter EventEmitter, cfg Config) *Worker {
@@ -60,14 +65,17 @@ func NewWorker(emitter EventEmitter, cfg Config) *Worker {
 	if nowFn == nil {
 		nowFn = func() time.Time { return time.Now().UTC() }
 	}
-	return &Worker{
+	w := &Worker{
 		emitter:           emitter,
 		requiredSuccesses: required,
 		monitoringWindow:  monitoringWindow,
 		idleInterval:      idleInterval,
 		now:               nowFn,
 		tracks:            map[string]mitigationTrack{},
+		dataDir:           cfg.DataDir,
 	}
+	w.loadTracks()
+	return w
 }
 
 func (w *Worker) ConsumerGroup() string {
@@ -102,6 +110,7 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 		}
 		w.mu.Lock()
 		w.tracks[incidentID] = track
+		w.persistTracks()
 		w.mu.Unlock()
 		return w.emitState(ctx, event.Envelope.OrgID, incidentID, "MITIGATING", "MONITORING", "post_apply_monitoring")
 	case "tool_call.finished":
@@ -116,11 +125,13 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 			w.mu.Lock()
 			track.SuccessCount++
 			w.tracks[incidentID] = track
+			w.persistTracks()
 			w.mu.Unlock()
 			return w.evaluateIncident(ctx, incidentID, event.Envelope.OrgID, eventTime)
 		}
 		w.mu.Lock()
 		delete(w.tracks, incidentID)
+		w.persistTracks()
 		w.mu.Unlock()
 		if err := w.emitActionRollback(ctx, event.Envelope.OrgID, incidentID, track.ActionID, track.ActionType, "post_mitigation_regression"); err != nil {
 			return err
@@ -168,6 +179,7 @@ func (w *Worker) evaluateIncident(ctx context.Context, incidentID string, orgID 
 	if track.TTLDeadline != nil && !at.Before(*track.TTLDeadline) {
 		w.mu.Lock()
 		delete(w.tracks, incidentID)
+		w.persistTracks()
 		w.mu.Unlock()
 		if err := w.emitActionRollback(ctx, orgID, incidentID, track.ActionID, track.ActionType, "ttl_expired"); err != nil {
 			return err
@@ -178,6 +190,7 @@ func (w *Worker) evaluateIncident(ctx context.Context, incidentID string, orgID 
 	if !at.Before(track.MonitoringDeadline) && track.SuccessCount >= w.requiredSuccesses {
 		w.mu.Lock()
 		delete(w.tracks, incidentID)
+		w.persistTracks()
 		w.mu.Unlock()
 		return w.emitState(ctx, orgID, incidentID, "MONITORING", "RESOLVED", "stable_after_mitigation_window")
 	}
@@ -257,4 +270,35 @@ func (w *Worker) emitActionRollback(ctx context.Context, orgID uuid.UUID, incide
 		Payload: payload,
 	})
 	return err
+}
+
+func (w *Worker) loadTracks() {
+	if w.dataDir == "" {
+		return
+	}
+	path := filepath.Join(w.dataDir, "recovery_tracks.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var tracks map[string]mitigationTrack
+	if json.Unmarshal(data, &tracks) == nil && tracks != nil {
+		w.tracks = tracks
+	}
+}
+
+func (w *Worker) persistTracks() {
+	if w.dataDir == "" {
+		return
+	}
+	_ = os.MkdirAll(w.dataDir, 0o755)
+	data, err := json.Marshal(w.tracks)
+	if err != nil {
+		return
+	}
+	tmp := filepath.Join(w.dataDir, "recovery_tracks.json.tmp")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, filepath.Join(w.dataDir, "recovery_tracks.json"))
 }

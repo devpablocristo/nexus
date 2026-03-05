@@ -90,7 +90,7 @@ func main() {
 		sentry.NewWorker(sentry.NewFileBackedState(cfg.DataDir), incidentSvc, opsEmitter, sentry.Config{}, log),
 		coordinator.NewWorker(opsEmitter, log),
 		mitigation.NewWorker(actionEngine, log),
-		recovery.NewWorker(opsEmitter, recovery.Config{IdleInterval: idleInterval}),
+		recovery.NewWorker(opsEmitter, recovery.Config{IdleInterval: idleInterval, DataDir: cfg.DataDir}),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,6 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+NAME
+    quickstart_admin.sh — full stack setup + admin console validation
+
+SYNOPSIS
+    quickstart_admin.sh [-h|--help]
+
+DESCRIPTION
+    End-to-end quickstart that:
+      1. Starts the stack (docker compose up --build)
+      2. Runs migrations
+      3. Seeds demo tenant, API keys, and tools
+      4. Configures egress rules for echo and transfer
+      5. Validates:
+         - RBAC enforcement (403 without scopes)
+         - Admin bootstrap endpoint
+         - REST /v1/run (echo)
+         - MCP tools/list
+         - A2A call
+
+    Prints the API key, admin console URL, and metrics URL at the end.
+
+ENVIRONMENT
+    NEXUS_HTTP_PORT   Core HTTP port   (default: 8080)
+
+PREREQUISITES
+    Docker, Make, curl, jq.
+
+EXAMPLES
+    bash scripts/admin/quickstart_admin.sh
+EOF
+  exit 0
+}
+[[ "${1:-}" =~ ^(-h|--help)$ ]] && usage
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 

@@ -1,11 +1,34 @@
 #!/usr/bin/env bash
-# Primer caso e2e: POST /v1/run con tool echo
-# Valida el flujo mínimo del gateway (consumer -> gateway -> upstream -> respuesta)
-#
-# Prerrequisitos: make up, make migrate-up, make seed
-# Uso: ./scripts/e2e/01_run_echo.sh
-
 set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+NAME
+    01_run_echo.sh — minimal gateway e2e: POST /v1/run with tool echo
+
+SYNOPSIS
+    01_run_echo.sh [-h|--help]
+
+DESCRIPTION
+    Validates the simplest gateway flow: consumer → auth → tool lookup →
+    policy (default allow for read) → HTTP execution → response.
+    Uses the demo "echo" tool which echoes back the input JSON.
+
+ENVIRONMENT
+    NEXUS_HTTP_PORT     Core HTTP port          (default: 8080)
+    NEXUS_DEMO_API_KEY  API key from seed       (default: nexus-core-local-key)
+
+PREREQUISITES
+    Stack running (make up), migrations applied (make migrate-up),
+    seed done (make seed).
+
+EXAMPLES
+    ./scripts/e2e/01_run_echo.sh
+    NEXUS_HTTP_PORT=18080 ./scripts/e2e/01_run_echo.sh
+EOF
+  exit 0
+}
+[[ "${1:-}" =~ ^(-h|--help)$ ]] && usage
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"

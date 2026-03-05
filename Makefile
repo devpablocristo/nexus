@@ -5,15 +5,14 @@ SAAS_DIR := nexus-saas
 AI_OPERATORS_DIR := nexus-ai-operators
 CONTROL_OPERATORS_DIR := nexus-control-operators
 TOWER_DIR := nexus-tower
-SIM_ENGINE_DIR := sim-engine
 CORE_SERVICE := nexus-core
 COMPOSE := docker compose
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
-	core-test saas-test control-operators-test ai-operators-test tower-test tower-qa qa e2e jwt-e2e quickstart-admin \
+	core-test saas-test control-operators-test ai-operators-test tower-test tower-qa qa \
+	e2e e2e-first e2e-core e2e-jwt e2e-operators quickstart-admin \
 	core-dev saas-dev control-dev ai-operators-dev tower-dev reset-nexus logs-tail up-ready status \
-	qa-sim-engine migrate-sim-engine bootstrap demo \
-	sdk-test-python sdk-test
+	bootstrap demo sdk-test-python sdk-test
 
 up:
 	$(COMPOSE) up -d --remove-orphans --wait
@@ -44,10 +43,6 @@ migrate-up:
 
 migrate-down:
 	$(COMPOSE) exec -T $(CORE_SERVICE) /app/migrate -cmd down -steps 1
-
-migrate-sim-engine:
-	@$(COMPOSE) up -d --wait postgres
-	$(COMPOSE) exec -T postgres psql -U postgres -d nexus < sim-engine/migrations/0001_sim_engine.up.sql
 
 cleanup-idempotency:
 	$(COMPOSE) exec -T $(CORE_SERVICE) /app/cleanup-idempotency
@@ -107,10 +102,6 @@ qa:
 	$(MAKE) ai-operators-test
 	$(MAKE) tower-qa
 
-qa-sim-engine:
-	cd $(SIM_ENGINE_DIR) && GOCACHE=/tmp/go-build GOMODCACHE=/home/pablo/go/pkg/mod GOPROXY=off GOSUMDB=off go test ./...
-	cd $(CORE_DIR) && GOCACHE=/tmp/go-build go test ./internal/world ./internal/gateway ./pkg/utils -run 'TestHandler_|TestServiceListRuns_|TestRun_SSRFAllowlist_|TestRun_SimEngineInternalHeaders|TestRun_NonSimEngineDoesNotGetInternalKey|TestValidateEgressURLWithAllowlist|TestRun_WorldPolicyDenied_EmitsEnforcementEvent|TestRun_WorldRateLimited_EmitsEnforcementEvent'
-
 reset-nexus:
 	$(MAKE) clean
 	$(MAKE) up-ready
@@ -119,14 +110,19 @@ reset-nexus:
 	$(MAKE) status
 
 e2e:
-	bash scripts/e2e/e2e.sh
+	bash scripts/e2e/04_core_gateway_isolated.sh
 
 e2e-first:
-	@# Primer caso: run echo (requiere: make up, make migrate-up, make seed)
 	bash scripts/e2e/01_run_echo.sh
 
-jwt-e2e:
-	bash scripts/e2e/e2e_jwt.sh
+e2e-core:
+	bash scripts/e2e/03_full_core_e2e.sh
+
+e2e-jwt:
+	bash scripts/e2e/05_core_jwt_auth.sh
+
+e2e-operators:
+	bash scripts/e2e/06_control_operators.sh
 
 quickstart-admin:
 	bash scripts/admin/quickstart_admin.sh

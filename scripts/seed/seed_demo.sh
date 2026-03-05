@@ -1,6 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+NAME
+    seed_demo.sh — seed demo org, API keys, tools, and policies
+
+SYNOPSIS
+    seed_demo.sh [-h|--help]
+
+DESCRIPTION
+    Creates the "demo" org in both nexus-core and nexus-saas databases
+    with two deterministic API keys:
+
+      NEXUS_DEMO_API_KEY       (full scopes — tools, policy, audit, gateway, MCP, A2A, admin)
+      NEXUS_OPERATOR_API_KEY   (limited — audit:read, admin console)
+
+    Seeds two tools:
+      - echo     (read, internal, risk 1)  → http://mock-tools:8081/echo
+      - transfer (write, external, risk 3) → http://mock-tools:8081/transfer
+
+    Seeds three policies for transfer:
+      - deny: credit card data to external tools (DLP)
+      - deny: amount > 1000
+      - allow: amount ≤ 1000 with user_id (requires idempotency)
+
+    Seeds a demo alert rule (high-deny-rate) in nexus-saas.
+
+    Outputs NEXUS_DEMO_API_KEY=... and NEXUS_OPERATOR_API_KEY=... to stdout.
+
+ENVIRONMENT
+    NEXUS_COMPOSE_FILE               Compose file        (default: docker-compose.yml)
+    NEXUS_DATABASE_URL_EXEC          Core DB URL          (default: postgres://...localhost:5432/nexus)
+    NEXUS_SAAS_DATABASE_URL_EXEC     SaaS DB URL          (default: postgres://...localhost:5432/nexus_saas)
+    NEXUS_HTTP_PORT                  Core HTTP port       (default: 8080)
+    NEXUS_SAAS_HTTP_PORT             SaaS HTTP port       (default: 8082)
+
+PREREQUISITES
+    Stack running (docker compose up), Postgres accessible, migrations applied.
+
+EXAMPLES
+    bash scripts/seed/seed_demo.sh
+    NEXUS_HTTP_PORT=18080 bash scripts/seed/seed_demo.sh
+EOF
+  exit 0
+}
+[[ "${1:-}" =~ ^(-h|--help)$ ]] && usage
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 

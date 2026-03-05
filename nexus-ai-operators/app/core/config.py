@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
     core_api_key: str = Field(
         default='operator-internal-key',
-        validation_alias=AliasChoices('NEXUS_CORE_API_KEY', 'OPERATOR_INTERNAL_KEY', 'NEXUS_SAAS_API_KEY'),
+        validation_alias=AliasChoices('NEXUS_CORE_API_KEY', 'NEXUS_SAAS_API_KEY'),
     )
     core_timeout_seconds: float = Field(
         default=5.0,

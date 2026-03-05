@@ -561,6 +561,11 @@ textarea {
   font-family: inherit;
   width: 100%;
 }
+.tool-form-label select option,
+select option {
+  background: #0f1729;
+  color: #e2e8f0;
+}
 .tool-form-label textarea { font-family: 'IBM Plex Mono', monospace; resize: vertical; }
 .tool-form-label input.input-error,
 .tool-form-label textarea.input-error { border-color: #c45c4a; }

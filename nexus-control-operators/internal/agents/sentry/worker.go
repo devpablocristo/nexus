@@ -93,7 +93,7 @@ func (w *Worker) ConsumerGroup() string {
 
 func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error {
 	switch event.Envelope.EventType {
-	case "tool_call.finished", "policy.denied", "quota.exceeded", "tool_degraded":
+	case "tool_call.finished", "tool.call.completed", "policy.denied", "quota.exceeded", "tool_degraded":
 	default:
 		return nil
 	}
@@ -152,7 +152,7 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 
 func (w *Worker) measurementFor(event opsdomain.StoredEvent) (metric, signal string, sample float64, forceAnomaly bool, observedOverride, thresholdOverride float64) {
 	switch event.Envelope.EventType {
-	case "tool_call.finished":
+	case "tool_call.finished", "tool.call.completed":
 		status := strings.ToLower(strings.TrimSpace(worker.AsString(event.Envelope.Payload["status"])))
 		sample = 0
 		if status != "success" {

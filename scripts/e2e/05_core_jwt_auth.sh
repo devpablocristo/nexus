@@ -1,6 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+NAME
+    05_core_jwt_auth.sh — e2e for JWT-only authentication mode
+
+SYNOPSIS
+    05_core_jwt_auth.sh [-h|--help]
+
+DESCRIPTION
+    Spins up an isolated stack with JWT auth enabled and API key auth
+    disabled (NEXUS_AUTH_ENABLE_JWT=true, NEXUS_AUTH_ALLOW_API_KEY=false).
+
+    Tests:
+      - API key requests are rejected (401)
+      - Bearer token issued by mock-tools JWKS is accepted
+      - Run echo with JWT, list tools with JWT, MCP call with JWT
+
+    Tears down the stack on exit (trap cleanup).
+
+ENVIRONMENT
+    NEXUS_HTTP_PORT_E2E_BASE   Starting port for core   (default: 18080)
+    COMPOSE_PROJECT_NAME       Override compose project  (auto-generated)
+
+PREREQUISITES
+    Docker, curl, jq, sha256sum. The script manages its own stack.
+
+EXAMPLES
+    ./scripts/e2e/05_core_jwt_auth.sh
+EOF
+  exit 0
+}
+[[ "${1:-}" =~ ^(-h|--help)$ ]] && usage
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -52,12 +85,17 @@ reserve_port_var() {
   export "$var_name"
 }
 
-reserve_port_var NEXUS_HTTP_PORT 8080
-reserve_port_var NEXUS_MOCK_TOOLS_PORT 8081
+reserve_port_var NEXUS_HTTP_PORT 18080
+reserve_port_var NEXUS_MOCK_TOOLS_PORT 18081
 reserve_port_var NEXUS_POSTGRES_PORT 55432
-reserve_port_var NEXUS_REDIS_PORT 6379
-reserve_port_var NEXUS_PROMETHEUS_PORT 9090
-reserve_port_var NEXUS_GRAFANA_PORT 3000
+reserve_port_var NEXUS_SAAS_POSTGRES_PORT 55433
+reserve_port_var NEXUS_SAAS_HTTP_PORT 18082
+reserve_port_var NEXUS_REDIS_PORT 16379
+reserve_port_var NEXUS_OPERATOR_PORT 18000
+reserve_port_var OPERATOR_HEALTH_PORT 18090
+reserve_port_var NEXUS_TOWER_PORT 15174
+reserve_port_var NEXUS_PROMETHEUS_PORT 19090
+reserve_port_var NEXUS_GRAFANA_PORT 13000
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-nexus-core-e2e-jwt-$(date +%s)}"
 export COMPOSE_PROJECT_NAME
@@ -96,19 +134,31 @@ http_code() {
   curl -sS -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || true
 }
 
+ENV_BACKUP="$(mktemp)"
+cp .env "$ENV_BACKUP"
+
 cleanup() {
   compose down -v >/dev/null 2>&1 || true
+  cp "$ENV_BACKUP" .env
+  rm -f "$ENV_BACKUP"
 }
 trap cleanup EXIT
 
 echo "[e2e-jwt] bring stack up (JWT only)"
+
+# env_file in docker-compose.yml reads .env from disk. Temporarily patch it
+# so the container sees JWT enabled and API-key auth disabled.
+sed -i \
+  -e 's/^NEXUS_AUTH_ENABLE_JWT=.*/NEXUS_AUTH_ENABLE_JWT=true/' \
+  -e 's/^NEXUS_AUTH_ALLOW_API_KEY=.*/NEXUS_AUTH_ALLOW_API_KEY=false/' \
+  .env
+
+grep -q '^NEXUS_DISABLE_SSRF_PROTECTION=' .env \
+  || echo 'NEXUS_DISABLE_SSRF_PROTECTION=true' >> .env
+
 export NEXUS_AUTH_ENABLE_JWT=true
 export NEXUS_AUTH_ALLOW_API_KEY=false
-# In docker compose, mock-tools resolves to a private IP (bridge network). With SSRF protection enabled,
-# outbound calls to private IPs are blocked by design, which breaks E2E runs. For E2E we disable SSRF
-# protection explicitly (dev/test only).
-: "${NEXUS_DISABLE_SSRF_PROTECTION:=true}"
-export NEXUS_DISABLE_SSRF_PROTECTION
+export NEXUS_DISABLE_SSRF_PROTECTION=true
 compose up --build -d >/dev/null
 
 for _ in {1..60}; do

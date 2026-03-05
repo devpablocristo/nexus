@@ -1,12 +1,42 @@
 #!/usr/bin/env bash
-# 5-Minute Demo — mirrors the README "5-Minute Demo (Copy/Paste)" section.
-# Prerequisites: docker compose stack running (make up), migrations applied, seed done.
-# Usage:
-#   cp .env.example .env
-#   make up && make migrate-up && make seed
-#   export NEXUS_API_KEY="<seed-output-value>"
-#   bash scripts/demo/demo.sh
 set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+NAME
+    demo.sh — 5-minute guided demo of Nexus gateway features
+
+SYNOPSIS
+    demo.sh [-h|--help]
+
+DESCRIPTION
+    Interactive walkthrough that demonstrates key Nexus capabilities
+    against a running stack. Each step prints a header and the JSON
+    response from nexus-core:
+
+      1. Health check
+      2. Egress allowlist setup (echo + transfer → mock-tools)
+      3. DLP deny: credit card sent to external tool
+      4. WRITE with idempotency + timeout budget
+      5. Idempotency replay (no upstream re-execution)
+      6. Audit export (JSONL with hash-chain)
+      7. SSRF/egress protection (block cloud metadata 169.254.169.254)
+
+ENVIRONMENT
+    NEXUS_HTTP_PORT   Core HTTP port                 (default: 8080)
+    NEXUS_API_KEY     API key from seed output       (required)
+
+PREREQUISITES
+    Stack running (make up), migrations applied (make migrate-up),
+    seed done (make seed). NEXUS_API_KEY must be set.
+
+EXAMPLES
+    export NEXUS_API_KEY="nexus-core-local-key"
+    bash scripts/demo/demo.sh
+EOF
+  exit 0
+}
+[[ "${1:-}" =~ ^(-h|--help)$ ]] && usage
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"

@@ -1,11 +1,37 @@
 #!/usr/bin/env bash
-# E2E: llama a la tool "my-service" registrada desde la UI (nexus-tower).
-# Valida el flujo completo: consumer → gateway → mock-tools:8081/echo → respuesta.
-#
-# Prerrequisitos: stack levantado (docker compose up), tool "my-service" registrada.
-# Uso: ./scripts/e2e/02_run_my_service.sh
-
 set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+NAME
+    02_run_my_service.sh — call any registered tool via /v1/run
+
+SYNOPSIS
+    02_run_my_service.sh [-h|--help] [TOOL_NAME]
+
+DESCRIPTION
+    Calls a tool registered in Nexus by name. Verifies the tool exists and
+    is enabled, executes POST /v1/run, and validates the response payload
+    (request_id, decision, status, upstream echo, latency).
+
+ARGUMENTS
+    TOOL_NAME   Name of the tool to call (default: my-service)
+
+ENVIRONMENT
+    NEXUS_HTTP_PORT     Core HTTP port          (default: 8080)
+    NEXUS_DEMO_API_KEY  API key from seed       (default: nexus-core-local-key)
+
+PREREQUISITES
+    Stack running (docker compose up), the target tool must be registered.
+
+EXAMPLES
+    ./scripts/e2e/02_run_my_service.sh
+    ./scripts/e2e/02_run_my_service.sh echo
+    NEXUS_DEMO_API_KEY=nxk_abc ./scripts/e2e/02_run_my_service.sh transfer
+EOF
+  exit 0
+}
+[[ "${1:-}" =~ ^(-h|--help)$ ]] && usage
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"

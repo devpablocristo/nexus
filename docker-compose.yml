@@ -151,6 +151,8 @@ services:
       NEXUS_DEFAULT_ORG_ID: "${NEXUS_DEFAULT_ORG_ID:-}"
       OPERATOR_HEALTH_PORT: "8090"
       OPERATOR_DATA_DIR: "/app/data"
+    ports:
+      - "${OPERATOR_HEALTH_PORT:-8090}:8090"
     volumes:
       - control_operators_data:/app/data
     depends_on:
