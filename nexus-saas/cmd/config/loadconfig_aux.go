@@ -154,3 +154,14 @@ func loadOIDC(cfg *Config) error {
 	cfg.Service.ClerkWebhookSecret = mustStrDefault("CLERK_WEBHOOK_SECRET", "")
 	return nil
 }
+
+// loadBilling carga configuración Stripe (opcional, graceful degradation).
+func loadBilling(cfg *Config) error {
+	cfg.Service.StripeSecretKey = mustStrDefault("STRIPE_SECRET_KEY", "")
+	cfg.Service.StripeWebhookSecret = mustStrDefault("STRIPE_WEBHOOK_SECRET", "")
+	cfg.Service.StripePriceStarter = mustStrDefault("STRIPE_PRICE_STARTER", "")
+	cfg.Service.StripePriceGrowth = mustStrDefault("STRIPE_PRICE_GROWTH", "")
+	cfg.Service.StripePriceEnterprise = mustStrDefault("STRIPE_PRICE_ENTERPRISE", "")
+	cfg.Service.TowerBaseURL = mustStrDefault("TOWER_BASE_URL", "http://localhost:5173")
+	return nil
+}

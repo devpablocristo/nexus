@@ -12,7 +12,9 @@ import (
 )
 
 // ensureSaaSSchema bootstraps the minimum schema required by nexus-saas.
-// It is idempotent and safe to run on startup.
+// It is idempotent (CREATE TABLE IF NOT EXISTS) and safe to run on startup.
+// Tables defined here intentionally duplicate the SQL migration files so the
+// service can self-heal when running without a migration step (e.g. dev, tests).
 func ensureSaaSSchema(db *gorm.DB) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS orgs (
@@ -38,10 +40,20 @@ func ensureSaaSSchema(db *gorm.DB) error {
 			org_id uuid PRIMARY KEY REFERENCES orgs(id) ON DELETE CASCADE,
 			plan_code text NOT NULL,
 			hard_limits_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+			stripe_customer_id text UNIQUE,
+			stripe_subscription_id text UNIQUE,
+			billing_status text NOT NULL DEFAULT 'trialing'
+				CHECK (billing_status IN ('trialing','active','past_due','canceled','unpaid')),
 			updated_by text NULL,
 			updated_at timestamptz NOT NULL DEFAULT now(),
 			created_at timestamptz NOT NULL DEFAULT now()
 		)`,
+		`ALTER TABLE tenant_settings ADD COLUMN IF NOT EXISTS stripe_customer_id text UNIQUE`,
+		`ALTER TABLE tenant_settings ADD COLUMN IF NOT EXISTS stripe_subscription_id text UNIQUE`,
+		`ALTER TABLE tenant_settings ADD COLUMN IF NOT EXISTS billing_status text NOT NULL DEFAULT 'trialing'
+			CHECK (billing_status IN ('trialing','active','past_due','canceled','unpaid'))`,
+		`CREATE INDEX IF NOT EXISTS idx_tenant_settings_stripe_customer
+			ON tenant_settings(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL`,
 		`CREATE TABLE IF NOT EXISTS admin_activity_events (
 			id uuid PRIMARY KEY,
 			org_id uuid NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,

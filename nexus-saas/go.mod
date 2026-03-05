@@ -20,7 +20,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/wire v0.6.0
 	github.com/zsais/go-gin-prometheus v1.0.2
-	gorm.io/driver/sqlite v1.4.3
+	gorm.io/driver/sqlite v1.4.3 // test-only: in-memory DB for repository integration tests
 )
 
 require github.com/prometheus/client_golang v1.22.0 // indirect
@@ -63,6 +63,7 @@ require (
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/stripe/stripe-go/v81 v81.4.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	golang.org/x/arch v0.23.0 // indirect

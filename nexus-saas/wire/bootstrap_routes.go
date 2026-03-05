@@ -13,6 +13,7 @@ import (
 	"nexus-saas/internal/admin"
 	"nexus-saas/internal/alerts"
 	"nexus-saas/internal/assistant"
+	"nexus-saas/internal/billing"
 	"nexus-saas/internal/clerkwebhook"
 	"nexus-saas/internal/contracts"
 	"nexus-saas/internal/coreproxy"
@@ -35,6 +36,7 @@ func NewRouter(
 	httpCfg config.HTTPServerConfig,
 	authMw gin.HandlerFunc,
 	adminH *admin.Handler,
+	billingH *billing.Handler,
 	eventsH *events.Handler,
 	actionsH *actions.Handler,
 	incidentsH *incidents.Handler,
@@ -71,6 +73,7 @@ func NewRouter(
 
 	webhookGroup := r.Group("/v1")
 	clerkWebhookH.Register(webhookGroup)
+	billingH.RegisterWebhook(r)
 
 	onboardGroup := r.Group("/v1")
 	orgH.Register(onboardGroup)
@@ -82,6 +85,7 @@ func NewRouter(
 	v1.Use(authMw)
 	v1.Use(gin.HandlerFunc(usageMeteringMw))
 	adminH.Register(v1)
+	billingH.Register(v1)
 	eventsH.Register(v1)
 	actionsH.Register(v1)
 	incidentsH.Register(v1)

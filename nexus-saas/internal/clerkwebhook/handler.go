@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sync"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,9 @@ const (
 
 	maxWebhookBodyBytes = 2 * 1024 * 1024
 	maxClockSkew        = 5 * time.Minute
+
+	webhookRateLimit    = 60
+	webhookRateWindow   = 1 * time.Minute
 )
 
 var sigV1Regexp = regexp.MustCompile(`v1,([A-Za-z0-9+/=_-]+)`)
@@ -38,6 +42,10 @@ type Handler struct {
 	webhookSecret string
 	now           func() time.Time
 	logger        zerolog.Logger
+
+	rateMu    sync.Mutex
+	rateCount int
+	rateReset time.Time
 }
 
 func NewHandler(cfg config.ServiceConfig, uc *users.Usecases, l zerolog.Logger) *Handler {
@@ -49,6 +57,18 @@ func NewHandler(cfg config.ServiceConfig, uc *users.Usecases, l zerolog.Logger) 
 	}
 }
 
+func (h *Handler) checkRateLimit() bool {
+	h.rateMu.Lock()
+	defer h.rateMu.Unlock()
+	now := h.now()
+	if now.After(h.rateReset) {
+		h.rateCount = 0
+		h.rateReset = now.Add(webhookRateWindow)
+	}
+	h.rateCount++
+	return h.rateCount <= webhookRateLimit
+}
+
 func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.POST("/webhooks/clerk", h.handle)
 }
@@ -57,6 +77,12 @@ func (h *Handler) handle(c *gin.Context) {
 	if h.webhookSecret == "" {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
 			"error": gin.H{"code": "CONFIG_ERROR", "message": "CLERK_WEBHOOK_SECRET not configured"},
+		})
+		return
+	}
+	if !h.checkRateLimit() {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error": gin.H{"code": "RATE_LIMIT", "message": "webhook rate limit exceeded"},
 		})
 		return
 	}
@@ -96,17 +122,21 @@ func (h *Handler) handle(c *gin.Context) {
 func (h *Handler) dispatch(ctx context.Context, evt clerkEventEnvelope) error {
 	switch strings.TrimSpace(evt.Type) {
 	case "user.created", "user.updated":
-		return h.onUserCreated(ctx, evt.Data)
+		return h.onUserUpsert(ctx, evt.Data)
+	case "user.deleted":
+		return h.onUserDeleted(ctx, evt.Data)
 	case "organization.created":
 		return h.onOrganizationCreated(ctx, evt.Data)
 	case "organizationMembership.created":
 		return h.onOrganizationMembershipCreated(ctx, evt.Data)
+	case "organizationMembership.deleted":
+		return h.onOrganizationMembershipDeleted(ctx, evt.Data)
 	default:
 		return nil
 	}
 }
 
-func (h *Handler) onUserCreated(ctx context.Context, raw json.RawMessage) error {
+func (h *Handler) onUserUpsert(ctx context.Context, raw json.RawMessage) error {
 	var data clerkUserData
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return err
@@ -118,6 +148,32 @@ func (h *Handler) onUserCreated(ctx context.Context, raw json.RawMessage) error 
 	name := users.FormatUserName(data.FirstName, data.LastName, email)
 	_, err = h.uc.SyncUser(ctx, data.ID, email, name, nullable(data.ImageURL))
 	return err
+}
+
+func (h *Handler) onUserDeleted(ctx context.Context, raw json.RawMessage) error {
+	var data struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return err
+	}
+	if strings.TrimSpace(data.ID) == "" {
+		return errors.New("user.deleted: missing user id")
+	}
+	return h.uc.SoftDeleteUser(ctx, data.ID)
+}
+
+func (h *Handler) onOrganizationMembershipDeleted(ctx context.Context, raw json.RawMessage) error {
+	var data clerkMembershipData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return err
+	}
+	userID := firstNonEmpty(data.PublicUserData.UserID, data.User.ID)
+	orgName := firstNonEmpty(data.Organization.Name, data.Organization.Slug, data.Organization.ID)
+	if userID == "" || orgName == "" {
+		return errors.New("organizationMembership.deleted: missing user_id or org")
+	}
+	return h.uc.RemoveMembership(ctx, userID, orgName)
 }
 
 func (h *Handler) onOrganizationCreated(ctx context.Context, raw json.RawMessage) error {
@@ -242,6 +298,9 @@ type clerkMembershipData struct {
 	User clerkUserData `json:"user"`
 }
 
+// verifySvix performs Svix webhook signature verification per
+// https://docs.svix.com/receiving/verifying-payloads/how-manual
+// Intentionally avoids the svix-webhooks SDK to keep the dependency tree minimal.
 func verifySvix(secret, id, ts, sigHeader string, payload []byte, now func() time.Time) error {
 	secret = strings.TrimSpace(secret)
 	id = strings.TrimSpace(id)

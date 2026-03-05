@@ -23,6 +23,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 		OrgSet,
 		UsersSet,
 		AdminSet,
+		BillingSet,
 		EventsSet,
 		ActionsSet,
 		IncidentsSet,

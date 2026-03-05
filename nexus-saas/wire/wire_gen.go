@@ -12,6 +12,7 @@ import (
 	"nexus-saas/internal/admin"
 	"nexus-saas/internal/alerts"
 	"nexus-saas/internal/assistant"
+	"nexus-saas/internal/billing"
 	"nexus-saas/internal/clerkwebhook"
 	"nexus-saas/internal/contracts"
 	"nexus-saas/internal/coreproxy"
@@ -47,6 +48,11 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	adminRepository := admin.NewRepository(db)
 	adminUsecases := admin.NewUsecases(adminRepository)
 	handler := admin.NewHandler(adminUsecases)
+	billingRepository := billing.NewRepository(db)
+	tenantSettingsPort := ProvideTenantSettingsPort(adminRepository)
+	stripeClient := ProvideStripeClient(serviceConfig)
+	billingUsecases := billing.NewUsecases(serviceConfig, billingRepository, tenantSettingsPort, stripeClient)
+	billingHandler := billing.NewHandler(billingUsecases)
 	eventsRepository := events.NewRepository(db)
 	usagemeteringRepository := usagemetering.NewRepository(db)
 	meteringPort := ProvideEventsMeteringPort(usagemeteringRepository)
@@ -88,7 +94,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	contractsHandler := contracts.NewHandler(serviceConfig, adminRepository, usagemeteringRepository, eventsUsecases, actionsUsecases)
 	coreproxyHandler := coreproxy.NewHandler()
 	apiCallsMiddlewareFunc := usagemetering.NewAPICallsMiddleware(usagemeteringRepository)
-	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, eventsHandler, actionsHandler, incidentsHandler, alertsHandler, sessionHandler, policyproposalHandler, assistantHandler, oidcHandler, orgHandler, usersHandler, clerkwebhookHandler, contractsHandler, coreproxyHandler, apiCallsMiddlewareFunc)
+	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, billingHandler, eventsHandler, actionsHandler, incidentsHandler, alertsHandler, sessionHandler, policyproposalHandler, assistantHandler, oidcHandler, orgHandler, usersHandler, clerkwebhookHandler, contractsHandler, coreproxyHandler, apiCallsMiddlewareFunc)
 	server := NewHTTPServer(apiConfig, engine)
 	app := NewApp(server)
 	return app, func() {

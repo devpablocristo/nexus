@@ -48,6 +48,11 @@ type CreatedAPIKey struct {
 	Raw string
 }
 
+type RotatedAPIKey struct {
+	Raw       string
+	RotatedAt time.Time
+}
+
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
@@ -77,8 +82,11 @@ func (r *Repository) UpsertUser(
 		row.Name = name
 		row.AvatarURL = normalizeNullableString(avatarURL)
 		row.UpdatedAt = time.Now().UTC()
-		if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
-			return userdomain.User{}, err
+		if saveErr := r.db.WithContext(ctx).Save(&row).Error; saveErr != nil {
+			if isUniqueViolation(saveErr) {
+				return toDomainUser(row), nil
+			}
+			return userdomain.User{}, saveErr
 		}
 		return toDomainUser(row), nil
 	}
@@ -331,29 +339,82 @@ func (r *Repository) DeleteAPIKey(ctx context.Context, orgID, keyID uuid.UUID) e
 	return nil
 }
 
-func (r *Repository) RotateAPIKey(ctx context.Context, orgID, keyID uuid.UUID) (string, error) {
+func (r *Repository) RotateAPIKey(ctx context.Context, orgID, keyID uuid.UUID) (RotatedAPIKey, error) {
 	tx := r.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
-		return "", tx.Error
+		return RotatedAPIKey{}, tx.Error
 	}
 	var row orgmodels.OrgAPIKey
 	if err := tx.Where("id = ? AND org_id = ?", keyID, orgID).Take(&row).Error; err != nil {
 		tx.Rollback()
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", types.NewHTTPError(404, types.ErrCodeNotFound, "api key not found")
+			return RotatedAPIKey{}, types.NewHTTPError(404, types.ErrCodeNotFound, "api key not found")
 		}
-		return "", err
+		return RotatedAPIKey{}, err
 	}
 	raw := generateAPIKey()
 	row.APIKeyHash = utils.SHA256Hex(raw)
+	now := time.Now().UTC()
 	if err := tx.Save(&row).Error; err != nil {
 		tx.Rollback()
-		return "", err
+		return RotatedAPIKey{}, err
 	}
 	if err := tx.Commit().Error; err != nil {
-		return "", err
+		return RotatedAPIKey{}, err
 	}
-	return raw, nil
+	return RotatedAPIKey{Raw: raw, RotatedAt: now}, nil
+}
+
+func (r *Repository) SoftDeleteUser(ctx context.Context, externalID string) error {
+	externalID = strings.TrimSpace(externalID)
+	if externalID == "" {
+		return types.NewHTTPError(400, types.ErrCodeValidation, "external_id required")
+	}
+	var row usermodels.User
+	if err := r.db.WithContext(ctx).Where("external_id = ?", externalID).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	// Remove all org memberships first, then delete user
+	if err := r.db.WithContext(ctx).Where("user_id = ?", row.ID).Delete(&usermodels.OrgMember{}).Error; err != nil {
+		return err
+	}
+	return r.db.WithContext(ctx).Delete(&row).Error
+}
+
+func (r *Repository) RemoveMembership(ctx context.Context, userExternalID, orgName string) error {
+	userExternalID = strings.TrimSpace(userExternalID)
+	orgName = strings.TrimSpace(orgName)
+	if userExternalID == "" || orgName == "" {
+		return nil
+	}
+	var user usermodels.User
+	if err := r.db.WithContext(ctx).Where("external_id = ?", userExternalID).Take(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	var org orgmodels.Org
+	if err := r.db.WithContext(ctx).Where("name = ?", orgName).Take(&org).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	return r.db.WithContext(ctx).
+		Where("org_id = ? AND user_id = ?", org.ID, user.ID).
+		Delete(&usermodels.OrgMember{}).Error
+}
+
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate") || strings.Contains(msg, "23505")
 }
 
 func generateAPIKey() string {

@@ -49,6 +49,17 @@ type ServiceConfig struct {
 	SaaSInternalKey string
 
 	// Clerk integration.
+	// ClerkSecretKey is reserved for server-side Clerk Backend API calls
+	// (e.g. fetching user details, managing organizations). Not yet used
+	// but loaded from CLERK_SECRET_KEY for forward compatibility.
 	ClerkSecretKey     string
 	ClerkWebhookSecret string
+
+	// Stripe Billing.
+	StripeSecretKey       string
+	StripeWebhookSecret   string
+	StripePriceStarter    string
+	StripePriceGrowth     string
+	StripePriceEnterprise string
+	TowerBaseURL          string
 }

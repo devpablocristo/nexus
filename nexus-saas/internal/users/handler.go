@@ -196,7 +196,7 @@ func (h *Handler) rotateAPIKey(c *gin.Context) {
 		httperr.BadRequest(c, "invalid id")
 		return
 	}
-	raw, err := h.uc.RotateAPIKey(c.Request.Context(), orgID, keyID)
+	rotated, err := h.uc.RotateAPIKey(c.Request.Context(), orgID, keyID)
 	if err != nil {
 		httperr.WriteFrom(c, err)
 		return
@@ -204,8 +204,8 @@ func (h *Handler) rotateAPIKey(c *gin.Context) {
 	c.JSON(http.StatusOK, userdto.RotateAPIKeyResponse{
 		ID:        keyID.String(),
 		OrgID:     orgID.String(),
-		APIKey:    raw,
-		RotatedAt: time.Now().UTC().Format(time.RFC3339),
+		APIKey:    rotated.Raw,
+		RotatedAt: toRFC3339(rotated.RotatedAt),
 	})
 }
 

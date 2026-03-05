@@ -192,3 +192,9 @@ func defaultHardLimits(planCode string) map[string]any {
 		return map[string]any{"tools_max": 20, "run_rpm": 300, "audit_retention_days": 30}
 	}
 }
+
+// DefaultHardLimits expone los límites base por plan para módulos internos
+// que necesitan sincronizar cambios de plan sin duplicar reglas.
+func DefaultHardLimits(planCode string) map[string]any {
+	return defaultHardLimits(planCode)
+}

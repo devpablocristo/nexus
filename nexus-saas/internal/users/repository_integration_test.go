@@ -83,8 +83,11 @@ func TestRepository_APIKeyLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rotate api key: %v", err)
 	}
-	if rotated == "" || rotated == created.Raw {
+	if rotated.Raw == "" || rotated.Raw == created.Raw {
 		t.Fatalf("expected new rotated raw key")
+	}
+	if rotated.RotatedAt.IsZero() {
+		t.Fatalf("expected non-zero rotated_at timestamp")
 	}
 
 	if err := repo.DeleteAPIKey(ctx, orgID, created.Key.ID); err != nil {

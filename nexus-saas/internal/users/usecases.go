@@ -65,7 +65,7 @@ func (u *Usecases) DeleteAPIKey(ctx context.Context, orgID, keyID uuid.UUID) err
 	return u.repo.DeleteAPIKey(ctx, orgID, keyID)
 }
 
-func (u *Usecases) RotateAPIKey(ctx context.Context, orgID, keyID uuid.UUID) (string, error) {
+func (u *Usecases) RotateAPIKey(ctx context.Context, orgID, keyID uuid.UUID) (RotatedAPIKey, error) {
 	return u.repo.RotateAPIKey(ctx, orgID, keyID)
 }
 
@@ -94,6 +94,14 @@ func (u *Usecases) SyncMembership(
 	}
 	member.User = user
 	return member, nil
+}
+
+func (u *Usecases) SoftDeleteUser(ctx context.Context, externalID string) error {
+	return u.repo.SoftDeleteUser(ctx, externalID)
+}
+
+func (u *Usecases) RemoveMembership(ctx context.Context, userExternalID, orgName string) error {
+	return u.repo.RemoveMembership(ctx, userExternalID, orgName)
 }
 
 func EnsureOrgMatch(pathOrgID, tokenOrgID uuid.UUID) error {
