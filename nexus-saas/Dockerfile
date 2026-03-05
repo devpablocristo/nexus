@@ -17,7 +17,7 @@ WORKDIR /src/nexus-saas
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nexus-saas ./cmd/nexus-saas
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/migrate ./cmd/migrate
 
-FROM alpine:3.20
+FROM alpine:3.23
 WORKDIR /app
 RUN apk add --no-cache ca-certificates wget
 RUN addgroup -g 1000 app && adduser -D -u 1000 -G app app
