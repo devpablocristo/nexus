@@ -68,3 +68,26 @@ func TestResolvePrincipal_InvalidAudience(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestResolvePrincipal_CommaSeparatedScopes(t *testing.T) {
+	orgID := uuid.New()
+	svc := NewUsecases(fakeVerifier{
+		claims: map[string]any{
+			"org_id": orgID.String(),
+			"sub":    "user_1",
+			"scopes": "tools:read,tools:write,audit:read",
+		},
+	}, Config{
+		OrgClaim:    "org_id",
+		ActorClaim:  "sub",
+		ScopesClaim: "scopes",
+	})
+
+	got, err := svc.ResolvePrincipal(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Scopes) != 3 {
+		t.Fatalf("unexpected scopes: %+v", got.Scopes)
+	}
+}

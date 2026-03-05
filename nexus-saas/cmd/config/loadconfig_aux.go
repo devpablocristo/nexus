@@ -150,5 +150,7 @@ func loadOIDC(cfg *Config) error {
 		}
 	}
 	cfg.Service.SaaSInternalKey = mustStrDefault("NEXUS_SAAS_INTERNAL_KEY", "")
+	cfg.Service.ClerkSecretKey = mustStrDefault("CLERK_SECRET_KEY", "")
+	cfg.Service.ClerkWebhookSecret = mustStrDefault("CLERK_WEBHOOK_SECRET", "")
 	return nil
 }

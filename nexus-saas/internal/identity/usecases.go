@@ -108,33 +108,33 @@ func audienceMatches(v any, audience string) bool {
 func parseScopes(v any) []string {
 	switch t := v.(type) {
 	case string:
-		if t == "" {
-			return nil
-		}
-		chunks := strings.Fields(t)
-		if len(chunks) == 0 {
-			return nil
-		}
-		return chunks
+		return splitScopes(t)
 	case []any:
 		out := make([]string, 0, len(t))
 		for _, item := range t {
-			scope := strings.TrimSpace(toString(item))
-			if scope != "" {
-				out = append(out, scope)
-			}
+			out = append(out, splitScopes(toString(item))...)
 		}
 		return out
 	case []string:
 		out := make([]string, 0, len(t))
 		for _, item := range t {
-			scope := strings.TrimSpace(item)
-			if scope != "" {
-				out = append(out, scope)
-			}
+			out = append(out, splitScopes(item)...)
 		}
 		return out
 	default:
 		return nil
 	}
+}
+
+func splitScopes(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	raw = strings.ReplaceAll(raw, ",", " ")
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
+		return nil
+	}
+	return parts
 }

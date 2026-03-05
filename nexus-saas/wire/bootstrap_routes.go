@@ -9,8 +9,11 @@ import (
 
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"nexus-saas/cmd/config"
+	"nexus-saas/internal/actions"
 	"nexus-saas/internal/admin"
 	"nexus-saas/internal/alerts"
+	"nexus-saas/internal/assistant"
+	"nexus-saas/internal/clerkwebhook"
 	"nexus-saas/internal/contracts"
 	"nexus-saas/internal/coreproxy"
 	"nexus-saas/internal/events"
@@ -19,9 +22,8 @@ import (
 	"nexus-saas/internal/org"
 	"nexus-saas/internal/policyproposal"
 	"nexus-saas/internal/session"
-	"nexus-saas/internal/actions"
-	"nexus-saas/internal/assistant"
 	"nexus-saas/internal/usagemetering"
+	"nexus-saas/internal/users"
 	ginmw "nexus/pkg/http/middlewares/gin"
 	ginserver "nexus/pkg/http/servers/gin"
 )
@@ -42,6 +44,8 @@ func NewRouter(
 	assistantH *assistant.Handler,
 	oidcH *identity.OIDCHandler,
 	orgH *org.Handler,
+	usersH *users.Handler,
+	clerkWebhookH *clerkwebhook.Handler,
 	contractsH *contracts.Handler,
 	coreProxyH *coreproxy.Handler,
 	usageMeteringMw usagemetering.APICallsMiddlewareFunc,
@@ -65,6 +69,9 @@ func NewRouter(
 	oidcGroup := r.Group("/v1")
 	oidcH.Register(oidcGroup)
 
+	webhookGroup := r.Group("/v1")
+	clerkWebhookH.Register(webhookGroup)
+
 	onboardGroup := r.Group("/v1")
 	orgH.Register(onboardGroup)
 
@@ -82,6 +89,7 @@ func NewRouter(
 	sessionH.Register(v1)
 	proposalH.Register(v1)
 	assistantH.Register(v1)
+	usersH.Register(v1)
 	coreProxyH.Register(v1)
 
 	return r

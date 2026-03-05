@@ -1,10 +1,20 @@
 import { Link, useLocation } from 'react-router-dom';
+import { SignOutButton, UserButton } from '@clerk/clerk-react';
 import { useActiveTool } from '../lib/tool-context';
+import { clerkEnabled } from '../lib/auth';
 
 const navItems = [
   { to: '/tools', label: 'Tools' },
   { to: '/audit', label: 'Audit Log' },
   { to: '/monitoring', label: 'Monitoring' },
+  { to: '/secrets', label: 'Secrets' },
+  { to: '/policies', label: 'Policies' },
+  { to: '/incidents', label: 'Incidents' },
+  { to: '/events', label: 'Events' },
+  { to: '/assistant', label: 'Assistant' },
+  { to: '/settings/keys', label: 'API Keys' },
+  { to: '/org-selector', label: 'Organizations' },
+  { to: '/settings', label: 'Profile' },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -18,7 +28,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <p className="eyebrow">Nexus Tower</p>
           <h1>Control Panel</h1>
         </div>
-        <p className="header-note">Manage tools, inspect requests, and monitor Nexus.</p>
+        <div className="header-actions">
+          <p className="header-note">Manage tools, inspect requests, and monitor Nexus.</p>
+          {clerkEnabled && (
+            <div className="user-controls">
+              <UserButton afterSignOutUrl="/login" />
+              <SignOutButton>
+                <button className="btn-secondary-sm" type="button">
+                  Sign out
+                </button>
+              </SignOutButton>
+            </div>
+          )}
+        </div>
       </header>
 
       <nav className="shell-nav">

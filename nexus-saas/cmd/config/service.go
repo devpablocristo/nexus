@@ -47,4 +47,8 @@ type ServiceConfig struct {
 
 	// Internal service-to-service auth for Core -> SaaS contracts.
 	SaaSInternalKey string
+
+	// Clerk integration.
+	ClerkSecretKey     string
+	ClerkWebhookSecret string
 }

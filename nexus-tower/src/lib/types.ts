@@ -64,3 +64,85 @@ export type AuditItem = {
   output?: unknown;
   error?: { code: string; message: string };
 };
+
+export type UserInfo = {
+  id: string;
+  external_id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserMe = {
+  org_id: string;
+  external_id: string;
+  role?: string;
+  scopes?: string[];
+  user?: UserInfo;
+};
+
+export type OrgMemberItem = {
+  id: string;
+  org_id: string;
+  user_id: string;
+  role: 'admin' | 'secops';
+  joined_at: string;
+  user: UserInfo;
+};
+
+export type APIKeyItem = {
+  id: string;
+  org_id: string;
+  name: string;
+  scopes: string[];
+  created_at: string;
+};
+
+export type SecretItem = {
+  id: string;
+  secret_type: string;
+  key_name: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type IncidentItem = {
+  id: string;
+  severity: string;
+  status: string;
+  title: string;
+  summary: string;
+  related_action_ids: string[];
+  evidence_refs: string[];
+  created_by?: string;
+  opened_at: string;
+  closed_at?: string;
+};
+
+export type EventItem = {
+  id: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AssistantTable = {
+  title: string;
+  columns: string[];
+  rows: Array<Record<string, string>>;
+};
+
+export type AssistantAction = {
+  label: string;
+  action_type: string;
+  payload: Record<string, unknown>;
+};
+
+export type AssistantResponse = {
+  summary: string;
+  tables?: AssistantTable[];
+  actions?: AssistantAction[];
+};

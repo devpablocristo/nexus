@@ -21,6 +21,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 
 		IdentitySet,
 		OrgSet,
+		UsersSet,
 		AdminSet,
 		EventsSet,
 		ActionsSet,
@@ -33,6 +34,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 		UsageMeteringSet,
 		ContractsSet,
 		CoreProxySet,
+		ClerkWebhookSet,
 
 		NewRouter,
 		NewHTTPServer,
