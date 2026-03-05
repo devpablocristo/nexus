@@ -1,8 +1,13 @@
 import { requestJSON } from '../api/client';
 import type {
   APIKeyItem,
+  AdminActivityItem,
+  AdminBootstrap,
+  AdminTenantSettings,
   AssistantResponse,
   AuditItem,
+  BillingPlanCode,
+  BillingStatus,
   EventItem,
   EgressRuleItem,
   IncidentItem,
@@ -11,6 +16,7 @@ import type {
   SecretItem,
   ToolItem,
   UserMe,
+  UsageSummary,
 } from './types';
 
 // Core (gateway/config APIs)
@@ -159,3 +165,47 @@ export async function askAssistant(query: string): Promise<AssistantResponse> {
   });
 }
 
+export async function getBillingStatus(): Promise<BillingStatus> {
+  return requestJSON('saas', '/v1/billing/status');
+}
+
+export async function createCheckoutSession(planCode: BillingPlanCode): Promise<{ url: string }> {
+  return requestJSON('saas', '/v1/billing/checkout', {
+    method: 'POST',
+    body: JSON.stringify({ plan_code: planCode }),
+  });
+}
+
+export async function createPortalSession(): Promise<{ url: string }> {
+  return requestJSON('saas', '/v1/billing/portal', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function getUsageSummary(): Promise<UsageSummary> {
+  return requestJSON('saas', '/v1/billing/usage');
+}
+
+export async function getAdminBootstrap(): Promise<AdminBootstrap> {
+  return requestJSON('saas', '/v1/admin/bootstrap');
+}
+
+export async function getAdminTenantSettings(): Promise<AdminTenantSettings> {
+  return requestJSON('saas', '/v1/admin/tenant-settings');
+}
+
+export async function updateAdminTenantSettings(req: {
+  plan_code: string;
+  hard_limits: Record<string, number>;
+}): Promise<AdminTenantSettings> {
+  return requestJSON('saas', '/v1/admin/tenant-settings', {
+    method: 'PUT',
+    body: JSON.stringify(req),
+  });
+}
+
+export async function getAdminActivity(limit = 50): Promise<{ items: AdminActivityItem[] }> {
+  const qs = new URLSearchParams({ limit: String(limit) }).toString();
+  return requestJSON('saas', `/v1/admin/activity?${qs}`);
+}

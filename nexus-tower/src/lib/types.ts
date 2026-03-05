@@ -146,3 +146,64 @@ export type AssistantResponse = {
   tables?: AssistantTable[];
   actions?: AssistantAction[];
 };
+
+export type BillingPlanCode = 'starter' | 'growth' | 'enterprise';
+
+export type BillingLifecycleStatus = 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid';
+
+export type BillingHardLimits = {
+  tools_max: number;
+  run_rpm: number;
+  audit_retention_days: number;
+};
+
+export type UsageSummary = {
+  period: string;
+  counters: {
+    api_calls: number;
+    events_ingested: number;
+    incidents_opened: number;
+    actions_executed: number;
+  };
+};
+
+export type BillingStatus = {
+  plan_code: BillingPlanCode;
+  billing_status: BillingLifecycleStatus;
+  current_period_end?: string;
+  hard_limits: BillingHardLimits;
+  usage: UsageSummary;
+};
+
+export type AdminTenantSettings = {
+  plan_code: string;
+  hard_limits: {
+    tools_max: number;
+    run_rpm: number;
+    audit_retention_days: number;
+  };
+  updated_by?: string;
+  updated_at?: string;
+  created_at?: string;
+};
+
+export type AdminBootstrap = {
+  org_id: string;
+  actor?: string;
+  role?: string;
+  scopes: string[];
+  auth_method: string;
+  can_read_admin: boolean;
+  can_write_admin: boolean;
+  tenant_settings: AdminTenantSettings;
+};
+
+export type AdminActivityItem = {
+  id: string;
+  actor?: string;
+  action: string;
+  resource_type: string;
+  resource_id?: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};

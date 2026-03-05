@@ -19,6 +19,10 @@ import PoliciesPage from '../pages/PoliciesPage';
 import IncidentsPage from '../pages/IncidentsPage';
 import EventsPage from '../pages/EventsPage';
 import AssistantPage from '../pages/AssistantPage';
+import BillingPage from '../pages/BillingPage';
+import BillingSuccessPage from '../pages/BillingSuccessPage';
+import AdminPage from '../pages/AdminPage';
+import AdminActivityPage from '../pages/AdminActivityPage';
 
 function ProtectedLayout() {
   return (
@@ -54,6 +58,10 @@ export function App() {
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/activity" element={<AdminActivityPage />} />
+          <Route path="/billing" element={<BillingPage />} />
+          <Route path="/billing/success" element={<BillingSuccessPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/tools" replace />} />

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { SignOutButton, UserButton } from '@clerk/clerk-react';
+import { UserButton } from '@clerk/clerk-react';
 import { useActiveTool } from '../lib/tool-context';
 import { clerkEnabled } from '../lib/auth';
 
@@ -13,6 +13,8 @@ const navItems = [
   { to: '/events', label: 'Events' },
   { to: '/assistant', label: 'Assistant' },
   { to: '/settings/keys', label: 'API Keys' },
+  { to: '/admin', label: 'Admin' },
+  { to: '/billing', label: 'Billing' },
   { to: '/org-selector', label: 'Organizations' },
   { to: '/settings', label: 'Profile' },
 ];
@@ -33,11 +35,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {clerkEnabled && (
             <div className="user-controls">
               <UserButton afterSignOutUrl="/login" />
-              <SignOutButton>
-                <button className="btn-secondary-sm" type="button">
-                  Sign out
-                </button>
-              </SignOutButton>
             </div>
           )}
         </div>
