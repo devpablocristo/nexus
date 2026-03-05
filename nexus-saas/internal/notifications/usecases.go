@@ -230,8 +230,8 @@ func (u *Usecases) notifyRecipient(
 	}
 	templateData := mapToTemplateData(mergeNotificationData(data, map[string]string{
 		"recipient_name":  recipient.Name,
-		"preferences_url": fallback(dataValue(data, "preferences_url"), u.preferencesURL),
-		"action_url":      fallback(dataValue(data, "action_url"), u.defaultActionURL),
+		"preferences_url": u.resolveTowerURL(dataValue(data, "preferences_url"), u.preferencesURL),
+		"action_url":      u.resolveTowerURL(dataValue(data, "action_url"), u.defaultActionURL),
 	}))
 	rendered, err := renderEmailTemplate(notifType, templateData)
 	if err != nil {
@@ -366,4 +366,18 @@ func mergeNotificationData(base map[string]string, overlay map[string]string) ma
 		out[k] = strings.TrimSpace(v)
 	}
 	return out
+}
+
+func (u *Usecases) resolveTowerURL(raw, fallbackURL string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return strings.TrimSpace(fallbackURL)
+	}
+	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+		return raw
+	}
+	if strings.HasPrefix(raw, "/") {
+		return strings.TrimRight(u.towerBaseURL, "/") + raw
+	}
+	return raw
 }

@@ -172,6 +172,30 @@ func TestUsecases_NotifyUserWelcome(t *testing.T) {
 	}
 }
 
+func TestUsecases_Notify_NormalizesRelativeActionURL(t *testing.T) {
+	db := newNotificationsTestDB(t)
+	repo := NewRepository(db)
+	sender := &fakeEmailSender{}
+	uc := newNotificationsUsecases(repo, sender)
+
+	orgID, _ := seedOrgAndUser(t, db, "Acme", "admin_rel", "admin-rel@acme.test", "admin")
+
+	if err := uc.Notify(context.Background(), orgID, "plan_upgraded", map[string]string{
+		"org_name":     "Acme",
+		"plan_code":    "growth",
+		"action_url":   "/billing",
+		"reference_id": "sub_rel_1",
+	}); err != nil {
+		t.Fatalf("Notify(plan_upgraded): %v", err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("expected 1 email, got %d", len(sender.sent))
+	}
+	if !strings.Contains(sender.sent[0].TextBody, "http://localhost:5173/billing") {
+		t.Fatalf("expected absolute action URL in text body, got: %s", sender.sent[0].TextBody)
+	}
+}
+
 func newNotificationsUsecases(repo *Repository, sender EmailSender) *Usecases {
 	fixedTime := time.Date(2026, 3, 5, 14, 0, 0, 0, time.UTC)
 	return &Usecases{

@@ -47,6 +47,7 @@ type TenantBilling struct {
 	PlanCode             PlanCode
 	HardLimits           HardLimits
 	BillingStatus        BillingStatus
+	PastDueSince         *time.Time
 	StripeCustomerID     *string
 	StripeSubscriptionID *string
 	UpdatedAt            time.Time

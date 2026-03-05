@@ -49,6 +49,11 @@ func (r *Repository) UpdateStripeFields(ctx context.Context, in stripeFieldsUpda
 	assign := map[string]any{
 		"billing_status": in.BillingStatus,
 	}
+	if in.BillingStatus == billingdomain.BillingPastDue {
+		assign["past_due_since"] = gorm.Expr("COALESCE(past_due_since, ?)", time.Now().UTC())
+	} else {
+		assign["past_due_since"] = nil
+	}
 	if in.StripeCustomerID != nil {
 		assign["stripe_customer_id"] = *in.StripeCustomerID
 	}
@@ -69,6 +74,7 @@ func (r *Repository) ClearSubscription(ctx context.Context, orgID uuid.UUID, sta
 	tx := r.db.WithContext(ctx).Model(&models.TenantSettings{}).Where("org_id = ?", orgID).Updates(map[string]any{
 		"stripe_subscription_id": nil,
 		"billing_status":         status,
+		"past_due_since":         nil,
 	})
 	if tx.Error != nil {
 		return tx.Error
@@ -80,7 +86,15 @@ func (r *Repository) ClearSubscription(ctx context.Context, orgID uuid.UUID, sta
 }
 
 func (r *Repository) UpdateBillingStatusByOrgID(ctx context.Context, orgID uuid.UUID, status billingdomain.BillingStatus) error {
-	tx := r.db.WithContext(ctx).Model(&models.TenantSettings{}).Where("org_id = ?", orgID).Update("billing_status", status)
+	updates := map[string]any{
+		"billing_status": status,
+	}
+	if status == billingdomain.BillingPastDue {
+		updates["past_due_since"] = gorm.Expr("COALESCE(past_due_since, ?)", time.Now().UTC())
+	} else {
+		updates["past_due_since"] = nil
+	}
+	tx := r.db.WithContext(ctx).Model(&models.TenantSettings{}).Where("org_id = ?", orgID).Updates(updates)
 	if tx.Error != nil {
 		return tx.Error
 	}
@@ -196,7 +210,7 @@ func (r *Repository) GetUsageSummary(ctx context.Context, orgID uuid.UUID, perio
 func (r *Repository) FindPastDueBefore(ctx context.Context, cutoff time.Time) ([]billingdomain.TenantBilling, error) {
 	var rows []models.TenantSettings
 	if err := r.db.WithContext(ctx).
-		Where("billing_status = ? AND updated_at <= ? AND COALESCE(status, 'active') = 'active' AND deleted_at IS NULL", billingdomain.BillingPastDue, cutoff).
+		Where("billing_status = ? AND COALESCE(past_due_since, updated_at) <= ? AND COALESCE(status, 'active') = 'active' AND deleted_at IS NULL", billingdomain.BillingPastDue, cutoff).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -221,6 +235,7 @@ func toTenantBillingDomain(in models.TenantSettings) (billingdomain.TenantBillin
 		PlanCode:             billingdomain.PlanCode(in.PlanCode),
 		HardLimits:           limits,
 		BillingStatus:        billingdomain.BillingStatus(in.BillingStatus),
+		PastDueSince:         in.PastDueSince,
 		StripeCustomerID:     in.StripeCustomerID,
 		StripeSubscriptionID: in.StripeSubscriptionID,
 		UpdatedAt:            in.UpdatedAt,

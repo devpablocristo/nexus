@@ -10,7 +10,7 @@ class DeadLetterLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = Lock()
 
-    def append(self, event_id: str, payload: dict, error: str, attempts: int) -> None:
+    def append(self, event_id: str, payload: dict[str, object], error: str, attempts: int) -> None:
         entry = {
             "event_id": event_id,
             "payload": payload,

@@ -14,6 +14,7 @@ type TenantSettings struct {
 	StripeCustomerID     *string
 	StripeSubscriptionID *string
 	BillingStatus        string
+	PastDueSince         *time.Time
 	UpdatedBy            *string
 	UpdatedAt            time.Time
 	CreatedAt            time.Time

@@ -238,6 +238,21 @@ func TestUsecases_HandleWebhookEventsLifecycle(t *testing.T) {
 	if stored.BillingStatus != "past_due" {
 		t.Fatalf("expected past_due after invoice.payment_failed, got %s", stored.BillingStatus)
 	}
+	if stored.PastDueSince == nil {
+		t.Fatalf("expected past_due_since to be set after invoice.payment_failed")
+	}
+
+	// invoice.payment_succeeded -> active + clear past_due_since
+	if err := uc.HandleWebhookEvent(context.Background(), eventInvoiceOK); err != nil {
+		t.Fatalf("HandleWebhookEvent(invoice.payment_succeeded second): %v", err)
+	}
+	stored = mustGetTenantBilling(t, repo, orgID)
+	if stored.BillingStatus != "active" {
+		t.Fatalf("expected active after second invoice.payment_succeeded, got %s", stored.BillingStatus)
+	}
+	if stored.PastDueSince != nil {
+		t.Fatalf("expected past_due_since to be cleared after payment recovery")
+	}
 
 	// customer.subscription.deleted -> starter + canceled + clear subscription
 	eventSubDeleted := stripe.Event{
@@ -421,16 +436,17 @@ func newBillingTestDB(t *testing.T) *gorm.DB {
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE tenant_settings (
-			org_id TEXT PRIMARY KEY,
-			plan_code TEXT NOT NULL,
-			hard_limits_json TEXT NOT NULL DEFAULT '{}',
-			stripe_customer_id TEXT UNIQUE,
-			stripe_subscription_id TEXT UNIQUE,
-			billing_status TEXT NOT NULL DEFAULT 'trialing',
-			updated_by TEXT NULL,
-			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)`,
+				org_id TEXT PRIMARY KEY,
+				plan_code TEXT NOT NULL,
+				hard_limits_json TEXT NOT NULL DEFAULT '{}',
+				stripe_customer_id TEXT UNIQUE,
+				stripe_subscription_id TEXT UNIQUE,
+				billing_status TEXT NOT NULL DEFAULT 'trialing',
+				past_due_since DATETIME NULL,
+				updated_by TEXT NULL,
+				updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)`,
 		`CREATE TABLE org_usage_counters (
 			org_id TEXT NOT NULL,
 			period DATE NOT NULL,
