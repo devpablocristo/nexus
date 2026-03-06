@@ -18,6 +18,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.routes import router
 from app.core.config import Settings
 from app.services.engine import OperatorEngine
+from app.services.prompt_runtime import PromptRuntime
 
 
 TEST_OPERATOR_KEY = "test-operator-key"
@@ -66,6 +67,7 @@ def make_mock_client() -> AsyncMock:
 def build_app(
     test_settings: Settings | None = None,
     mock_client: AsyncMock | None = None,
+    mock_saas_client: Any | None = None,
     start_engine_loop: bool = False,
 ) -> FastAPI:
     """Create a FastAPI app wired with a mocked engine for testing.
@@ -91,6 +93,7 @@ def build_app(
     # Set state directly — ASGITransport does not trigger lifespan events
     application.state.settings = _settings
     application.state.engine = _engine
+    application.state.prompt_runtime = PromptRuntime(settings=_settings, saas_client=mock_saas_client)
     return application
 
 

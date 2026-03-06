@@ -9,10 +9,12 @@
 | `nexus-control-operators` | workers/engines | schema/eventstore | event schemas | operators e2e | smoke indirecto | no default | CI scans |
 | `nexus-ai-operators` | observer, risk, prompt runtime | FastAPI routes | prompt/eval contracts | assistant/operator e2e | smoke indirecto | no default | CI scans |
 | `nexus-tower` | components/pages | API integration mocks | UI contract around APIs | browser/e2e when relevant | UI smoke | no default | dependency audit |
-| SDKs | client methods | example flows | contract compatibility | release samples | n/a | n/a | dependency audit |
+| SDKs | client methods | example flows | contract compatibility + `make sdk-test` | release samples | n/a | n/a | dependency audit |
 
 ## Reglas
 
 - Enforcement, auth, billing y contracts comparten gates más estrictos.
 - Cambios que tocan runtime crítico deben incluir evidencia de tests y, si aplica, smoke/load.
 - Evals del runtime AI cuentan como contract coverage del subsistema AI.
+- Snapshots OpenAPI y colecciones Postman publicadas se validan con `make contracts-check`.
+- Terraform se valida con `make infra-validate` usando plan dummy sin backend remoto.

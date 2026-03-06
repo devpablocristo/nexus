@@ -10,6 +10,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify synced contract artifacts
+        run: make contracts-check
+
   nexus-core:
     runs-on: ubuntu-latest
     steps:
@@ -96,6 +103,29 @@ jobs:
       - name: Build (verify production build)
         run: npm run build
 
+  sdks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate SDKs
+        run: make sdk-test
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Terraform modules and dummy plan
+        run: make infra-validate
+
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -131,7 +161,7 @@ jobs:
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: [nexus-core, nexus-saas, nexus-control-operators, nexus-ai-operators, nexus-tower]
+    needs: [contracts, nexus-core, nexus-saas, nexus-control-operators, nexus-ai-operators, nexus-tower, sdks, infra]
     steps:
       - uses: actions/checkout@v4
       - name: Create .env from example
@@ -156,7 +186,7 @@ jobs:
       - name: Run e2e operators
         run: make e2e-operators
       - name: Run e2e AI operators
-        run: bash scripts/e2e/07_ai_operators.sh
+        run: make e2e-ai-operators
       - name: Cleanup
         if: always()
         run: docker compose down -v || true

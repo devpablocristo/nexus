@@ -20,21 +20,21 @@ type Config struct {
 }
 
 type Response struct {
-	Summary string
-	Tables  []Table
-	Actions []Action
+	Summary string   `json:"summary"`
+	Tables  []Table  `json:"tables"`
+	Actions []Action `json:"actions"`
 }
 
 type Table struct {
-	Title   string
-	Columns []string
-	Rows    []map[string]string
+	Title   string              `json:"title"`
+	Columns []string            `json:"columns"`
+	Rows    []map[string]string `json:"rows"`
 }
 
 type Action struct {
-	Label      string
-	ActionType string
-	Payload    map[string]interface{}
+	Label      string                 `json:"label"`
+	ActionType string                 `json:"action_type"`
+	Payload    map[string]interface{} `json:"payload"`
 }
 
 type Usecases struct {
@@ -86,8 +86,8 @@ func (u *Usecases) Query(ctx context.Context, orgID uuid.UUID, actor *string, qu
 		return Response{}, types.NewHTTPError(http.StatusBadGateway, types.ErrCodeUpstream5xx, "operator query failed")
 	}
 	var out struct {
-		Summary string `json:"summary"`
-		Tables  []Table `json:"tables"`
+		Summary string   `json:"summary"`
+		Tables  []Table  `json:"tables"`
 		Actions []Action `json:"actions"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {

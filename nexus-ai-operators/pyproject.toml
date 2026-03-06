@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nexus-ai-operators"
 version = "0.1.0"
-description = "Agent operator service for Nexus Core"
+description = "AI runtime service for Nexus operators and the Tower assistant"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

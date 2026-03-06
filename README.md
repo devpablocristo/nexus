@@ -26,6 +26,8 @@ cp .env.example .env
 make up
 make migrate-up
 make seed
+make contracts-check
+make infra-validate
 ```
 
 ## Documentación canónica
@@ -49,8 +51,22 @@ make seed
 - `pkgs/contracts/error-codes.json`
 - `pkgs/contracts/events.schema.json`
 
+Antes de cerrar cambios que tocan contratos, OpenAPI, Postman o docs servidas:
+
+```bash
+make contracts-check
+```
+
+El developer portal de Tower publica esos snapshots también como assets estáticos en `nexus-tower/public/downloads/`.
+
 ## SDKs
 
 - `sdks/python-sdk`
 - `sdks/typescript-sdk`
 - `sdks/go-sdk`
+
+Validación rápida:
+
+```bash
+make sdk-test
+```

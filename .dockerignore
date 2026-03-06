@@ -8,7 +8,7 @@ Dockerfile*
 docker-compose*.yml
 
 # Environment and secrets
-; .env*
+.env*
 secrets.dev.yaml
 values.dev.yaml
 

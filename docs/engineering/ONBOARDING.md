@@ -23,7 +23,8 @@ make seed
 - `nexus-core`: revisar `Makefile` y `docker-compose.yml`
 - `nexus-saas`: mismo patrón que core
 - `nexus-ai-operators`: `.venv/bin/pytest` / `uvicorn app.main:app`
-- `nexus-tower`: `npm install`, `npm run dev`
+- `nexus-tower`: Node 20.19+ , `npm install`, `npm run dev`
+- `sdks/typescript-sdk`: Node 20+ para tests/build del SDK
 
 ## Dónde vive cada cosa
 
@@ -32,7 +33,13 @@ make seed
 - runbooks: `docs/runbooks/`
 - ADRs: `docs/adr/`
 - SDKs: `sdks/`
+- downloads públicos del portal: `nexus-tower/public/downloads/`
 
 ## Variables de entorno
 
 No crear forks de lógica por ambiente. Toda diferencia debe entrar por config/env válida al startup.
+
+## Gates rápidos antes de cerrar un cambio
+
+- Si tocás OpenAPI, Postman, docs servidas o assets de developer portal: `make contracts-check`
+- Si tocás lógica cross-service: actualizar `docs/*`, `pkgs/contracts/*` y revalidar el gate contractual

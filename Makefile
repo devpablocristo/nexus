@@ -9,10 +9,10 @@ CORE_SERVICE := nexus-core
 COMPOSE := docker compose
 
 .PHONY: up build down clean logs migrate-up migrate-down cleanup-idempotency seed \
-	core-test saas-test control-operators-test ai-operators-test tower-test tower-qa qa \
+	core-test saas-test control-operators-test ai-operators-test tower-test tower-qa qa contracts-check \
 	e2e e2e-first e2e-core e2e-jwt e2e-operators e2e-all quickstart-admin \
 	core-dev saas-dev control-dev ai-operators-dev tower-dev reset-nexus logs-tail up-ready status \
-	bootstrap demo sdk-test-python sdk-test
+	bootstrap demo sdk-test-python sdk-test-go sdk-test-typescript sdk-test infra-validate e2e-stack e2e-ai-operators
 
 up:
 	$(COMPOSE) up -d --remove-orphans --wait
@@ -96,11 +96,16 @@ tower-qa:
 		npm run qa
 
 qa:
+	$(MAKE) contracts-check
+	$(MAKE) infra-validate
 	$(MAKE) core-test
 	$(MAKE) saas-test
 	$(MAKE) control-operators-test
 	$(MAKE) ai-operators-test
 	$(MAKE) tower-qa
+
+contracts-check:
+	bash scripts/contracts/check_sync.sh
 
 reset-nexus:
 	$(MAKE) clean
@@ -112,6 +117,11 @@ reset-nexus:
 e2e:
 	bash scripts/e2e/04_core_gateway_isolated.sh
 
+e2e-stack:
+	$(MAKE) up-ready
+	$(MAKE) migrate-up
+	$(MAKE) seed
+
 e2e-first:
 	bash scripts/e2e/01_run_echo.sh
 
@@ -122,9 +132,15 @@ e2e-jwt:
 	bash scripts/e2e/05_core_jwt_auth.sh
 
 e2e-operators:
+	$(MAKE) e2e-stack
 	bash scripts/e2e/06_control_operators.sh
 
+e2e-ai-operators:
+	$(MAKE) e2e-stack
+	bash scripts/e2e/07_ai_operators.sh
+
 e2e-all:
+	$(MAKE) e2e-stack
 	bash scripts/e2e/01_run_echo.sh
 	bash scripts/e2e/03_full_core_e2e.sh
 	bash scripts/e2e/04_core_gateway_isolated.sh
@@ -163,4 +179,16 @@ sdk-test-python:
 		pip install -q -e '.[dev]' && \
 		pytest -q
 
-sdk-test: sdk-test-python
+sdk-test-go:
+	cd sdks/go-sdk && GOWORK=off go test ./...
+
+sdk-test-typescript:
+	cd sdks/typescript-sdk && \
+		npm install && \
+		npm test && \
+		npm run build
+
+sdk-test: sdk-test-python sdk-test-go sdk-test-typescript
+
+infra-validate:
+	bash scripts/infra/validate.sh

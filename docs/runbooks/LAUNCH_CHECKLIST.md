@@ -13,6 +13,9 @@
 
 ## Deploy
 - [ ] CI green on main
+- [ ] `make contracts-check` green
+- [ ] `make sdk-test` green
+- [ ] `make infra-validate` green
 - [ ] Docker images pushed to ECR
 - [ ] ECS services updated
 - [ ] CloudFront invalidation complete

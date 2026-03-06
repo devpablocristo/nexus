@@ -42,6 +42,9 @@ NEXUS_HTTP_PORT=18080 ./scripts/e2e/03_full_core_e2e.sh
 
 # Llamar a una tool específica:
 ./scripts/e2e/02_run_my_service.sh my-custom-tool
+
+# Suite completa autocontenida a nivel Makefile:
+make e2e-all
 ```
 
 ## Arquitectura del pipeline testeado

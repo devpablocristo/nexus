@@ -96,6 +96,8 @@ reserve_port_var OPERATOR_HEALTH_PORT 18090
 reserve_port_var NEXUS_TOWER_PORT 15174
 reserve_port_var NEXUS_PROMETHEUS_PORT 19090
 reserve_port_var NEXUS_GRAFANA_PORT 13000
+reserve_port_var NEXUS_MAILHOG_SMTP_PORT 1125
+reserve_port_var NEXUS_MAILHOG_UI_PORT 18025
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-nexus-core-e2e-jwt-$(date +%s)}"
 export COMPOSE_PROJECT_NAME

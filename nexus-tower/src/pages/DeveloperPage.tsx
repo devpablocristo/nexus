@@ -15,12 +15,12 @@ export default function DeveloperPage() {
     },
     {
       label: 'OpenAPI Spec (Core)',
-      href: `${coreBaseURL}/openapi.yaml`,
+      href: '/downloads/nexus-core.openapi.yaml',
       text: 'Download .yaml',
     },
     {
       label: 'OpenAPI Spec (SaaS)',
-      href: `${saasBaseURL}/openapi.yaml`,
+      href: '/downloads/nexus-saas.openapi.yaml',
       text: 'Download .yaml',
     },
   ];

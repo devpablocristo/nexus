@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from unittest.mock import AsyncMock
 
 from tests.integration.conftest import auth_headers, build_app, make_mock_client, make_settings
 
@@ -130,3 +131,50 @@ async def test_assistant_query_emits_prompt_runtime_metrics(client: AsyncClient)
     assert metrics.status_code == 200
     assert "nexus_ai_prompt_requests_total" in metrics.text
     assert "nexus_ai_prompt_latency_seconds" in metrics.text
+
+
+@pytest.mark.asyncio
+async def test_assistant_query_includes_tenant_aware_snapshot_fields() -> None:
+    saas_client = AsyncMock()
+    saas_client.get_assistant_context.return_value = {
+        "tenant": {
+            "plan_code": "growth",
+            "status": "active",
+            "hard_limits": {"tools_max": 75, "run_rpm": 1200, "audit_retention_days": 90},
+        },
+        "billing": {
+            "billing_status": "active",
+            "usage_period": "2026-03",
+            "usage": {"api_calls": 12, "events_ingested": 4, "incidents_opened": 1, "actions_executed": 2},
+        },
+        "incidents": {
+            "open_count": 1,
+            "items": [{"severity": "HIGH", "status": "open", "title": "Deny spike for admin@acme.com"}],
+        },
+        "actions": {"active_count": 1, "items": [{"action_type": "throttle_tenant_rpm", "status": "active", "scope_type": "tenant"}]},
+        "proposals": {"pending_count": 1, "items": [{"status": "pending", "rationale": "Tighten egress review"}]},
+        "events": {"recent_count": 1, "items": [{"event_type": "incident.opened", "summary": "Deny spike for admin@acme.com"}]},
+    }
+    app = build_app(
+        test_settings=make_settings(OPERATOR_INTERNAL_KEY="tenant-aware-key"),
+        mock_client=make_mock_client(),
+        mock_saas_client=saas_client,
+        start_engine_loop=False,
+    )
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.post(
+            "/v1/assistant/query",
+            json={"org_id": "org-tenant", "query": "What changed?"},
+            headers=auth_headers("tenant-aware-key"),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    fields = {row["field"]: row["value"] for row in body["tables"][0]["rows"]}
+    assert fields["plan_code"] == "growth"
+    assert fields["tenant_status"] == "active"
+    assert fields["open_incidents"] == "1"
+    assert "admin@acme.com" not in body["summary"]
+    saas_client.get_assistant_context.assert_awaited_once_with("org-tenant")

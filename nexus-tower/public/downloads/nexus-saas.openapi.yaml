@@ -1,0 +1,3111 @@
+openapi: 3.0.3
+info:
+  title: Nexus SaaS API
+  version: "1.1.0"
+  description: |
+    Nexus SaaS API for tenant administration, billing, incidents, actions, notifications, and assistant workflows.
+
+    Authentication supports API key (`X-NEXUS-CORE-KEY`) and optional JWT bearer mode (`Authorization: Bearer`) for authenticated endpoints.
+
+    Internal contract endpoints use `X-NEXUS-SAAS-KEY`.
+servers:
+  - url: http://localhost:8082
+
+tags:
+  - name: Health
+  - name: Onboarding
+  - name: Auth
+  - name: Webhooks
+  - name: Internal
+  - name: Admin
+  - name: Billing
+  - name: Events
+  - name: Actions
+  - name: Incidents
+  - name: Notifications
+  - name: Alerts
+  - name: Sessions
+  - name: PolicyProposals
+  - name: Assistant
+  - name: Users
+  - name: Audit
+  - name: Approvals
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: health
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatusResponse"
+
+  /healthz:
+    get:
+      tags: [Health]
+      operationId: healthz
+      summary: Health probe
+      security: []
+      responses:
+        "200":
+          description: Health status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReadyResponse"
+
+  /readyz:
+    get:
+      tags: [Health]
+      operationId: readyz
+      summary: Readiness probe
+      security: []
+      responses:
+        "200":
+          description: Readiness status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReadyResponse"
+
+  /openapi.yaml:
+    get:
+      tags: [Health]
+      operationId: openapiSpec
+      summary: OpenAPI YAML
+      security: []
+      responses:
+        "200":
+          description: OpenAPI document.
+
+  /docs:
+    get:
+      tags: [Health]
+      operationId: swaggerDocs
+      summary: Swagger UI page
+      security: []
+      responses:
+        "200":
+          description: Swagger UI HTML.
+
+  /v1/orgs:
+    post:
+      tags: [Onboarding]
+      operationId: createOrg
+      summary: Create or upsert organization and bootstrap API key
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgRequest"
+      responses:
+        "201":
+          description: Organization created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrgResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/oidc/config:
+    get:
+      tags: [Auth]
+      operationId: oidcConfig
+      summary: OIDC configuration status
+      security: []
+      responses:
+        "200":
+          description: OIDC config.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OIDCConfigResponse"
+
+  /v1/auth/oidc/authorize:
+    get:
+      tags: [Auth]
+      operationId: oidcAuthorize
+      summary: Start OIDC authorization code + PKCE flow
+      security: []
+      responses:
+        "302":
+          description: Redirect to OIDC provider authorization URL.
+        "500":
+          description: Failed to start flow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/auth/oidc/callback:
+    get:
+      tags: [Auth]
+      operationId: oidcCallback
+      summary: Handle OIDC callback
+      security: []
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Callback handled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OIDCCallbackResponse"
+        "400":
+          description: Invalid callback parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream OIDC provider error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/webhooks/clerk:
+    post:
+      tags: [Webhooks]
+      operationId: clerkWebhook
+      summary: Receive Clerk Svix webhook events
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SvixID"
+        - $ref: "#/components/parameters/SvixTimestamp"
+        - $ref: "#/components/parameters/SvixSignature"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClerkWebhookEnvelope"
+      responses:
+        "200":
+          description: Webhook processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookAckResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Webhook rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Webhook secret not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      operationId: stripeWebhook
+      summary: Receive Stripe webhook events
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/StripeSignature"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Webhook processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookAckResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid webhook signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed processing event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe integration not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/usage/events:
+    post:
+      tags: [Internal]
+      operationId: ingestUsageEvent
+      summary: Increment usage counter from internal services
+      security:
+        - NexusSaaSInternalKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalUsageEventRequest"
+      responses:
+        "202":
+          description: Event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OKResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid internal key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Internal key not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/events:
+    post:
+      tags: [Internal]
+      operationId: ingestOperationalEvent
+      summary: Append operational event from internal services
+      security:
+        - NexusSaaSInternalKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalOperationalEventRequest"
+      responses:
+        "202":
+          description: Event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OKResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid internal key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/entitlements/{org_id}:
+    get:
+      tags: [Internal]
+      operationId: getInternalEntitlements
+      summary: Resolve plan and hard limits for an org
+      security:
+        - NexusSaaSInternalKey: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+      responses:
+        "200":
+          description: Entitlements payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalEntitlementsResponse"
+        "400":
+          description: Invalid org_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid internal key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/assistant/context/{org_id}:
+    get:
+      tags: [Internal]
+      operationId: getAssistantContext
+      summary: Build redacted assistant context snapshot for an org
+      security:
+        - NexusSaaSInternalKey: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+      responses:
+        "200":
+          description: Assistant context snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalAssistantContextResponse"
+        "400":
+          description: Invalid org_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid internal key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Assistant context unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/runtime-overrides/{org_id}/{tool_name}:
+    get:
+      tags: [Internal]
+      operationId: getRuntimeOverrides
+      summary: Resolve runtime overrides from active actions
+      security:
+        - NexusSaaSInternalKey: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+        - $ref: "#/components/parameters/ToolNamePath"
+      responses:
+        "200":
+          description: Runtime overrides.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalRuntimeOverridesResponse"
+        "400":
+          description: Invalid params.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid internal key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Actions service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/bootstrap:
+    get:
+      tags: [Admin]
+      operationId: getAdminBootstrap
+      summary: Admin bootstrap data for authenticated org context
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Bootstrap payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBootstrapResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/tenant-settings:
+    get:
+      tags: [Admin]
+      operationId: getAdminTenantSettings
+      summary: Get tenant settings
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Tenant settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTenantSettings"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags: [Admin]
+      operationId: upsertAdminTenantSettings
+      summary: Update plan and hard limits
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertTenantSettingsRequest"
+      responses:
+        "200":
+          description: Updated tenant settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTenantSettings"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/activity:
+    get:
+      tags: [Admin]
+      operationId: getAdminActivity
+      summary: List admin activity events
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Activity list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminActivityResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/billing/status:
+    get:
+      tags: [Billing]
+      operationId: getBillingStatus
+      summary: Current billing status for org
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Billing status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingStatusResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/billing/checkout:
+    post:
+      tags: [Billing]
+      operationId: createBillingCheckout
+      summary: Create Stripe checkout session
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCheckoutRequest"
+      responses:
+        "200":
+          description: Checkout URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/billing/portal:
+    post:
+      tags: [Billing]
+      operationId: createBillingPortal
+      summary: Create Stripe customer portal session
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingPortalRequest"
+      responses:
+        "200":
+          description: Portal URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/billing/usage:
+    get:
+      tags: [Billing]
+      operationId: getBillingUsage
+      summary: Current period usage counters
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Usage summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageSummaryResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stripe is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/events:
+    get:
+      tags: [Events]
+      operationId: listEvents
+      summary: List events by cursor
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CursorQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Event list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEventsResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing audit read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/actions/apply:
+    post:
+      tags: [Actions]
+      operationId: applyAction
+      summary: Apply mitigation/remediation action
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyActionRequest"
+      responses:
+        "201":
+          description: Action applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/actions/rollback:
+    post:
+      tags: [Actions]
+      operationId: rollbackAction
+      summary: Roll back action by ID
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RollbackActionRequest"
+      responses:
+        "200":
+          description: Action rolled back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/actions:
+    get:
+      tags: [Actions]
+      operationId: listActions
+      summary: List actions with optional status/action_type filter
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StatusQuery"
+        - $ref: "#/components/parameters/ActionTypeQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Action list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListActionsResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/incidents:
+    post:
+      tags: [Incidents]
+      operationId: createIncident
+      summary: Create incident
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIncidentRequest"
+      responses:
+        "201":
+          description: Incident created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentItem"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [Incidents]
+      operationId: listIncidents
+      summary: List incidents
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StatusQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Incident list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListIncidentsResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/incidents/{id}:
+    get:
+      tags: [Incidents]
+      operationId: getIncidentByID
+      summary: Get incident by ID
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IncidentIDPath"
+      responses:
+        "200":
+          description: Incident detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentItem"
+        "400":
+          description: Invalid ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Incident not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/incidents/{id}/close:
+    post:
+      tags: [Incidents]
+      operationId: closeIncident
+      summary: Close incident
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/IncidentIDPath"
+      responses:
+        "200":
+          description: Incident closed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentItem"
+        "400":
+          description: Invalid ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/notifications/preferences:
+    get:
+      tags: [Notifications]
+      operationId: getNotificationPreferences
+      summary: List notification preferences for authenticated user
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Preferences list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferencesResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags: [Notifications]
+      operationId: updateNotificationPreferences
+      summary: Update notification preferences
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePreferencesRequest"
+      responses:
+        "204":
+          description: Preferences updated.
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/alert-rules:
+    get:
+      tags: [Alerts]
+      operationId: listAlertRules
+      summary: List alert rules
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Alert rules list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAlertRulesResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Alerts]
+      operationId: createAlertRule
+      summary: Create alert rule
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertRuleRequest"
+      responses:
+        "201":
+          description: Alert rule created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRuleItem"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/alert-rules/{id}:
+    delete:
+      tags: [Alerts]
+      operationId: deleteAlertRule
+      summary: Delete alert rule by ID
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AlertRuleIDPath"
+      responses:
+        "200":
+          description: Rule deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteStatusResponse"
+        "400":
+          description: Invalid ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sessions/{session_id}:
+    get:
+      tags: [Sessions]
+      operationId: getSessionBySessionID
+      summary: Get aggregate session metrics by external session ID
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SessionIDPath"
+      responses:
+        "200":
+          description: Session metrics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionItem"
+        "400":
+          description: Invalid session ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/policy-proposals:
+    post:
+      tags: [PolicyProposals]
+      operationId: createPolicyProposal
+      summary: Create policy proposal
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProposalRequest"
+      responses:
+        "201":
+          description: Proposal created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalItem"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [PolicyProposals]
+      operationId: listPolicyProposals
+      summary: List policy proposals
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StatusQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+      responses:
+        "200":
+          description: Proposal list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListProposalsResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/policy-proposals/{id}/approve:
+    post:
+      tags: [PolicyProposals]
+      operationId: approvePolicyProposal
+      summary: Approve policy proposal
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProposalIDPath"
+      responses:
+        "200":
+          description: Proposal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalItem"
+        "400":
+          description: Invalid ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/policy-proposals/{id}/reject:
+    post:
+      tags: [PolicyProposals]
+      operationId: rejectPolicyProposal
+      summary: Reject policy proposal
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProposalIDPath"
+      responses:
+        "200":
+          description: Proposal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalItem"
+        "400":
+          description: Invalid ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/policy-proposals/{id}/shadow:
+    post:
+      tags: [PolicyProposals]
+      operationId: shadowPolicyProposal
+      summary: Mark proposal as shadow mode
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProposalIDPath"
+      responses:
+        "200":
+          description: Proposal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalItem"
+        "400":
+          description: Invalid ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/assistant/query:
+    post:
+      tags: [Assistant]
+      operationId: assistantQuery
+      summary: Query assistant for recommendations and summaries
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantQueryRequest"
+      responses:
+        "200":
+          description: Assistant response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantQueryResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/assistant/tick:
+    post:
+      tags: [Assistant]
+      operationId: assistantTick
+      summary: Trigger deterministic assistant tick loop
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Tick completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOKResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/users/me:
+    get:
+      tags: [Users]
+      operationId: getUserMe
+      summary: Resolve authenticated user profile for current org
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/orgs/{org_id}/members:
+    get:
+      tags: [Users]
+      operationId: listOrgMembers
+      summary: List org members
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+      responses:
+        "200":
+          description: Members list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListOrgMembersResponse"
+        "400":
+          description: Invalid org ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/orgs/{org_id}/api-keys:
+    get:
+      tags: [Users]
+      operationId: listOrgApiKeys
+      summary: List API keys
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+      responses:
+        "200":
+          description: API keys list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAPIKeysResponse"
+        "400":
+          description: Invalid org ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing read permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Users]
+      operationId: createOrgApiKey
+      summary: Create API key
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAPIKeyRequest"
+      responses:
+        "201":
+          description: API key created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAPIKeyResponse"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/orgs/{org_id}/api-keys/{id}:
+    delete:
+      tags: [Users]
+      operationId: deleteOrgApiKey
+      summary: Revoke API key
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+        - $ref: "#/components/parameters/APIKeyIDPath"
+      responses:
+        "204":
+          description: API key deleted.
+        "400":
+          description: Invalid IDs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/orgs/{org_id}/api-keys/{id}/rotate:
+    post:
+      tags: [Users]
+      operationId: rotateOrgApiKey
+      summary: Rotate API key secret
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+        - $ref: "#/components/parameters/APIKeyIDPath"
+      responses:
+        "200":
+          description: API key rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateAPIKeyResponse"
+        "400":
+          description: Invalid IDs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing write permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/audit:
+    get:
+      tags: [Audit]
+      operationId: proxyAuditQuery
+      summary: Proxy to Nexus Core audit query endpoint
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: tool_name
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: decision
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [allow, deny]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [success, blocked, error]
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Proxied response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/audit/export:
+    get:
+      tags: [Audit]
+      operationId: proxyAuditExport
+      summary: Proxy to Nexus Core audit export endpoint
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [jsonl, csv]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Proxied streamed response.
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+
+  /v1/approvals:
+    get:
+      tags: [Approvals]
+      operationId: proxyApprovalsList
+      summary: Proxy to Nexus Core approvals list endpoint
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Proxied response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /v1/approvals/{id}:
+    get:
+      tags: [Approvals]
+      operationId: proxyApprovalsGet
+      summary: Proxy to Nexus Core approval detail endpoint
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApprovalIDPath"
+      responses:
+        "200":
+          description: Proxied response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /v1/approvals/{id}/approve:
+    post:
+      tags: [Approvals]
+      operationId: proxyApprovalsApprove
+      summary: Proxy to Nexus Core approve endpoint
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApprovalIDPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Proxied response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /v1/approvals/{id}/reject:
+    post:
+      tags: [Approvals]
+      operationId: proxyApprovalsReject
+      summary: Proxy to Nexus Core reject endpoint
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ApprovalIDPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Proxied response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+components:
+  securitySchemes:
+    NexusApiKey:
+      type: apiKey
+      in: header
+      name: X-NEXUS-CORE-KEY
+      description: Tenant API key used by gateway and proxied SaaS endpoints.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT auth mode backed by configured issuer/JWKS.
+    NexusSaaSInternalKey:
+      type: apiKey
+      in: header
+      name: X-NEXUS-SAAS-KEY
+      description: Internal service-to-service key for `/internal/*` contracts.
+
+  parameters:
+    SvixID:
+      name: svix-id
+      in: header
+      required: true
+      schema:
+        type: string
+    SvixTimestamp:
+      name: svix-timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+    SvixSignature:
+      name: svix-signature
+      in: header
+      required: true
+      schema:
+        type: string
+    StripeSignature:
+      name: Stripe-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+    OrgIDPath:
+      name: org_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ToolNamePath:
+      name: tool_name
+      in: path
+      required: true
+      schema:
+        type: string
+    IncidentIDPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProposalIDPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AlertRuleIDPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SessionIDPath:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+    APIKeyIDPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ApprovalIDPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CursorQuery:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int64
+        default: 0
+    LimitQuery:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 100
+    StatusQuery:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+    ActionTypeQuery:
+      name: action_type
+      in: query
+      required: false
+      schema:
+        type: string
+
+  schemas:
+    ErrorObject:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required: [code, message]
+
+    ErrorResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+        error:
+          $ref: "#/components/schemas/ErrorObject"
+      required: [error]
+
+    HealthStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    HealthReadyResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+
+    OKResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+
+    StatusOKResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+      required: [status]
+
+    DeleteStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: deleted
+      required: [status]
+
+    StringMap:
+      type: object
+      additionalProperties:
+        type: string
+
+    AnyMap:
+      type: object
+      additionalProperties: true
+
+    CreateOrgRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+      required: [name]
+
+    CreateOrgResponse:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        api_key:
+          type: string
+        name:
+          type: string
+      required: [org_id, api_key, name]
+
+    OIDCConfigResponse:
+      type: object
+      properties:
+        oidc_enabled:
+          type: boolean
+        issuer_url:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+      required: [oidc_enabled]
+
+    OIDCCallbackResponse:
+      type: object
+      properties:
+        auth_method:
+          type: string
+        id_token:
+          type: string
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+        org_id:
+          type: string
+          format: uuid
+        actor:
+          type: string
+        role:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        claims:
+          type: object
+          additionalProperties: true
+        warning:
+          type: string
+      required: [auth_method]
+
+    ClerkWebhookEnvelope:
+      type: object
+      properties:
+        type:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+      required: [type, data]
+
+    WebhookAckResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+
+    InternalUsageEventRequest:
+      type: object
+      properties:
+        event_id:
+          type: string
+        org_id:
+          type: string
+          format: uuid
+        counter:
+          type: string
+      required: [org_id, counter]
+
+    InternalOperationalEventRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+      required: [org_id, event_type]
+
+    InternalEntitlementsResponse:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        plan_code:
+          type: string
+        status:
+          type: string
+        hard_limits:
+          type: object
+          additionalProperties: true
+      required: [org_id, plan_code, status, hard_limits]
+
+    InternalAssistantContextResponse:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        generated_at:
+          type: string
+          format: date-time
+        tenant:
+          $ref: "#/components/schemas/InternalAssistantTenantSnapshot"
+        billing:
+          $ref: "#/components/schemas/InternalAssistantBillingSnapshot"
+        incidents:
+          $ref: "#/components/schemas/InternalAssistantIncidentCollection"
+        actions:
+          $ref: "#/components/schemas/InternalAssistantActionCollection"
+        proposals:
+          $ref: "#/components/schemas/InternalAssistantProposalCollection"
+        events:
+          $ref: "#/components/schemas/InternalAssistantEventCollection"
+      required: [org_id, generated_at, tenant, billing, incidents, actions, proposals, events]
+
+    InternalAssistantTenantSnapshot:
+      type: object
+      properties:
+        plan_code:
+          type: string
+        status:
+          type: string
+        hard_limits:
+          type: object
+          additionalProperties: true
+      required: [plan_code, status, hard_limits]
+
+    InternalAssistantBillingSnapshot:
+      type: object
+      properties:
+        billing_status:
+          type: string
+        usage_period:
+          type: string
+        usage:
+          $ref: "#/components/schemas/InternalAssistantUsageSnapshot"
+      required: [billing_status, usage_period, usage]
+
+    InternalAssistantUsageSnapshot:
+      type: object
+      properties:
+        api_calls:
+          type: integer
+          format: int64
+        events_ingested:
+          type: integer
+          format: int64
+        incidents_opened:
+          type: integer
+          format: int64
+        actions_executed:
+          type: integer
+          format: int64
+      required: [api_calls, events_ingested, incidents_opened, actions_executed]
+
+    InternalAssistantIncidentCollection:
+      type: object
+      properties:
+        open_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantIncidentItem"
+      required: [open_count, items]
+
+    InternalAssistantIncidentItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        severity:
+          type: string
+        status:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        opened_at:
+          type: string
+          format: date-time
+      required: [id, severity, status, title, summary, opened_at]
+
+    InternalAssistantActionCollection:
+      type: object
+      properties:
+        active_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantActionItem"
+      required: [active_count, items]
+
+    InternalAssistantActionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action_type:
+          type: string
+        status:
+          type: string
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+        summary:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, action_type, status, scope_type, scope_id, summary, created_at]
+
+    InternalAssistantProposalCollection:
+      type: object
+      properties:
+        pending_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantProposalItem"
+      required: [pending_count, items]
+
+    InternalAssistantProposalItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        rationale:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, status, rationale, created_at]
+
+    InternalAssistantEventCollection:
+      type: object
+      properties:
+        recent_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantEventItem"
+      required: [recent_count, items]
+
+    InternalAssistantEventItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        summary:
+          type: string
+      required: [id, event_type, created_at, summary]
+
+    InternalRuntimeOverridesResponse:
+      type: object
+      properties:
+        deny:
+          type: boolean
+        deny_reason:
+          type: string
+        tenant_rpm_override:
+          type: integer
+          nullable: true
+        tool_rpm_override:
+          type: integer
+          nullable: true
+      required: [deny, deny_reason]
+
+    AdminTenantSettings:
+      type: object
+      properties:
+        plan_code:
+          type: string
+        hard_limits:
+          type: object
+          additionalProperties: true
+        updated_by:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+        created_at:
+          type: string
+      required: [plan_code, hard_limits]
+
+    UpsertTenantSettingsRequest:
+      type: object
+      properties:
+        plan_code:
+          type: string
+        hard_limits:
+          type: object
+          additionalProperties: true
+      required: [plan_code, hard_limits]
+
+    AdminBootstrapResponse:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        actor:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        scopes:
+          type: array
+          items:
+            type: string
+        auth_method:
+          type: string
+        can_read_admin:
+          type: boolean
+        can_write_admin:
+          type: boolean
+        tenant_settings:
+          $ref: "#/components/schemas/AdminTenantSettings"
+      required: [org_id, scopes, auth_method, can_read_admin, can_write_admin, tenant_settings]
+
+    AdminActivityItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor:
+          type: string
+          nullable: true
+        action:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+      required: [id, action, resource_type, payload, created_at]
+
+    AdminActivityResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminActivityItem"
+      required: [items]
+
+    BillingHardLimits:
+      type: object
+      properties:
+        tools_max:
+          type: integer
+        run_rpm:
+          type: integer
+        audit_retention_days:
+          type: integer
+      required: [tools_max, run_rpm, audit_retention_days]
+
+    UsageCounters:
+      type: object
+      properties:
+        api_calls:
+          type: integer
+          format: int64
+        events_ingested:
+          type: integer
+          format: int64
+        incidents_opened:
+          type: integer
+          format: int64
+        actions_executed:
+          type: integer
+          format: int64
+      required: [api_calls, events_ingested, incidents_opened, actions_executed]
+
+    UsageSummaryResponse:
+      type: object
+      properties:
+        period:
+          type: string
+        counters:
+          $ref: "#/components/schemas/UsageCounters"
+      required: [period, counters]
+
+    BillingStatusResponse:
+      type: object
+      properties:
+        plan_code:
+          type: string
+          enum: [starter, growth, enterprise]
+        billing_status:
+          type: string
+          enum: [trialing, active, past_due, canceled, unpaid]
+        current_period_end:
+          type: string
+          nullable: true
+        hard_limits:
+          $ref: "#/components/schemas/BillingHardLimits"
+        usage:
+          $ref: "#/components/schemas/UsageSummaryResponse"
+      required: [plan_code, billing_status, hard_limits, usage]
+
+    BillingCheckoutRequest:
+      type: object
+      properties:
+        plan_code:
+          type: string
+          enum: [starter, growth, enterprise]
+        success_url:
+          type: string
+        cancel_url:
+          type: string
+      required: [plan_code]
+
+    BillingPortalRequest:
+      type: object
+      properties:
+        return_url:
+          type: string
+
+    CheckoutResponse:
+      type: object
+      properties:
+        url:
+          type: string
+      required: [url]
+
+    PortalResponse:
+      type: object
+      properties:
+        url:
+          type: string
+      required: [url]
+
+    EventItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+      required: [id, event_type, payload, created_at]
+
+    ListEventsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventItem"
+        next_cursor:
+          type: integer
+          format: int64
+      required: [items, next_cursor]
+
+    ApplyActionRequest:
+      type: object
+      properties:
+        scope_type:
+          type: string
+          enum: [tenant, tool, agent, global]
+        scope_id:
+          type: string
+          nullable: true
+        action_type:
+          type: string
+          enum: [throttle_tenant_rpm, throttle_tool_rpm, quarantine_tool, disable_tool]
+        params:
+          type: object
+          additionalProperties: true
+        ttl_seconds:
+          type: integer
+        evidence_refs:
+          type: array
+          items:
+            type: string
+      required: [scope_type, action_type]
+
+    RollbackActionRequest:
+      type: object
+      properties:
+        action_id:
+          type: string
+          format: uuid
+      required: [action_id]
+
+    ActionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+          nullable: true
+        action_type:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+        ttl_seconds:
+          type: integer
+        status:
+          type: string
+          enum: [active, expired, rolled_back]
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+        rolled_back_at:
+          type: string
+          nullable: true
+        rolled_back_by:
+          type: string
+          nullable: true
+      required: [id, scope_type, action_type, params, ttl_seconds, status, evidence_refs, created_at]
+
+    ListActionsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionItem"
+      required: [items]
+
+    CreateIncidentRequest:
+      type: object
+      properties:
+        severity:
+          type: string
+          enum: [LOW, MED, HIGH, CRIT]
+        title:
+          type: string
+        summary:
+          type: string
+        related_action_ids:
+          type: array
+          items:
+            type: string
+        evidence_refs:
+          type: array
+          items:
+            type: string
+      required: [severity, title, summary]
+
+    IncidentItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        severity:
+          type: string
+        status:
+          type: string
+          enum: [open, closed]
+        title:
+          type: string
+        summary:
+          type: string
+        related_action_ids:
+          type: array
+          items:
+            type: string
+        evidence_refs:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: string
+          nullable: true
+        opened_at:
+          type: string
+        closed_at:
+          type: string
+          nullable: true
+      required: [id, severity, status, title, summary, related_action_ids, evidence_refs, opened_at]
+
+    ListIncidentsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentItem"
+      required: [items]
+
+    NotificationPreferenceItem:
+      type: object
+      properties:
+        notification_type:
+          type: string
+          enum: [welcome, plan_upgraded, payment_failed, subscription_canceled, incident_opened, incident_closed]
+        channel:
+          type: string
+          example: email
+        enabled:
+          type: boolean
+      required: [notification_type, channel, enabled]
+
+    PreferencesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationPreferenceItem"
+      required: [items]
+
+    PreferenceUpdate:
+      type: object
+      properties:
+        notification_type:
+          type: string
+          enum: [welcome, plan_upgraded, payment_failed, subscription_canceled, incident_opened, incident_closed]
+        enabled:
+          type: boolean
+      required: [notification_type, enabled]
+
+    UpdatePreferencesRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreferenceUpdate"
+      required: [items]
+
+    AlertRuleItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        metric:
+          type: string
+          enum: [deny_rate, error_rate, rate_limited_count]
+        threshold:
+          type: number
+          format: double
+        window_seconds:
+          type: integer
+        tool_name:
+          type: string
+          nullable: true
+        webhook_url:
+          type: string
+        cooldown_seconds:
+          type: integer
+        enabled:
+          type: boolean
+        last_fired_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, name, metric, threshold, window_seconds, webhook_url, cooldown_seconds, enabled, created_at]
+
+    ListAlertRulesResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertRuleItem"
+      required: [items]
+
+    CreateAlertRuleRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        metric:
+          type: string
+          enum: [deny_rate, error_rate, rate_limited_count]
+        threshold:
+          type: number
+          format: double
+        window_seconds:
+          type: integer
+        tool_name:
+          type: string
+          nullable: true
+        webhook_url:
+          type: string
+        cooldown_seconds:
+          type: integer
+        enabled:
+          type: boolean
+      required: [name, metric, threshold, window_seconds, webhook_url, cooldown_seconds, enabled]
+
+    SessionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+        actor:
+          type: string
+          nullable: true
+        total_calls:
+          type: integer
+        total_writes:
+          type: integer
+        total_denials:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        last_call_at:
+          type: string
+          format: date-time
+      required: [id, session_id, total_calls, total_writes, total_denials, metadata, created_at, last_call_at]
+
+    CreateProposalRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, pending, approved, rejected, shadow]
+        diff:
+          type: object
+          additionalProperties: true
+        rationale:
+          type: string
+        tests_suggested:
+          type: array
+          items:
+            type: string
+        rollback_plan:
+          type: string
+
+    ProposalItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, pending, approved, rejected, shadow]
+        diff:
+          type: object
+          additionalProperties: true
+        rationale:
+          type: string
+        tests_suggested:
+          type: array
+          items:
+            type: string
+        rollback_plan:
+          type: string
+        created_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+        decided_by:
+          type: string
+          nullable: true
+        decided_at:
+          type: string
+          nullable: true
+      required: [id, status, diff, rationale, tests_suggested, rollback_plan, created_at]
+
+    ListProposalsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+      required: [items]
+
+    AssistantQueryRequest:
+      type: object
+      properties:
+        query:
+          type: string
+      required: [query]
+
+    AssistantTablePayload:
+      type: object
+      properties:
+        title:
+          type: string
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/StringMap"
+      required: [title, columns, rows]
+
+    AssistantActionHint:
+      type: object
+      properties:
+        label:
+          type: string
+        action_type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+      required: [label, action_type, payload]
+
+    AssistantQueryResponse:
+      type: object
+      properties:
+        summary:
+          type: string
+        tables:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantTablePayload"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantActionHint"
+      required: [summary]
+
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required: [id, external_id, email, name, created_at, updated_at]
+
+    MeResponse:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        role:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        user:
+          $ref: "#/components/schemas/UserInfo"
+      required: [org_id, external_id]
+
+    OrgMemberItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [admin, secops]
+        joined_at:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserInfo"
+      required: [id, org_id, user_id, role, joined_at, user]
+
+    ListOrgMembersResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgMemberItem"
+      required: [items]
+
+    APIKeyItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+      required: [id, org_id, name, scopes, created_at]
+
+    ListAPIKeysResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/APIKeyItem"
+      required: [items]
+
+    CreateAPIKeyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+      required: [name]
+
+    CreateAPIKeyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        api_key:
+          type: string
+        created_at:
+          type: string
+      required: [id, org_id, name, scopes, api_key, created_at]
+
+    RotateAPIKeyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        api_key:
+          type: string
+        rotated_at:
+          type: string
+      required: [id, org_id, api_key, rotated_at]

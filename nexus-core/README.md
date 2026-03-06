@@ -38,7 +38,7 @@ make seed
 Docs and UI:
 - OpenAPI: `http://localhost:8080/openapi.yaml`
 - Swagger UI: `http://localhost:8080/docs`
-- Admin console: `http://localhost:8080/admin`
+- Supervision UI (`nexus-tower`): `http://localhost:5173` in dev, `http://localhost:4173` in preview/docker
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000`
 
@@ -68,4 +68,3 @@ Docs and UI:
 
 - HTTP API headers remain stable (`X-NEXUS-CORE-KEY`, etc.).
 - Existing REST/MCP endpoints are unchanged.
-

@@ -7,7 +7,7 @@
 - Overview: event/action/incident posture.
 - Timeline: append-only event feed drill-down.
 - Policies: proposal diff + approve/reject/shadow.
-- Ask Agent: query through `nexus-core` (`POST /v1/assistant/query`).
+- Ask Agent: query through `nexus-saas` (`POST /v1/assistant/query`) which proxies to `nexus-ai-operators`.
 - Exports: compliance/audit export entry points.
 
 ## Run

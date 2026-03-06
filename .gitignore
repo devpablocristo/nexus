@@ -140,3 +140,6 @@ __debug_bin*
 # Python virtual environments
 .venv/
 */.venv/
+
+# Python packaging artifacts
+*.egg-info/

@@ -11,7 +11,7 @@
 | billing | tests SaaS + webhooks + docs/runbooks |
 | operators | tests worker/runtime + event/schema compatibility |
 | AI runtime | pytest + evals + fallback/guardrail verification |
-| infra | terraform validate/plan + runbooks + smoke path |
+| infra | `make infra-validate` + runbooks + smoke path |
 
 ## Contract gating
 
@@ -23,6 +23,10 @@ Si cambian:
 - SDKs públicos
 
 entonces el cambio no está listo sin actualizar docs y revisar compatibilidad.
+
+Gate mínimo ejecutable:
+
+- `make contracts-check` para verificar snapshots OpenAPI y colecciones Postman publicadas sin drift
 
 ## Evidencia mínima antes de release
 
