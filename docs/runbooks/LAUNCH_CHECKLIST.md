@@ -32,6 +32,8 @@
 - [ ] Grafana alerts configured
 - [ ] On-call rotation defined
 - [ ] Incident response runbook reviewed
+- [ ] `docs/testing/RELEASE_GATES.md` reviewed for this release scope
+- [ ] `docs/runbooks/INCIDENT_RESPONSE.md` reviewed by on-call owner
 
 ## Security
 - [ ] Rotate all development secrets
@@ -39,3 +41,4 @@
 - [ ] CSP connect-src updated with production URLs
 - [ ] Verify non-root containers
 - [ ] Review Dependabot PRs
+- [ ] Rollback path confirmed in `docs/runbooks/DEPLOY_ROLLBACK.md`

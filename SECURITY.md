@@ -4,19 +4,23 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.9.x   | ✅        |
+| 0.9.x | Yes |
 
 ## Reporting a Vulnerability
 
-**DO NOT** open a public issue.
+Do not open a public issue.
 
-Email **security@nexus.io** with:
-- Description of the vulnerability
-- Steps to reproduce
-- Impact assessment
+Report vulnerabilities to `security@nexus.io` with:
 
-We will acknowledge within 48 hours and provide a fix timeline within 5 business days.
+- description
+- reproduction steps
+- impact assessment
+
+Targets:
+
+- acknowledgement within 48 hours
+- fix timeline within 5 business days
 
 ## Bug Bounty
 
-We do not currently run a bug bounty program.
+There is no public bug bounty program at this time.

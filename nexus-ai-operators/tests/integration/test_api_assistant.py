@@ -113,3 +113,20 @@ async def test_assistant_query_rate_limit_exceeded() -> None:
     assert first.status_code == 200
     assert second.status_code == 429
     assert second.json()["detail"] == "rate limit exceeded"
+
+
+@pytest.mark.asyncio
+async def test_assistant_query_emits_prompt_runtime_metrics(client: AsyncClient) -> None:
+    payload = {"org_id": "org-metrics", "query": "status?"}
+
+    response = await client.post(
+        "/v1/assistant/query",
+        json=payload,
+        headers=auth_headers(),
+    )
+    assert response.status_code == 200
+
+    metrics = await client.get("/metrics")
+    assert metrics.status_code == 200
+    assert "nexus_ai_prompt_requests_total" in metrics.text
+    assert "nexus_ai_prompt_latency_seconds" in metrics.text

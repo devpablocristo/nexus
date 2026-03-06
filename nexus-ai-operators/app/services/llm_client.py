@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from typing import Any
 
@@ -12,6 +13,21 @@ logger = logging.getLogger(__name__)
 ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 ANTHROPIC_VERSION = '2023-06-01'
 TIMEOUT_SECONDS = 30.0
+
+
+@dataclass(frozen=True)
+class LLMUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass(frozen=True)
+class LLMResult:
+    text: str
+    backend: str
+    usage: LLMUsage
+    fallback_used: bool
+    fallback_reason: str | None = None
 
 
 class LLMClient:
@@ -48,21 +64,48 @@ class LLMClient:
             return bool(self._ollama_base_url)
         return True  # fallback is always "configured"
 
-    async def query(self, system_prompt: str, user_message: str) -> str:
+    async def query(
+        self,
+        system_prompt: str,
+        user_message: str,
+        prompt_id: str,
+        prompt_version: str,
+        max_output_tokens: int,
+    ) -> LLMResult:
         """Route to the configured backend; fall back on any error."""
         if self._backend == 'anthropic':
-            return await self._query_anthropic(system_prompt, user_message)
+            return await self._query_anthropic(
+                system_prompt,
+                user_message,
+                prompt_id=prompt_id,
+                prompt_version=prompt_version,
+                max_output_tokens=max_output_tokens,
+            )
         if self._backend == 'ollama':
-            return await self._query_ollama(system_prompt, user_message)
-        return self._fallback(system_prompt, user_message)
+            return await self._query_ollama(
+                system_prompt,
+                user_message,
+                prompt_id=prompt_id,
+                prompt_version=prompt_version,
+                max_output_tokens=max_output_tokens,
+            )
+        return self._fallback(reason='backend_selected_fallback')
 
     # ------------------------------------------------------------------
     # Anthropic backend
     # ------------------------------------------------------------------
-    async def _query_anthropic(self, system_prompt: str, user_message: str) -> str:
+    async def _query_anthropic(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        prompt_id: str,
+        prompt_version: str,
+        max_output_tokens: int,
+    ) -> LLMResult:
         if not self._anthropic_api_key:
             logger.warning('Anthropic backend selected but ANTHROPIC_API_KEY is empty')
-            return self._fallback(system_prompt, user_message)
+            return self._fallback(reason='anthropic_unconfigured')
 
         headers: dict[str, str] = {
             'x-api-key': self._anthropic_api_key,
@@ -71,8 +114,12 @@ class LLMClient:
         }
         payload: dict[str, Any] = {
             'model': self._anthropic_model,
-            'max_tokens': 1024,
+            'max_tokens': max_output_tokens,
             'system': system_prompt,
+            'metadata': {
+                'prompt_id': prompt_id,
+                'prompt_version': prompt_version,
+            },
             'messages': [{'role': 'user', 'content': user_message}],
         }
 
@@ -83,22 +130,44 @@ class LLMClient:
                 data = response.json()
                 blocks: list[dict[str, Any]] = data.get('content', [])
                 texts = [b['text'] for b in blocks if b.get('type') == 'text']
-                return ' '.join(texts) if texts else 'No response from LLM.'
+                text = ' '.join(texts).strip()
+                if not text:
+                    return self._fallback(reason='anthropic_invalid_payload')
+                usage = data.get('usage', {})
+                return LLMResult(
+                    text=text,
+                    backend='anthropic',
+                    usage=LLMUsage(
+                        input_tokens=int(usage.get('input_tokens') or 0),
+                        output_tokens=int(usage.get('output_tokens') or 0),
+                    ),
+                    fallback_used=False,
+                )
         except httpx.HTTPStatusError as exc:
             logger.error('Anthropic API %s: %s', exc.response.status_code, exc.response.text[:200])
-            return self._fallback(system_prompt, user_message)
+            return self._fallback(reason=f'anthropic_http_{exc.response.status_code}')
         except (httpx.RequestError, Exception) as exc:  # noqa: BLE001
             logger.error('Anthropic request failed: %s', exc)
-            return self._fallback(system_prompt, user_message)
+            return self._fallback(reason='anthropic_request_failed')
 
     # ------------------------------------------------------------------
     # Ollama backend (/api/chat)
     # ------------------------------------------------------------------
-    async def _query_ollama(self, system_prompt: str, user_message: str) -> str:
+    async def _query_ollama(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        prompt_id: str,
+        prompt_version: str,
+        max_output_tokens: int,
+    ) -> LLMResult:
         url = f'{self._ollama_base_url}/api/chat'
         payload: dict[str, Any] = {
             'model': self._ollama_model,
             'stream': False,
+            'options': {'num_predict': max_output_tokens},
+            'metadata': {'prompt_id': prompt_id, 'prompt_version': prompt_version},
             'messages': [
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_message},
@@ -110,19 +179,33 @@ class LLMClient:
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
                 data = response.json()
-                content: str = data.get('message', {}).get('content', 'No response from LLM.')
-                return content
+                content: str = data.get('message', {}).get('content', '').strip()
+                if not content:
+                    return self._fallback(reason='ollama_invalid_payload')
+                return LLMResult(
+                    text=content,
+                    backend='ollama',
+                    usage=LLMUsage(
+                        input_tokens=int(data.get('prompt_eval_count') or 0),
+                        output_tokens=int(data.get('eval_count') or 0),
+                    ),
+                    fallback_used=False,
+                )
         except httpx.HTTPStatusError as exc:
             logger.error('Ollama API %s: %s', exc.response.status_code, exc.response.text[:200])
-            return self._fallback(system_prompt, user_message)
+            return self._fallback(reason=f'ollama_http_{exc.response.status_code}')
         except (httpx.RequestError, Exception) as exc:  # noqa: BLE001
             logger.error('Ollama request failed: %s', exc)
-            return self._fallback(system_prompt, user_message)
+            return self._fallback(reason='ollama_request_failed')
 
     # ------------------------------------------------------------------
     # Deterministic fallback — always works, no external deps
     # ------------------------------------------------------------------
-    @staticmethod
-    def _fallback(system_prompt: str, user_message: str) -> str:
-        context = system_prompt[:120].replace('\n', ' ')
-        return f"[LLM unavailable] Context: {context}... | Query: {user_message}"
+    def _fallback(self, reason: str) -> LLMResult:
+        return LLMResult(
+            text='',
+            backend=self._backend,
+            usage=LLMUsage(),
+            fallback_used=True,
+            fallback_reason=reason,
+        )

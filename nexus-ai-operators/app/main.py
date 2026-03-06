@@ -13,6 +13,7 @@ from app.api.routes import router
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.services.engine import OperatorEngine
+from app.services.prompt_runtime import PromptRuntime
 
 configure_logging()
 
@@ -69,6 +70,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     engine = OperatorEngine(settings=settings, client=client)
     application.state.settings = settings
     application.state.engine = engine
+    application.state.prompt_runtime = PromptRuntime(settings=settings)
     await engine.start()
     yield
     await engine.stop()

@@ -26,6 +26,12 @@
 - More than 80% of budget consumed: feature freeze for affected service, reliability work only.
 - 100% budget consumed: all engineering focus shifts to reliability until service is back within policy.
 
+## Incident linkage
+
+- SLO breach with cross-tenant or security risk -> escalate to `SEV-1`.
+- Sustained core/saas degradation without workaround -> at least `SEV-2`.
+- Use `docs/runbooks/INCIDENT_RESPONSE.md` for the operational flow.
+
 ## Prometheus Recording Rules (Optional)
 
 For automated SLO tracking, add recording rules such as:

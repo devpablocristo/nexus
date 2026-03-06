@@ -1,0 +1,11 @@
+{
+  "id": 106,
+  "event_type": "proposal.created",
+  "org_id": "11111111-1111-1111-1111-111111111111",
+  "created_at": "2026-03-06T12:05:00Z",
+  "payload": {
+    "proposal_id": "44444444-4444-4444-4444-444444444444",
+    "status": "pending",
+    "rationale": "Sustained deny spike suggests a tighter rate limit policy."
+  }
+}

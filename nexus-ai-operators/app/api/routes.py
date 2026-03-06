@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from uuid import uuid4
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -11,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import Settings
 from app.services.engine import OperatorEngine
-from app.services.llm_client import LLMClient
+from app.services.prompt_runtime import PromptRuntime
 
 router = APIRouter()
 
@@ -62,6 +63,14 @@ def _engine(request: Request) -> OperatorEngine:
     return cast(OperatorEngine, request.app.state.engine)
 
 
+def _prompt_runtime(request: Request) -> PromptRuntime:
+    runtime = getattr(request.app.state, 'prompt_runtime', None)
+    if runtime is None:
+        runtime = PromptRuntime(_settings(request))
+        request.app.state.prompt_runtime = runtime
+    return cast(PromptRuntime, runtime)
+
+
 async def verify_operator_key(
     request: Request,
     x_operator_key: str | None = Header(default=None, alias='X-Operator-Key'),
@@ -69,16 +78,6 @@ async def verify_operator_key(
     settings = _settings(request)
     if settings.operator_internal_key and x_operator_key != settings.operator_internal_key:
         raise HTTPException(status_code=401, detail='invalid operator key')
-
-
-async def rate_limit_assistant_query(
-    request: Request,
-    x_operator_key: str | None = Header(default=None, alias='X-Operator-Key'),
-) -> None:
-    settings = _settings(request)
-    identity = x_operator_key or "anonymous"
-    if not assistant_rate_limiter.allow(identity, settings.assistant_rate_limit_per_min):
-        raise HTTPException(status_code=429, detail='rate limit exceeded')
 
 
 @router.get('/healthz')
@@ -112,36 +111,35 @@ async def assistant_query(
     request: Request,
     payload: AssistantQueryRequest,
     _: None = Depends(verify_operator_key),
-    __: None = Depends(rate_limit_assistant_query),
 ) -> AssistantQueryResponse:
     engine = _engine(request)
     settings = _settings(request)
-    state = engine.state
+    if not assistant_rate_limiter.allow(payload.org_id, settings.assistant_rate_limit_per_min):
+        raise HTTPException(status_code=429, detail='rate limit exceeded')
 
-    llm = LLMClient(settings)
-
-    if llm.is_configured:
-        system_prompt = (
-            "You are the Nexus Operator assistant. You have access to the current operator "
-            "state and should answer the user's question concisely.\n\n"
-            "## Operator State\n"
-            f"- cursor: {state.cursor}\n"
-            f"- last_action_at: {state.last_action_at}\n"
-            f"- latest_summary: {state.latest_summary}\n"
-        )
-        summary = await llm.query(system_prompt, payload.query)
-    else:
-        summary = f"{state.latest_summary} | query={payload.query}"
+    runtime = _prompt_runtime(request)
+    request_id = request.headers.get('X-Request-ID') or str(uuid4())
+    result = await runtime.generate_summary(
+        prompt_id='assistant_system',
+        org_id=payload.org_id,
+        actor=payload.actor,
+        query=payload.query,
+        engine_state=engine.state,
+        request_id=request_id,
+    )
 
     return AssistantQueryResponse(
-        summary=summary,
+        summary=result.summary,
         tables=[
             {
                 'title': 'Operator State',
                 'columns': ['field', 'value'],
                 'rows': [
-                    {'field': 'cursor', 'value': str(state.cursor)},
-                    {'field': 'last_action_at', 'value': str(state.last_action_at)},
+                    {'field': 'cursor', 'value': str(result.context.cursor)},
+                    {'field': 'last_action_at', 'value': result.context.last_action_at},
+                    {'field': 'prompt_id', 'value': result.prompt_id},
+                    {'field': 'prompt_version', 'value': result.prompt_version},
+                    {'field': 'backend', 'value': result.backend},
                 ],
             }
         ],

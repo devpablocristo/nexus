@@ -12,7 +12,7 @@
 1. `nexus-core` processes `/v1/run` requests, applies the full governance pipeline, and writes audit events.
 2. A DB trigger copies audit entries into `operational_events` as `tool.call.completed`.
 3. `nexus-control-operators` polls `/internal/operators/events` and consumes events with four deterministic workers (sentry, coordinator, mitigation, recovery).
-4. `nexus-ai-operators` consumes events via nexus-saas API and proposes AI-assisted actions (diagnosis, comms, policy suggestions).
+4. `nexus-ai-operators` observa estado operativo vía el bridge interno de operators y expone el assistant a través del proxy de `nexus-saas`.
 5. Control actions are applied via the Action Engine (dry-run → apply → rollback lifecycle).
 6. Humans supervise from `nexus-tower` and approve/reject proposals.
 7. Alert rules fire webhooks when metrics (deny_rate, error_rate, rate_limited_count) exceed thresholds.
@@ -30,11 +30,12 @@
 
 ### AI-assisted (nexus-ai-operators, Python)
 
-| Worker | Role |
-|--------|------|
-| Diagnostician | Intelligent diagnosis of incidents |
-| Comms | Incident communication drafts |
-| Executive Q&A | Assistant queries from Tower UI |
+| Flow | Role |
+|------|------|
+| `assistant_system` | Assistant queries from Tower UI |
+| `diagnosis_system` | Diagnosis-oriented summaries |
+| `comms_system` | Internal communication drafts |
+| `executive_qa_system` | Leadership-style operational Q&A |
 
 ## Human-in-the-Loop (HITL)
 

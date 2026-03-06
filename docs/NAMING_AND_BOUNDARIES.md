@@ -19,7 +19,7 @@
 - Existing REST/MCP/A2A endpoint paths are unchanged.
 - Existing auth headers remain: `X-NEXUS-CORE-KEY`, `Authorization: Bearer <jwt>`.
 - Internal operator header: `X-NEXUS-AI-KEY`.
-- SDK clients target `/v1/*` endpoints exclusively.
+- Public contracts stay under `/v1/*`, `/mcp` and `/a2a/*`.
 
 ## Metric Namespaces
 
@@ -28,6 +28,7 @@
 | `nexus_gateway_*` | nexus-core (Prometheus) |
 | `nexus_operators_*` | nexus-control-operators (Prometheus) |
 | `nexus_saas_*` | nexus-saas (Prometheus) |
+| `nexus_ai_*` / `nexus_operator_*` | nexus-ai-operators (Prometheus) |
 
 ## Shared Packages (go.work)
 

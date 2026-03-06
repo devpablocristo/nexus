@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     max_body_bytes: int = Field(default=1048576, alias='OPERATOR_MAX_BODY_BYTES')
     assistant_rate_limit_per_min: int = Field(default=30, alias='OPERATOR_ASSISTANT_RATE_LIMIT_PER_MIN')
     dlq_path: str = Field(default='data/dead_letters.jsonl', alias='NEXUS_DLQ_PATH')
+    assistant_prompt_version: str = Field(default='v1', alias='NEXUS_AI_ASSISTANT_PROMPT_VERSION')
+    diagnosis_prompt_version: str = Field(default='v1', alias='NEXUS_AI_DIAGNOSIS_PROMPT_VERSION')
+    comms_prompt_version: str = Field(default='v1', alias='NEXUS_AI_COMMS_PROMPT_VERSION')
+    executive_qa_prompt_version: str = Field(default='v1', alias='NEXUS_AI_EXECUTIVE_QA_PROMPT_VERSION')
+    ai_prompt_max_context_chars: int = Field(default=2000, alias='NEXUS_AI_PROMPT_MAX_CONTEXT_CHARS')
+    ai_prompt_max_output_tokens: int = Field(default=512, alias='NEXUS_AI_PROMPT_MAX_OUTPUT_TOKENS')
+    ai_prompt_eval_mode: bool = Field(default=False, alias='NEXUS_AI_PROMPT_EVAL_MODE')
+    ai_prompt_observability_sample_rate: float = Field(
+        default=1.0,
+        alias='NEXUS_AI_PROMPT_OBSERVABILITY_SAMPLE_RATE',
+    )
 
     # LLM configuration — infra decides, code stays the same
     llm_backend: str = Field(default='fallback', alias='LLM_BACKEND')  # ollama | anthropic | fallback
