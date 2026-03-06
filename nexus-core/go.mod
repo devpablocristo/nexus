@@ -7,7 +7,7 @@ require nexus/pkg v0.0.0
 replace nexus/pkg => ../pkgs/go-pkg
 
 require (
-	github.com/gin-gonic/gin v1.11.0
+	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/lib/pq v1.10.9
@@ -32,6 +32,7 @@ require (
 )
 
 require (
+	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.40.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.40.0 // indirect
