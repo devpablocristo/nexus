@@ -6,6 +6,7 @@ import random
 import re
 import time
 
+from app.adapters.nexus_saas_client import NexusSaaSClient
 from app.core.config import Settings
 from app.core.metrics import (
     PROMPT_FALLBACKS,
@@ -57,11 +58,13 @@ class PromptRuntime:
         llm_client: LLMClient | None = None,
         registry: PromptRegistry | None = None,
         context_builder: PromptContextBuilder | None = None,
+        saas_client: NexusSaaSClient | None = None,
     ) -> None:
         self._settings = settings
         self._llm_client = llm_client or LLMClient(settings)
         self._registry = registry or PromptRegistry()
         self._context_builder = context_builder or PromptContextBuilder(settings.ai_prompt_max_context_chars)
+        self._saas_client = saas_client
 
     async def generate_summary(
         self,
@@ -73,7 +76,17 @@ class PromptRuntime:
         request_id: str,
     ) -> PromptRuntimeResult:
         prompt = self._registry.get(prompt_id, self._default_version(prompt_id))
-        context = self._context_builder.build(prompt.prompt_id, org_id, actor, query, engine_state)
+        assistant_context = None
+        if prompt.prompt_id == "assistant_system" and self._saas_client is not None:
+            assistant_context = await self._load_assistant_context(org_id, request_id)
+        context = self._context_builder.build(
+            prompt.prompt_id,
+            org_id,
+            actor,
+            query,
+            engine_state,
+            assistant_context=assistant_context,
+        )
         system_prompt = f"{prompt.body}\n\n## Safe Runtime Context\n{context.block}"
 
         started_at = time.perf_counter()
@@ -208,3 +221,20 @@ class PromptRuntime:
                 "guardrail_violations": list(guardrail_violations),
             },
         )
+
+    async def _load_assistant_context(self, org_id: str, request_id: str) -> dict[str, object] | None:
+        saas_client = self._saas_client
+        if saas_client is None:
+            return None
+        try:
+            return await saas_client.get_assistant_context(org_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "assistant_context_fetch_failed",
+                extra={
+                    "request_id": request_id,
+                    "org_id": org_id,
+                    "error": str(exc),
+                },
+            )
+            return None

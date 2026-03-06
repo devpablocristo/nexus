@@ -103,7 +103,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	usersHandler := users.NewHandler(usersUsecases)
 	clerkwebhookNotificationPort := ProvideClerkWebhookNotificationPort(notificationsUsecases)
 	clerkwebhookHandler := clerkwebhook.NewHandler(serviceConfig, usersUsecases, clerkwebhookNotificationPort, logger)
-	contractsHandler := contracts.NewHandler(serviceConfig, adminRepository, usagemeteringRepository, eventsUsecases, actionsUsecases, notificationsUsecases)
+	contractsHandler := contracts.NewHandler(serviceConfig, adminRepository, billingRepository, usagemeteringRepository, eventsUsecases, actionsUsecases, incidentsUsecases, policyproposalUsecases, notificationsUsecases)
 	coreproxyHandler := coreproxy.NewHandler()
 	apiCallsMiddlewareFunc := usagemetering.NewAPICallsMiddleware(usagemeteringRepository)
 	engine := NewRouter(db, logger, serviceConfig, httpServerConfig, handlerFunc, handler, billingHandler, eventsHandler, actionsHandler, incidentsHandler, notificationsHandler, alertsHandler, sessionHandler, policyproposalHandler, assistantHandler, oidcHandler, orgHandler, usersHandler, clerkwebhookHandler, contractsHandler, coreproxyHandler, apiCallsMiddlewareFunc)

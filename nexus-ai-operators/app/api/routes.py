@@ -140,6 +140,10 @@ async def assistant_query(
                     {'field': 'prompt_id', 'value': result.prompt_id},
                     {'field': 'prompt_version', 'value': result.prompt_version},
                     {'field': 'backend', 'value': result.backend},
+                ]
+                + [
+                    {'field': field_name, 'value': value}
+                    for field_name, value in result.context.assistant_overview.items()
                 ],
             }
         ],

@@ -28,6 +28,16 @@ class FakeLLMClient:
         return self._result
 
 
+class FakeSaaSClient:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+        self.calls: list[str] = []
+
+    async def get_assistant_context(self, org_id: str) -> dict[str, object]:
+        self.calls.append(org_id)
+        return self.payload
+
+
 def make_settings(**overrides: object) -> Settings:
     defaults: dict[str, object] = {
         "LLM_BACKEND": "fallback",
@@ -93,3 +103,42 @@ async def test_prompt_runtime_returns_safe_llm_summary_when_output_is_valid() ->
     assert result.fallback_used is False
     assert result.guardrail_violations == ()
     assert "stable" in result.summary
+
+
+@pytest.mark.asyncio
+async def test_prompt_runtime_fetches_saas_assistant_context() -> None:
+    fake_saas_client = FakeSaaSClient(
+        {
+            "tenant": {"plan_code": "growth", "status": "active", "hard_limits": {"run_rpm": 1200}},
+            "billing": {"billing_status": "active", "usage_period": "2026-03", "usage": {"api_calls": 12}},
+            "incidents": {"open_count": 1, "items": [{"severity": "HIGH", "status": "open", "title": "Deny spike"}]},
+            "actions": {"active_count": 1, "items": [{"action_type": "throttle_tenant_rpm", "status": "active", "scope_type": "tenant"}]},
+            "proposals": {"pending_count": 1, "items": [{"status": "pending", "rationale": "Tighten egress"}]},
+            "events": {"recent_count": 1, "items": [{"event_type": "incident.opened", "summary": "Deny spike"}]},
+        }
+    )
+    runtime = PromptRuntime(
+        settings=make_settings(),
+        llm_client=FakeLLMClient(
+            LLMResult(
+                text="Tenant is active with one open incident and one active mitigation.",
+                backend="anthropic",
+                usage=LLMUsage(input_tokens=20, output_tokens=14),
+                fallback_used=False,
+            )
+        ),
+        saas_client=fake_saas_client,
+    )
+
+    result = await runtime.generate_summary(
+        prompt_id="assistant_system",
+        org_id="org-tenant",
+        actor=None,
+        query="What changed?",
+        engine_state=EngineState(latest_summary="Processed 3 events."),
+        request_id="req-3",
+    )
+
+    assert fake_saas_client.calls == ["org-tenant"]
+    assert result.context.assistant_overview["tenant_status"] == "active"
+    assert result.context.assistant_overview["open_incidents"] == "1"

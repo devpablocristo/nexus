@@ -5,7 +5,7 @@
 ## Responsibilities
 
 - Consume events through the internal operators bridge.
-- Expose `POST /v1/assistant/query` with versioned prompts, safe context building, deterministic fallback, and guardrails.
+- Expose `POST /v1/assistant/query` with versioned prompts, tenant-aware context snapshots from `nexus-saas`, deterministic fallback, and guardrails.
 - Run evals from `tests/evals/`.
 - Apply temporary actions with TTL (`POST /v1/actions/apply`).
 - Open incidents (`POST /v1/incidents`).

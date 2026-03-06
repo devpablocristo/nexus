@@ -12,18 +12,30 @@ import (
 
 	"nexus-saas/cmd/config"
 	actionsvc "nexus-saas/internal/actions"
+	actiondomain "nexus-saas/internal/actions/usecases/domain"
 	"nexus-saas/internal/admin"
 	admindomain "nexus-saas/internal/admin/usecases/domain"
+	"nexus-saas/internal/billing"
+	billingdomain "nexus-saas/internal/billing/usecases/domain"
 	eventsvc "nexus-saas/internal/events"
+	eventdomain "nexus-saas/internal/events/usecases/domain"
+	"nexus-saas/internal/incidents"
+	incidentdomain "nexus-saas/internal/incidents/usecases/domain"
+	"nexus-saas/internal/notifications"
+	"nexus-saas/internal/policyproposal"
+	proposaldomain "nexus-saas/internal/policyproposal/usecases/domain"
 	"nexus-saas/internal/usagemetering"
 )
 
 type Handler struct {
 	cfg           config.ServiceConfig
 	admin         entitlementsStore
+	billing       billingReader
 	metering      usageSink
-	events        *eventsvc.Usecases
-	actions       *actionsvc.Usecases
+	events        eventsReader
+	actions       actionsReader
+	incidents     incidentsReader
+	proposals     proposalsReader
 	notifications notificationPort
 }
 
@@ -36,6 +48,29 @@ type usageSink interface {
 	GetCounter(ctx context.Context, orgID uuid.UUID, counter string, period time.Time) (int64, error)
 }
 
+type billingReader interface {
+	GetTenantBilling(ctx context.Context, orgID uuid.UUID) (billingdomain.TenantBilling, bool, error)
+	GetUsageSummary(ctx context.Context, orgID uuid.UUID, period time.Time) (billingdomain.UsageSummary, error)
+}
+
+type eventsReader interface {
+	Append(ctx context.Context, orgID uuid.UUID, eventType string, payload map[string]any) (eventdomain.Event, error)
+	ListRecent(ctx context.Context, orgID uuid.UUID, limit int) ([]eventdomain.Event, error)
+}
+
+type actionsReader interface {
+	List(ctx context.Context, orgID uuid.UUID, q actionsvc.ListQuery) ([]actiondomain.Action, error)
+	ResolveRuntimeOverrides(ctx context.Context, orgID uuid.UUID, toolName string) (actiondomain.RuntimeOverrides, error)
+}
+
+type incidentsReader interface {
+	List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]incidentdomain.Incident, error)
+}
+
+type proposalsReader interface {
+	List(ctx context.Context, orgID uuid.UUID, status string, limit int) ([]proposaldomain.Proposal, error)
+}
+
 type notificationPort interface {
 	Notify(ctx context.Context, orgID uuid.UUID, notifType string, data map[string]string) error
 }
@@ -43,18 +78,24 @@ type notificationPort interface {
 func NewHandler(
 	cfg config.ServiceConfig,
 	adminRepo *admin.Repository,
+	billingRepo *billing.Repository,
 	meteringRepo *usagemetering.Repository,
 	eventsUC *eventsvc.Usecases,
 	actionsUC *actionsvc.Usecases,
-	notifications notificationPort,
+	incidentsUC *incidents.Usecases,
+	proposalsUC *policyproposal.Usecases,
+	notificationsUC *notifications.Usecases,
 ) *Handler {
 	return &Handler{
 		cfg:           cfg,
 		admin:         adminRepo,
+		billing:       billingRepo,
 		metering:      meteringRepo,
 		events:        eventsUC,
 		actions:       actionsUC,
-		notifications: notifications,
+		incidents:     incidentsUC,
+		proposals:     proposalsUC,
+		notifications: notificationsUC,
 	}
 }
 
@@ -64,6 +105,7 @@ func (h *Handler) RegisterInternal(r *gin.Engine) {
 	g.POST("/usage/events", h.ingestUsageEvent)
 	g.POST("/events", h.ingestOperationalEvent)
 	g.GET("/entitlements/:org_id", h.getEntitlements)
+	g.GET("/assistant/context/:org_id", h.getAssistantContext)
 	g.GET("/runtime-overrides/:org_id/:tool_name", h.getRuntimeOverrides)
 }
 
@@ -210,6 +252,191 @@ func (h *Handler) getRuntimeOverrides(c *gin.Context) {
 	})
 }
 
+func (h *Handler) getAssistantContext(c *gin.Context) {
+	if h.admin == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "UNAVAILABLE", "message": "assistant context unavailable"}})
+		return
+	}
+	orgID, err := uuid.Parse(strings.TrimSpace(c.Param("org_id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid org_id"}})
+		return
+	}
+
+	settings, ok, err := h.admin.GetTenantSettings(c.Request.Context(), orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "INTERNAL", "message": "failed to read tenant settings"}})
+		return
+	}
+	if !ok {
+		settings = admindomain.TenantSettings{
+			OrgID:    orgID,
+			PlanCode: "starter",
+			Status:   admindomain.TenantStatusActive,
+			HardLimits: map[string]any{
+				"tools_max":            20,
+				"run_rpm":              300,
+				"audit_retention_days": 30,
+			},
+		}
+	}
+	if strings.TrimSpace(settings.Status) == "" {
+		settings.Status = admindomain.TenantStatusActive
+	}
+	if settings.HardLimits == nil {
+		settings.HardLimits = map[string]any{}
+	}
+
+	billingStatus := ""
+	usagePeriod := usagePeriodUTC(time.Now().UTC()).Format("2006-01")
+	usage := gin.H{
+		"api_calls":        int64(0),
+		"events_ingested":  int64(0),
+		"incidents_opened": int64(0),
+		"actions_executed": int64(0),
+	}
+	if h.billing != nil {
+		if tenantBilling, found, billingErr := h.billing.GetTenantBilling(c.Request.Context(), orgID); billingErr == nil && found {
+			billingStatus = string(tenantBilling.BillingStatus)
+			if settings.PlanCode == "" {
+				settings.PlanCode = string(tenantBilling.PlanCode)
+			}
+			if len(settings.HardLimits) == 0 {
+				settings.HardLimits = map[string]any{
+					"tools_max":            tenantBilling.HardLimits.ToolsMax,
+					"run_rpm":              tenantBilling.HardLimits.RunRPM,
+					"audit_retention_days": tenantBilling.HardLimits.AuditRetentionDays,
+				}
+			}
+		}
+		if summary, usageErr := h.billing.GetUsageSummary(c.Request.Context(), orgID, usagePeriodUTC(time.Now().UTC())); usageErr == nil {
+			if strings.TrimSpace(summary.Period) != "" {
+				usagePeriod = summary.Period
+			}
+			usage = gin.H{
+				"api_calls":        summary.Counters.APICalls,
+				"events_ingested":  summary.Counters.EventsIngested,
+				"incidents_opened": summary.Counters.IncidentsOpened,
+				"actions_executed": summary.Counters.ActionsExecuted,
+			}
+		}
+	}
+
+	openItems := make([]gin.H, 0, 5)
+	openCount := 0
+	if h.incidents != nil {
+		if items, listErr := h.incidents.List(c.Request.Context(), orgID, string(incidentdomain.StatusOpen), 100); listErr == nil {
+			openCount = len(items)
+			for idx, item := range items {
+				if idx >= 5 {
+					break
+				}
+				openItems = append(openItems, gin.H{
+					"id":        item.ID.String(),
+					"severity":  string(item.Severity),
+					"status":    string(item.Status),
+					"title":     item.Title,
+					"summary":   item.Summary,
+					"opened_at": item.OpenedAt.UTC().Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
+	actionItems := make([]gin.H, 0, 5)
+	activeCount := 0
+	if h.actions != nil {
+		if items, listErr := h.actions.List(c.Request.Context(), orgID, actionsvc.ListQuery{Status: string(actiondomain.StatusActive), Limit: 100}); listErr == nil {
+			activeCount = len(items)
+			for idx, item := range items {
+				if idx >= 5 {
+					break
+				}
+				scopeID := ""
+				if item.ScopeID != nil {
+					scopeID = *item.ScopeID
+				}
+				actionItems = append(actionItems, gin.H{
+					"id":          item.ID.String(),
+					"action_type": string(item.ActionType),
+					"status":      string(item.Status),
+					"scope_type":  string(item.ScopeType),
+					"scope_id":    scopeID,
+					"summary":     summarizeAction(item),
+					"created_at":  item.CreatedAt.UTC().Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
+	proposalItems := make([]gin.H, 0, 5)
+	pendingCount := 0
+	if h.proposals != nil {
+		if items, listErr := h.proposals.List(c.Request.Context(), orgID, "", 100); listErr == nil {
+			for _, item := range items {
+				if !isPendingProposal(item.Status) {
+					continue
+				}
+				pendingCount++
+				if len(proposalItems) >= 5 {
+					continue
+				}
+				proposalItems = append(proposalItems, gin.H{
+					"id":         item.ID.String(),
+					"status":     string(item.Status),
+					"rationale":  item.Rationale,
+					"created_at": item.CreatedAt.UTC().Format(time.RFC3339),
+				})
+			}
+		}
+	}
+
+	eventItems := make([]gin.H, 0, 5)
+	if h.events != nil {
+		if items, listErr := h.events.ListRecent(c.Request.Context(), orgID, 5); listErr == nil {
+			for _, item := range items {
+				eventItems = append(eventItems, gin.H{
+					"id":         item.ID,
+					"event_type": item.EventType,
+					"created_at": item.CreatedAt.UTC().Format(time.RFC3339),
+					"summary":    summarizeEvent(item),
+				})
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"org_id":       orgID.String(),
+		"generated_at": time.Now().UTC().Format(time.RFC3339),
+		"tenant": gin.H{
+			"plan_code":   settings.PlanCode,
+			"status":      settings.Status,
+			"hard_limits": settings.HardLimits,
+		},
+		"billing": gin.H{
+			"billing_status": billingStatus,
+			"usage_period":   usagePeriod,
+			"usage":          usage,
+		},
+		"incidents": gin.H{
+			"open_count": openCount,
+			"items":      openItems,
+		},
+		"actions": gin.H{
+			"active_count": activeCount,
+			"items":        actionItems,
+		},
+		"proposals": gin.H{
+			"pending_count": pendingCount,
+			"items":         proposalItems,
+		},
+		"events": gin.H{
+			"recent_count": len(eventItems),
+			"items":        eventItems,
+		},
+	})
+}
+
 func (h *Handler) checkUsageThresholds(ctx context.Context, orgID uuid.UUID, metricName string) {
 	if h.notifications == nil {
 		return
@@ -290,6 +517,57 @@ func asInt64(v any) int64 {
 		return int64(t)
 	default:
 		return 0
+	}
+}
+
+func summarizeAction(item actiondomain.Action) string {
+	scopeID := ""
+	if item.ScopeID != nil && strings.TrimSpace(*item.ScopeID) != "" {
+		scopeID = " " + strings.TrimSpace(*item.ScopeID)
+	}
+	return fmt.Sprintf("%s %s on %s%s", item.ActionType, item.Status, item.ScopeType, scopeID)
+}
+
+func summarizeEvent(item eventdomain.Event) string {
+	candidateKeys := []string{"title", "summary", "incident_id", "action_type", "proposal_id", "status"}
+	parts := []string{item.EventType}
+	for _, key := range candidateKeys {
+		value := strings.TrimSpace(stringFromMap(item.Payload, key))
+		if value == "" {
+			continue
+		}
+		parts = append(parts, value)
+		if len(parts) >= 3 {
+			break
+		}
+	}
+	return strings.Join(parts, " | ")
+}
+
+func stringFromMap(payload map[string]any, key string) string {
+	if payload == nil {
+		return ""
+	}
+	value, ok := payload[key]
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case fmt.Stringer:
+		return typed.String()
+	default:
+		return fmt.Sprintf("%v", typed)
+	}
+}
+
+func isPendingProposal(status proposaldomain.Status) bool {
+	switch status {
+	case proposaldomain.StatusDraft, proposaldomain.StatusPending, proposaldomain.StatusShadow:
+		return true
+	default:
+		return false
 	}
 }
 

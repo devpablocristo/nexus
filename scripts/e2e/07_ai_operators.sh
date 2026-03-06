@@ -143,11 +143,11 @@ section "2. PROMETHEUS METRICS"
 # ═════════════════════════════════════════════════════════════════════════════
 
 echo "▸ 2.1 /metrics returns 200"
-METRICS_CODE="$(http_code -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics")"
+METRICS_CODE="$(http_code "${AI_BASE}/metrics")"
 assert_eq "$METRICS_CODE" "200" "metrics endpoint returns 200"
 
 echo "▸ 2.2 all operator metric families present"
-METRICS="$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null || echo '')"
+METRICS="$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null || echo '')"
 assert_contains "$METRICS" "nexus_operator_events_consumed_total" "has events_consumed_total"
 assert_contains "$METRICS" "nexus_operator_actions_applied_total" "has actions_applied_total"
 assert_contains "$METRICS" "nexus_operator_incidents_opened_total" "has incidents_opened_total"
@@ -182,7 +182,7 @@ TICK_BODY="$(http_json -X POST -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/v1/int
 assert_jq "$TICK_BODY" '.status == "ok"' "tick returns status=ok"
 
 echo "▸ 4.2 cursor is tracked in metrics"
-METRICS_TICK="$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null || echo '')"
+METRICS_TICK="$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null || echo '')"
 CURSOR_VAL="$(metric_value "$METRICS_TICK" "nexus_operator_last_cursor")"
 echo "      cursor after tick: ${CURSOR_VAL}"
 ok "cursor metric present and readable"
@@ -191,7 +191,7 @@ ok "cursor metric present and readable"
 section "5. EVENT CONSUMPTION"
 # ═════════════════════════════════════════════════════════════════════════════
 
-CURSOR_BEFORE="$(metric_value "$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
+CURSOR_BEFORE="$(metric_value "$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
 
 echo "▸ 5.1 Generate gateway traffic (10 requests)"
 for i in $(seq 1 10); do
@@ -207,7 +207,7 @@ echo "▸ 5.2 Trigger engine tick to consume new events"
 http_json -X POST -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/v1/internal/tick" >/dev/null
 
 echo "▸ 5.3 Verify cursor advanced"
-CURSOR_AFTER="$(metric_value "$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
+CURSOR_AFTER="$(metric_value "$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
 echo "      cursor before=${CURSOR_BEFORE} after=${CURSOR_AFTER}"
 if awk "BEGIN{exit !(${CURSOR_AFTER} > ${CURSOR_BEFORE})}"; then
   ok "cursor advanced after traffic (${CURSOR_BEFORE} → ${CURSOR_AFTER})"
@@ -216,7 +216,7 @@ else
 fi
 
 echo "▸ 5.4 Events consumed counter increased"
-EVENTS_CONSUMED="$(metric_value "$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_events_consumed_total")"
+EVENTS_CONSUMED="$(metric_value "$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_events_consumed_total")"
 if awk "BEGIN{exit !(${EVENTS_CONSUMED} > 0)}"; then
   ok "events consumed > 0 (${EVENTS_CONSUMED})"
 else
@@ -240,7 +240,7 @@ else
 fi
 
 echo "▸ 6.2 Generate 30 deny requests (no egress rule = deny)"
-ACTIONS_BEFORE="$(metric_value "$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_actions_applied_total")"
+ACTIONS_BEFORE="$(metric_value "$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_actions_applied_total")"
 for i in $(seq 1 30); do
   curl -sS -o /dev/null \
     -H "X-NEXUS-CORE-KEY: ${API_KEY}" \
@@ -254,7 +254,7 @@ echo "▸ 6.3 Trigger tick to process high-risk batch"
 http_json -X POST -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/v1/internal/tick" >/dev/null
 
 echo "▸ 6.4 Verify action was applied (or cooldown is active)"
-METRICS_HR="$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null || echo '')"
+METRICS_HR="$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null || echo '')"
 ACTIONS_AFTER="$(metric_value "$METRICS_HR" "nexus_operator_actions_applied_total")"
 INCIDENTS_AFTER="$(metric_value "$METRICS_HR" "nexus_operator_incidents_opened_total")"
 PROPOSALS_AFTER="$(metric_value "$METRICS_HR" "nexus_operator_proposals_created_total")"
@@ -316,9 +316,9 @@ section "8. ENGINE STATE INTEGRITY"
 # ═════════════════════════════════════════════════════════════════════════════
 
 echo "▸ 8.1 Cursor is monotonically increasing"
-C1="$(metric_value "$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
+C1="$(metric_value "$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
 http_json -X POST -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/v1/internal/tick" >/dev/null
-C2="$(metric_value "$(curl -fsS -H "X-Operator-Key: ${OP_KEY}" "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
+C2="$(metric_value "$(curl -fsS "${AI_BASE}/metrics" 2>/dev/null)" "nexus_operator_last_cursor")"
 if awk "BEGIN{exit !(${C2} >= ${C1})}"; then
   ok "cursor monotonically non-decreasing (${C1} → ${C2})"
 else

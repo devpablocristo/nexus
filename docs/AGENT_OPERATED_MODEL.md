@@ -12,7 +12,7 @@
 1. `nexus-core` processes `/v1/run` requests, applies the full governance pipeline, and writes audit events.
 2. A DB trigger copies audit entries into `operational_events` as `tool.call.completed`.
 3. `nexus-control-operators` polls `/internal/operators/events` and consumes events with four deterministic workers (sentry, coordinator, mitigation, recovery).
-4. `nexus-ai-operators` observa estado operativo vía el bridge interno de operators y expone el assistant a través del proxy de `nexus-saas`.
+4. `nexus-ai-operators` observa estado operativo vía el bridge interno de operators y completa el contexto del assistant con un snapshot tenant-aware consumido desde `nexus-saas`.
 5. Control actions are applied via the Action Engine (dry-run → apply → rollback lifecycle).
 6. Humans supervise from `nexus-tower` and approve/reject proposals.
 7. Alert rules fire webhooks when metrics (deny_rate, error_rate, rate_limited_count) exceed thresholds.
@@ -54,6 +54,7 @@
 
 - UI: `POST /v1/assistant/query` on nexus-saas.
 - SaaS forwards to nexus-ai-operators `/v1/assistant/query` using internal key.
+- AI operators fetch `GET /internal/assistant/context/:org_id` from SaaS to build a redacted tenant snapshot.
 - Response is structured (`summary`, `tables`, `actions`) and rendered in Tower.
 
 ## Determinism Boundary

@@ -65,6 +65,10 @@ Owner del business plane:
 - `POST /v1/assistant/query`
 - `POST /v1/internal/tick`
 
+### AI operators -> SaaS
+
+- `GET /internal/assistant/context/:org_id`
+
 ## Reglas
 
 - `nexus-core` no toma ownership de billing, users o tenant settings.

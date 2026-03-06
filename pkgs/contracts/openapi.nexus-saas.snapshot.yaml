@@ -417,6 +417,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /internal/assistant/context/{org_id}:
+    get:
+      tags: [Internal]
+      operationId: getAssistantContext
+      summary: Build redacted assistant context snapshot for an org
+      security:
+        - NexusSaaSInternalKey: []
+      parameters:
+        - $ref: "#/components/parameters/OrgIDPath"
+      responses:
+        "200":
+          description: Assistant context snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalAssistantContextResponse"
+        "400":
+          description: Invalid org_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid internal key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Assistant context unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /internal/runtime-overrides/{org_id}/{tool_name}:
     get:
       tags: [Internal]
@@ -2148,10 +2183,189 @@ components:
           format: uuid
         plan_code:
           type: string
+        status:
+          type: string
         hard_limits:
           type: object
           additionalProperties: true
-      required: [org_id, plan_code, hard_limits]
+      required: [org_id, plan_code, status, hard_limits]
+
+    InternalAssistantContextResponse:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        generated_at:
+          type: string
+          format: date-time
+        tenant:
+          $ref: "#/components/schemas/InternalAssistantTenantSnapshot"
+        billing:
+          $ref: "#/components/schemas/InternalAssistantBillingSnapshot"
+        incidents:
+          $ref: "#/components/schemas/InternalAssistantIncidentCollection"
+        actions:
+          $ref: "#/components/schemas/InternalAssistantActionCollection"
+        proposals:
+          $ref: "#/components/schemas/InternalAssistantProposalCollection"
+        events:
+          $ref: "#/components/schemas/InternalAssistantEventCollection"
+      required: [org_id, generated_at, tenant, billing, incidents, actions, proposals, events]
+
+    InternalAssistantTenantSnapshot:
+      type: object
+      properties:
+        plan_code:
+          type: string
+        status:
+          type: string
+        hard_limits:
+          type: object
+          additionalProperties: true
+      required: [plan_code, status, hard_limits]
+
+    InternalAssistantBillingSnapshot:
+      type: object
+      properties:
+        billing_status:
+          type: string
+        usage_period:
+          type: string
+        usage:
+          $ref: "#/components/schemas/InternalAssistantUsageSnapshot"
+      required: [billing_status, usage_period, usage]
+
+    InternalAssistantUsageSnapshot:
+      type: object
+      properties:
+        api_calls:
+          type: integer
+          format: int64
+        events_ingested:
+          type: integer
+          format: int64
+        incidents_opened:
+          type: integer
+          format: int64
+        actions_executed:
+          type: integer
+          format: int64
+      required: [api_calls, events_ingested, incidents_opened, actions_executed]
+
+    InternalAssistantIncidentCollection:
+      type: object
+      properties:
+        open_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantIncidentItem"
+      required: [open_count, items]
+
+    InternalAssistantIncidentItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        severity:
+          type: string
+        status:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        opened_at:
+          type: string
+          format: date-time
+      required: [id, severity, status, title, summary, opened_at]
+
+    InternalAssistantActionCollection:
+      type: object
+      properties:
+        active_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantActionItem"
+      required: [active_count, items]
+
+    InternalAssistantActionItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action_type:
+          type: string
+        status:
+          type: string
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+        summary:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, action_type, status, scope_type, scope_id, summary, created_at]
+
+    InternalAssistantProposalCollection:
+      type: object
+      properties:
+        pending_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantProposalItem"
+      required: [pending_count, items]
+
+    InternalAssistantProposalItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        rationale:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, status, rationale, created_at]
+
+    InternalAssistantEventCollection:
+      type: object
+      properties:
+        recent_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InternalAssistantEventItem"
+      required: [recent_count, items]
+
+    InternalAssistantEventItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        summary:
+          type: string
+      required: [id, event_type, created_at, summary]
 
     InternalRuntimeOverridesResponse:
       type: object

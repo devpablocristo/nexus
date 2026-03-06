@@ -29,6 +29,10 @@ func (r *stubRepo) ListByCursor(_ context.Context, _ uuid.UUID, _ int64, _ int) 
 	return nil, nil
 }
 
+func (r *stubRepo) ListRecent(_ context.Context, _ uuid.UUID, _ int) ([]eventdomain.Event, error) {
+	return nil, nil
+}
+
 // stubMetering implements MeteringPort.
 type stubMetering struct {
 	calls   int

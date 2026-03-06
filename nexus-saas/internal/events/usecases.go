@@ -11,6 +11,7 @@ import (
 type RepositoryPort interface {
 	Create(ctx context.Context, ev eventdomain.Event) (eventdomain.Event, error)
 	ListByCursor(ctx context.Context, orgID uuid.UUID, cursor int64, limit int) ([]eventdomain.Event, error)
+	ListRecent(ctx context.Context, orgID uuid.UUID, limit int) ([]eventdomain.Event, error)
 }
 
 type MeteringPort interface {
@@ -54,4 +55,8 @@ func (u *Usecases) ListByCursor(ctx context.Context, orgID uuid.UUID, cursor int
 		next = items[len(items)-1].ID
 	}
 	return items, next, nil
+}
+
+func (u *Usecases) ListRecent(ctx context.Context, orgID uuid.UUID, limit int) ([]eventdomain.Event, error) {
+	return u.repo.ListRecent(ctx, orgID, limit)
 }
