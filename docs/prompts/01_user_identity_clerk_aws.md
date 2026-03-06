@@ -1,4 +1,4 @@
-# PROMPT: Implementar User Identity con Clerk + AWS para Nexus SaaS
+# Prompt 01 — Identidad de usuario con Clerk + AWS para Nexus SaaS
 
 ## Contexto del proyecto
 
@@ -12,6 +12,23 @@ Servicios:
 - **nexus-ai-operators** (Python/FastAPI, :8000) — Operadores IA
 - **nexus-tower** (React/TypeScript/Vite, :5173) — Frontend SPA
 - PostgreSQL x2, Redis, Prometheus, Grafana
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es parte del alcance requerido para identidad y acceso en Nexus:
+- Clerk en frontend
+- JWT/JWKS/OIDC
+- sync de usuarios y membresías
+- boundaries correctos entre `nexus-core`, `nexus-saas` y `nexus-tower`
+- validación, seguridad, observabilidad y testing del flujo
+
+El orden propuesto de implementación es solo técnico. No reduce el alcance final.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ## Stack decidido
 
@@ -48,7 +65,7 @@ CI/CD            → GitHub Actions
 
 5. **Roles**: "admin" y "secops" con scopes granulares
 
-6. **AuthContext** en nexus-tower (`src/contexts/AuthContext.tsx`): existe pero NO conectado
+6. **Auth/Auth bridge** en nexus-tower: existe base de autenticación y debe mantenerse alineada con Clerk, `ProtectedRoute` y el bridge de tokens hacia APIs
 
 7. **Org creation** en nexus-core: POST /v1/orgs (crea org + API key)
 
@@ -323,7 +340,9 @@ nexus-tower/
   src/api/client.ts  (ya existe, agregar Bearer token)
 ```
 
-## Orden de ejecución
+## Orden de ejecución recomendado
+
+**Aclaración importante**: este orden existe solo para respetar dependencias técnicas. Todo el contenido del prompt sigue siendo obligatorio.
 
 ```
 Fase 1 (día 1-2):  Clerk + nexus-tower auth (login, signup, protected routes)
@@ -332,7 +351,7 @@ Fase 3 (día 3-5):  Frontend páginas nuevas (keys, secrets, policies, incidents
 Fase 4 (día 5):    Config Docker, e2e tests
 ```
 
-## Criterio de "terminado"
+## Criterios de éxito
 
 - [ ] Un usuario puede registrarse desde el browser via Clerk
 - [ ] Un usuario puede loguearse y ver sus tools

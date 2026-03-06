@@ -1,4 +1,4 @@
-# Prompt 09 — Final Polish & Launch Readiness
+# Prompt 09 — Polish final y preparación de lanzamiento
 
 ## Contexto del proyecto
 
@@ -21,6 +21,24 @@ Nexus es una plataforma SaaS multi-tenant con 8 prompts ya implementados:
 | nexus-tower | Nginx/React | 4173 |
 | nexus-control-operators | Go | 8090 |
 | nexus-ai-operators | Python/FastAPI | 8000 |
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es obligatorio para salida a producción:
+- smoke tests
+- tenant lifecycle
+- páginas/estados de error
+- load testing
+- polish de SDKs y onboarding
+- changelog y launch checklist
+
+El orden sugerido es técnico; no reduce alcance.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ---
 
@@ -359,7 +377,7 @@ Crear `docs/runbooks/LAUNCH_CHECKLIST.md`:
 
 ---
 
-## Criterios de aceptación
+## Criterios de éxito
 
 ### Smoke test
 1. [ ] `bash scripts/smoke/smoke_prod.sh` contra stack local pasa todos los checks
@@ -398,7 +416,9 @@ Crear `docs/runbooks/LAUNCH_CHECKLIST.md`:
 
 ---
 
-## Orden sugerido de implementación
+## Orden de ejecución recomendado
+
+**Aclaración importante**: este orden existe solo para respetar dependencias técnicas. Todo el contenido del prompt sigue siendo obligatorio.
 
 1. Tenant lifecycle (migration + API + entitlements check)
 2. Frontend error pages (404, suspended, ErrorBoundary)

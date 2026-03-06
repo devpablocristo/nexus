@@ -2,6 +2,17 @@
 
 Nexus es un gateway de control para que agentes de IA ejecuten herramientas (APIs HTTP) de forma segura y gobernada. En lugar de que un agente llame directo a una API (pagos, CRM, etc.), llama a Nexus. Nexus decide si permite o no la ejecución, aplica reglas y límites, y registra todo.
 
+## Suite oficial de prompts
+
+La suite oficial para diseño e implementación vive en `docs/prompts/` y debe leerse empezando por `docs/prompts/00_base_transversal.md`.
+
+Orden oficial:
+- `00_base_transversal.md`
+- `01_user_identity_clerk_aws.md` a `10_production_hardening_final.md`
+- `11_ai_runtime_prompting_eval.md` a `17_architecture_decision_records.md`
+
+Todo prompt posterior hereda las invariantes de `00`: separación `core` vs `saas`, no LLM en enforcement, operators sin writes directos a DB, contratos primero, observabilidad, seguridad y testing.
+
 ---
 
 ## Arquitectura
@@ -54,7 +65,7 @@ Capa SaaS multi-tenant. Gestiona entidades de dominio, identidad OIDC, y funcion
 - Reglas de alerta (`/v1/alert-rules`).
 - Propuestas de políticas (`/v1/policy-proposals`).
 - Sesiones de agente (`GET /v1/sessions/:session_id`).
-- Asistente (`POST /v1/assistant/query`).
+- Asistente y proxy a AI operators (`POST /v1/assistant/query`).
 - OIDC completo con PKCE (`/v1/auth/oidc/*`).
 - Usage metering por org.
 - Proxy a nexus-core para audit, approvals, openapi.
@@ -323,7 +334,7 @@ Detecta PII en input y context: email, phone, credit_card, jwt, api_key, nationa
 | POST | `/v1/policy-proposals/:id/approve` | Aprobar propuesta |
 | POST | `/v1/policy-proposals/:id/reject` | Rechazar propuesta |
 | POST | `/v1/policy-proposals/:id/shadow` | Shadow propuesta |
-| POST | `/v1/assistant/query` | Query al asistente |
+| POST | `/v1/assistant/query` | Query al asistente; proxy a `nexus-ai-operators` |
 | POST | `/v1/assistant/tick` | Tick del asistente |
 | GET | `/v1/admin/bootstrap` | Bootstrap admin |
 | GET/PUT | `/v1/admin/tenant-settings` | Tenant settings |

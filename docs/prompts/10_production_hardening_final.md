@@ -1,4 +1,4 @@
-# Prompt 10 — Production Hardening (97% → 100%)
+# Prompt 10 — Hardening final de producción (97% → 100%)
 
 ## Contexto del proyecto
 
@@ -19,13 +19,30 @@ Nexus es una plataforma SaaS multi-tenant con 9 prompts ya implementados:
 |----------|-------|--------|
 | nexus-core | Go/Gin | 8080 |
 | nexus-saas | Go/Gin | 8082 |
-| nexus-control-operators | Go | 8083 |
-| nexus-ai-operators | Python/FastAPI | 8081 |
+| nexus-control-operators | Go | 8090 |
+| nexus-ai-operators | Python/FastAPI | 8000 |
 | nexus-tower | React/Vite/Nginx | 5173 |
 
 Monorepo root: `/home/pablo/Projects/Pablo/nexus`
 
 Shared Go packages: `pkgs/go-pkg/`
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es obligatorio para el cierre productivo final:
+- security policy y scanning
+- hardening de auth
+- DLQ y resiliencia de operators
+- documentación operativa adicional
+- traceability y polish final de servicios/frontend
+
+La secuencia propuesta es técnica. No convierte ninguna parte en opcional.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ---
 
@@ -765,6 +782,8 @@ Documentar en `docs/runbooks/DB_BACKUP_DR.md` como sección adicional "Periodic 
 ---
 
 ## Criterios de aceptación
+Estos criterios se consideran obligatorios para dar por cerrado el hardening final.
+
 
 | # | Criterio | Verificación |
 |---|----------|-------------|

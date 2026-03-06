@@ -41,7 +41,7 @@ Nexus is an **agent-operated execution control plane** — the governance layer 
 /nexus-ai-operators  Python AI operators service
 /nexus-tower       React supervision UI
 /sdks              Python SDK + TypeScript SDK
-/shared            Contracts (OpenAPI, event schemas, error codes)
+/pkgs/contracts    Contracts (OpenAPI, event schemas, error codes)
 /docs              Architecture and operations docs
 /scripts           Demo, seed, e2e scripts
 /Makefile          Root orchestration
@@ -131,7 +131,7 @@ Shared contracts under `pkgs/contracts/`:
 - External operators consume `GET /v1/events` and act through Nexus APIs (`/v1/actions/*`, `/v1/incidents`, `/v1/policy-proposals`).
 - Control operators run deterministic workers from `nexus-control-operators/cmd/ops-workers` and react via internal event-store workflows.
 - HITL: policies with `require_approval` block execution until a human approves/rejects.
-- Tower does not call LLM directly — routes through `nexus-core /v1/assistant/query`.
+- Tower does not call LLM directly — routes through `nexus-saas /v1/assistant/query`, que a su vez proxyea a `nexus-ai-operators`.
 
 ## Docs
 
@@ -139,3 +139,4 @@ Shared contracts under `pkgs/contracts/`:
 - [`docs/SERVICE_BOUNDARIES.md`](docs/SERVICE_BOUNDARIES.md) — Ownership boundaries between core and saas.
 - [`docs/AGENT_OPERATED_MODEL.md`](docs/AGENT_OPERATED_MODEL.md) — Agent-operated model and HITL flow.
 - [`docs/NAMING_AND_BOUNDARIES.md`](docs/NAMING_AND_BOUNDARIES.md) — Names, headers, compatibility.
+- [`docs/prompts/README.md`](docs/prompts/README.md) — Official prompts suite (`00-17`) and reading order.

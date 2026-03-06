@@ -48,6 +48,7 @@ Defines ownership between services in the Nexus system.
 - Consumes events and context via nexus-saas API
 - Proposes actions via nexus-core/nexus-saas API
 - No direct database access
+- Runtime prompting, evals, guardrails y fallback pertenecen a este servicio, pero nunca decide enforcement sobre `/v1/run`
 
 ## Rules
 
@@ -55,6 +56,8 @@ Defines ownership between services in the Nexus system.
 - `nexus-saas` must not implement core operational domains (run, policy enforcement, audit write).
 - Cross-service communication uses internal HTTP contracts with `X-NEXUS-AI-KEY` or `X-NEXUS-SAAS-KEY` headers.
 - Databases are separate: `nexus` (core) and `nexus_saas` (saas).
+- Tower talks to the assistant via `nexus-saas`; it must not call `nexus-ai-operators` directly.
+- Any new prompt or feature must remain aligned with `docs/prompts/00_base_transversal.md`.
 
 ## Internal Contracts
 

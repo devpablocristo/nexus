@@ -1,4 +1,4 @@
-# Prompt 08 — Monitoring, Observability & Final Polish
+# Prompt 08 — Monitoreo, observabilidad y polish final
 
 ## Contexto del proyecto
 
@@ -11,6 +11,23 @@ Nexus es una plataforma SaaS multi-tenant con 5 servicios:
 | nexus-control-operators | Go | 8090 | `/metrics` (custom) | `/healthz` |
 | nexus-ai-operators | Python/FastAPI | 8000 | `/metrics` (custom, requiere X-Operator-Key) | `/readyz` |
 | nexus-tower | Nginx/React | 4173 | — | `/` |
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es obligatorio para observabilidad real del sistema:
+- scraping y dashboards
+- métricas por servicio
+- alerting
+- SLO/SLI
+- polish de operators y superficies de monitoreo
+
+La secuencia de implementación es solo técnica.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ---
 
@@ -397,7 +414,7 @@ El endpoint `/metrics` y `/healthz` deben ser accesibles sin `X-Operator-Key`. V
 
 ---
 
-## Criterios de aceptación
+## Criterios de éxito
 
 ### Prometheus & scraping
 1. [ ] `curl http://localhost:9090/api/v1/targets` muestra 4 targets UP: nexus-core, nexus-saas, nexus-control-operators, nexus-ai-operators
@@ -440,7 +457,9 @@ El endpoint `/metrics` y `/healthz` deben ser accesibles sin `X-Operator-Key`. V
 
 ---
 
-## Orden sugerido de implementación
+## Orden de ejecución recomendado
+
+**Aclaración importante**: este orden existe solo para respetar dependencias técnicas. Todo el contenido del prompt sigue siendo obligatorio.
 
 1. Prometheus config (agregar scrape targets) — efecto inmediato
 2. Quitar auth de /metrics en ai-operators

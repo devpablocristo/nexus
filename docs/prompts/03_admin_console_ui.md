@@ -1,4 +1,4 @@
-# Prompt 03 — Admin Console UI en nexus-tower
+# Prompt 03 — UI de Admin Console en nexus-tower
 
 ## Contexto del proyecto
 
@@ -7,10 +7,27 @@ Nexus es una plataforma SaaS (Go + React/TypeScript) compuesta por:
 | Servicio | Stack | Puerto | Descripción |
 |----------|-------|--------|-------------|
 | `nexus-core` | Go/Gin | 8080 | Gateway pipeline, auth, tools, policies, egress, audit |
-| `nexus-saas` | Go/Gin | 8081 | Eventos, incidentes, acciones, admin, billing, users |
+| `nexus-saas` | Go/Gin | 8082 | Eventos, incidentes, acciones, admin, billing, users |
 | `nexus-tower` | React/Vite | 5173 | SPA frontend (Clerk auth, TanStack Query) |
 
 **Stack frontend**: React 18, Vite, TypeScript, React Router 6, TanStack Query, Clerk, CSS custom (sin Tailwind).
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es obligatorio para la Admin Console:
+- superficies de administración reales
+- permisos correctos
+- consumo de APIs existentes sin duplicación
+- consistencia visual y de UX con `nexus-tower`
+- testing, errores y estados de carga acordes al resto del producto
+
+La secuencia sugerida existe solo por dependencias técnicas.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ---
 
@@ -421,6 +438,8 @@ Usar `getAdminBootstrap()` para obtener `can_read_admin` y `can_write_admin`:
 ---
 
 ## Orden de ejecución recomendado
+
+**Aclaración importante**: este orden existe solo para respetar dependencias técnicas. Todo el contenido del prompt sigue siendo obligatorio.
 
 1. Tipos en `types.ts`
 2. Funciones API en `api.ts`

@@ -1,4 +1,4 @@
-# Prompt 05 — Developer Experience & CI/CD
+# Prompt 05 — Experiencia de desarrollo y CI/CD
 
 ## Contexto del proyecto
 
@@ -11,6 +11,23 @@ Nexus es una plataforma SaaS (Go + React/TypeScript) compuesta por:
 | `nexus-tower` | React/Vite | 5173 | Frontend SPA |
 | `nexus-control-operators` | Go | — | Operadores deterministas |
 | `nexus-ai-operators` | Python/FastAPI | 8000 | Operadores IA |
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es obligatorio para DX y release engineering:
+- OpenAPI y contratos
+- SDKs y developer portal
+- CI/CD
+- e2e y automatización de calidad
+- alineación entre docs, builds y artefactos publicados
+
+El orden sugerido es solo técnico.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ---
 
@@ -218,7 +235,7 @@ En el job `e2e` del CI, cambiar:
 
 ```yaml
       - name: Run JWT e2e tests
-        run: make jwt-e2e     # ← BUG: target no existe
+        run: make jwt-e2e
 ```
 
 Por:
@@ -421,6 +438,8 @@ Si hay nuevas variables (no debería haberlas para este prompt), agregarlas.
 ---
 
 ## Orden de ejecución recomendado
+
+**Aclaración importante**: este orden existe solo para respetar dependencias técnicas. Todo el contenido del prompt sigue siendo obligatorio.
 
 1. Leer TODOS los DTOs de nexus-saas (`handler/dto/dto.go` de cada módulo)
 2. Crear `pkgs/contracts/openapi.nexus-saas.snapshot.yaml`

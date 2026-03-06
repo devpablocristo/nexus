@@ -1,4 +1,4 @@
-# Prompt 02 — Billing & Payments con Stripe
+# Prompt 02 — Facturación y pagos con Stripe
 
 ## Contexto del proyecto
 
@@ -7,12 +7,28 @@ Nexus es una plataforma SaaS (Go + React/TypeScript) compuesta por:
 | Servicio | Stack | Puerto | Descripción |
 |----------|-------|--------|-------------|
 | `nexus-core` | Go/Gin | 8080 | Gateway pipeline, auth, tools, policies, egress, audit |
-| `nexus-saas` | Go/Gin | 8081 | Eventos, incidentes, acciones, admin, contratos, users |
+| `nexus-saas` | Go/Gin | 8082 | Eventos, incidentes, acciones, admin, contratos, users |
 | `nexus-tower` | React/Vite | 5173 | SPA frontend (Clerk auth) |
-| `nexus-control-operators` | Go | 8082 | Agentes deterministas (sentry, coordinator, mitigation, recovery) |
-| `nexus-ai-operators` | Python/FastAPI | 8090 | Agentes IA (observer, analyst, executor, assistant) |
+| `nexus-control-operators` | Go | 8090 | Agentes deterministas (sentry, coordinator, mitigation, recovery) |
+| `nexus-ai-operators` | Python/FastAPI | 8000 | Agentes IA (observer, analyst, executor, assistant) |
 
 **Stack decidido**: AWS + Clerk (identity) + **Stripe** (billing).
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es obligatorio para la capa de billing:
+- Stripe checkout, portal y webhooks
+- persistencia y estados de suscripción
+- dunning/grace period y límites por plan
+- wiring correcto entre `nexus-saas`, `nexus-tower`, docs, contratos y observabilidad
+
+La secuencia de implementación es técnica; no convierte ninguna parte en opcional.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ---
 
@@ -73,7 +89,7 @@ nexus-core consume esto para aplicar `run_rpm` rate-limit por tenant.
 
 - Clerk auth (login, signup, orgs, UserButton)
 - Tools CRUD, Audit Log, Monitoring, Secrets, Policies, Incidents, Events, Assistant, API Keys
-- **NO existe**: página de billing, usage dashboard, upgrade flow, ni pricing
+- Existen superficies iniciales de billing en `nexus-tower`, pero este prompt debe llevarlas a un flujo completo y alineado con backend, usage, checkout y portal.
 
 ---
 
@@ -412,6 +428,8 @@ El frontend solo usa `fetch` + redirects a Stripe-hosted pages.
 ---
 
 ## Orden de ejecución recomendado
+
+**Aclaración importante**: este orden existe solo para respetar dependencias técnicas. Todo el contenido del prompt sigue siendo obligatorio.
 
 1. Migración SQL (`0004_stripe_billing`)
 2. `stripe_client.go` (wrapper SDK)

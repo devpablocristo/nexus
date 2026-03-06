@@ -1,4 +1,4 @@
-# Prompt 07 — Security Hardening & Production Readiness
+# Prompt 07 — Hardening de seguridad y preparación para producción
 
 ## Contexto del proyecto
 
@@ -13,6 +13,24 @@ Nexus es una plataforma SaaS multi-tenant con estos servicios:
 | nexus-ai-operators | Python/FastAPI | 8000 | — | Operadores IA |
 
 **Monorepo** con Go workspace (`go.work`), React frontend, Python service.
+
+## Alcance obligatorio
+
+Este prompt hereda los estándares de `docs/prompts/00_base_transversal.md`.
+
+Todo lo definido acá es obligatorio para seguridad y readiness:
+- hardening de servicios
+- headers y límites
+- auth protections
+- dependency scanning
+- secret handling
+- métricas/paths sensibles
+
+Nada de este prompt debe leerse como opcional por defecto.
+
+## Prerequisito
+
+Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este prompt.
 
 ---
 
@@ -359,7 +377,7 @@ En nexus-core y nexus-saas `/metrics` también está sin auth, pero en producci�
 
 ---
 
-## Criterios de aceptación
+## Criterios de éxito
 
 1. **Headers de seguridad:**
    - [ ] `curl -I http://localhost:5174` muestra X-Frame-Options, X-Content-Type-Options, CSP, Referrer-Policy
@@ -401,7 +419,9 @@ En nexus-core y nexus-saas `/metrics` también está sin auth, pero en producci�
 
 ---
 
-## Orden sugerido de implementación
+## Orden de ejecución recomendado
+
+**Aclaración importante**: este orden existe solo para respetar dependencias técnicas. Todo el contenido del prompt sigue siendo obligatorio.
 
 1. Security headers middleware Go → registrar en ambos servicios
 2. Body limit en nexus-saas
