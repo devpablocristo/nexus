@@ -19,14 +19,14 @@ require (
 	github.com/rs/zerolog v1.33.0
 	gorm.io/datatypes v1.2.1
 	gorm.io/driver/postgres v1.5.7 // indirect
-	gorm.io/gorm v1.25.12
+	gorm.io/gorm v1.31.1
 )
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/wire v0.6.0
 	github.com/zsais/go-gin-prometheus v1.0.2
-	gorm.io/driver/sqlite v1.4.3 // test-only: in-memory DB for repository integration tests
+	gorm.io/driver/sqlite v1.6.0 // test-only: in-memory DB for repository integration tests
 )
 
 require github.com/prometheus/client_golang v1.22.0
@@ -73,7 +73,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-sqlite3 v1.14.15 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
