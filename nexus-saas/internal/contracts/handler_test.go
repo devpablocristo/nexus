@@ -23,13 +23,29 @@ import (
 )
 
 type entitlementsStub struct {
-	settings admindomain.TenantSettings
-	ok       bool
-	err      error
+	settings           admindomain.TenantSettings
+	protectedResources []admindomain.ProtectedResource
+	restoreEvidence    []admindomain.RestoreEvidence
+	ok                 bool
+	err                error
 }
 
 func (s *entitlementsStub) GetTenantSettings(_ context.Context, _ uuid.UUID) (admindomain.TenantSettings, bool, error) {
 	return s.settings, s.ok, s.err
+}
+
+func (s *entitlementsStub) ListProtectedResources(_ context.Context, _ uuid.UUID) ([]admindomain.ProtectedResource, error) {
+	return s.protectedResources, s.err
+}
+
+func (s *entitlementsStub) ListRestoreEvidence(_ context.Context, _ uuid.UUID, _ string, _ int) ([]admindomain.RestoreEvidence, error) {
+	return s.restoreEvidence, s.err
+}
+
+func (s *entitlementsStub) CreateRestoreEvidence(_ context.Context, evidence admindomain.RestoreEvidence) (admindomain.RestoreEvidence, error) {
+	evidence.CreatedAt = time.Now().UTC()
+	s.restoreEvidence = append(s.restoreEvidence, evidence)
+	return evidence, s.err
 }
 
 type usageStub struct {
@@ -248,5 +264,107 @@ func TestGetAssistantContext_ReturnsTenantScopedSnapshot(t *testing.T) {
 	event := eventItems[0].(map[string]any)
 	if event["summary"] == "" {
 		t.Fatal("expected summarized recent event")
+	}
+}
+
+func TestGetProtectedResources_ReturnsEnabledItems(t *testing.T) {
+	orgID := uuid.New()
+	h := &Handler{
+		cfg: config.ServiceConfig{SaaSInternalKey: "k1"},
+		admin: &entitlementsStub{
+			protectedResources: []admindomain.ProtectedResource{
+				{
+					ID:           uuid.New(),
+					OrgID:        orgID,
+					Name:         "prod-state-bucket",
+					ResourceType: "terraform_address",
+					MatchValue:   "aws_s3_bucket.prod_state",
+					MatchMode:    admindomain.ProtectedResourceMatchExact,
+					Environment:  "prod",
+					Reason:       "state backend crown jewel",
+					Enabled:      true,
+				},
+				{
+					ID:           uuid.New(),
+					OrgID:        orgID,
+					Name:         "disabled-resource",
+					ResourceType: "host",
+					MatchValue:   "db.internal",
+					MatchMode:    admindomain.ProtectedResourceMatchContains,
+					Environment:  "*",
+					Reason:       "disabled",
+					Enabled:      false,
+				},
+			},
+		},
+	}
+	r := newRouterForTest(h)
+	req := httptest.NewRequest(http.MethodGet, "/internal/protected-resources/"+orgID.String(), nil)
+	req.Header.Set("X-NEXUS-SAAS-KEY", "k1")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	items := body["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected one enabled resource, got %d", len(items))
+	}
+	item := items[0].(map[string]any)
+	if item["name"] != "prod-state-bucket" {
+		t.Fatalf("unexpected item: %#v", item)
+	}
+}
+
+func TestRecordAndGetRestoreEvidence(t *testing.T) {
+	orgID := uuid.New()
+	adminStub := &entitlementsStub{}
+	h := &Handler{
+		cfg:   config.ServiceConfig{SaaSInternalKey: "k1"},
+		admin: adminStub,
+	}
+	r := newRouterForTest(h)
+	req := httptest.NewRequest(http.MethodPost, "/internal/restore-evidence", bytes.NewReader([]byte(`{
+		"org_id":"`+orgID.String()+`",
+		"environment":"prod",
+		"system":"database",
+		"status":"passed",
+		"snapshot_id":"snap-123",
+		"restore_target":"restore-temp",
+		"completed_at":"2026-02-19T12:00:00Z",
+		"source":"dr.test_restore.sh",
+		"artifact_sha256":"sha-1",
+		"summary":{"core_ok":true}
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-NEXUS-SAAS-KEY", "k1")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", w.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/internal/restore-evidence/"+orgID.String()+"?environment=prod&limit=5", nil)
+	listReq.Header.Set("X-NEXUS-SAAS-KEY", "k1")
+	listW := httptest.NewRecorder()
+	r.ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", listW.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(listW.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	items := body["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected one evidence item, got %d", len(items))
+	}
+	item := items[0].(map[string]any)
+	if item["status"] != "passed" {
+		t.Fatalf("unexpected status: %#v", item)
 	}
 }

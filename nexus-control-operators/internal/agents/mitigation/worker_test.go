@@ -38,6 +38,11 @@ func TestMitigationWorker_AppliesOnlyNonApprovalActions(t *testing.T) {
 							"rpm":     120,
 							"tool_id": "echo",
 						},
+						"lease_headers": map[string]any{
+							"X-Nexus-Execution-Token": "lease-token",
+							"X-Nexus-Lease-Id":        "lease-1",
+							"X-Nexus-Credential-Mode": "aws_sts",
+						},
 					},
 					map[string]any{
 						"action_type": "quarantine_tenant",
@@ -63,11 +68,15 @@ func TestMitigationWorker_AppliesOnlyNonApprovalActions(t *testing.T) {
 	if engine.applyCalls != 1 {
 		t.Fatalf("expected 1 apply call, got=%d", engine.applyCalls)
 	}
+	if got := engine.applyReq.LeaseHeaders["X-Nexus-Execution-Token"]; got != "lease-token" {
+		t.Fatalf("expected lease token to propagate, got=%q", got)
+	}
 }
 
 type engineStub struct {
 	dryRunCalls int
 	applyCalls  int
+	applyReq    actionengine.EngineRequest
 }
 
 func (e *engineStub) DryRun(context.Context, uuid.UUID, *string, actionengine.EngineRequest) (actionengine.EngineResult, error) {
@@ -81,8 +90,9 @@ func (e *engineStub) DryRun(context.Context, uuid.UUID, *string, actionengine.En
 	}, nil
 }
 
-func (e *engineStub) Apply(context.Context, uuid.UUID, *string, actionengine.EngineRequest) (actionengine.EngineResult, error) {
+func (e *engineStub) Apply(_ context.Context, _ uuid.UUID, _ *string, req actionengine.EngineRequest) (actionengine.EngineResult, error) {
 	e.applyCalls++
+	e.applyReq = req
 	return actionengine.EngineResult{}, nil
 }
 

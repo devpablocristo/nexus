@@ -26,6 +26,7 @@ func (r *Repository) Create(ctx context.Context, req domain.CreateRequest) (doma
 	row := models.PendingApproval{
 		OrgID:           req.OrgID,
 		ToolID:          req.ToolID,
+		IntentID:        req.IntentID,
 		RequestID:       req.RequestID,
 		ToolName:        req.ToolName,
 		Actor:           req.Actor,
@@ -104,6 +105,7 @@ func toDomain(m models.PendingApproval) domain.PendingApproval {
 		ID:              m.ID,
 		OrgID:           m.OrgID,
 		ToolID:          m.ToolID,
+		IntentID:        m.IntentID,
 		RequestID:       m.RequestID,
 		ToolName:        m.ToolName,
 		Actor:           m.Actor,

@@ -56,6 +56,15 @@ type HTTPExecutorPort interface {
 	Execute(ctx context.Context, method, url string, input map[string]any, headers map[string]string, maxRetries int) (any, int, *types.HTTPError)
 }
 
+type LeaseCredentialMaterial struct {
+	Headers        map[string]string
+	ReplaceHeaders bool
+}
+
+type LeaseCredentialBrokerPort interface {
+	Issue(ctx context.Context, orgID uuid.UUID, tool tooldomain.Tool, lease gwdomain.ExecutionLease) (LeaseCredentialMaterial, error)
+}
+
 type IdempotencyPort interface {
 	Get(ctx context.Context, orgID uuid.UUID, toolName, key string) (*gwdomain.IdempotencyRecord, error)
 	CreateInProgress(ctx context.Context, rec gwdomain.IdempotencyRecord) (bool, error)
@@ -83,6 +92,55 @@ type ActionOverridesPort interface {
 	ResolveRuntimeOverrides(ctx context.Context, orgID uuid.UUID, toolName string) (RuntimeActionOverrides, error)
 }
 
+type ProtectedResource struct {
+	ID           uuid.UUID
+	Name         string
+	ResourceType string
+	MatchValue   string
+	MatchMode    string
+	Environment  string
+	Reason       string
+}
+
+type ProtectedResourcePort interface {
+	ListProtectedResources(ctx context.Context, orgID uuid.UUID) ([]ProtectedResource, error)
+}
+
+type RestoreEvidence struct {
+	ID             uuid.UUID
+	Environment    string
+	System         string
+	Status         string
+	SnapshotID     string
+	RestoreTarget  string
+	StartedAt      *time.Time
+	CompletedAt    *time.Time
+	Source         string
+	ArtifactSHA256 string
+	Summary        map[string]any
+	CreatedAt      time.Time
+}
+
+type RestoreEvidencePort interface {
+	ListRestoreEvidence(ctx context.Context, orgID uuid.UUID, environment string, limit int) ([]RestoreEvidence, error)
+}
+
+type LeaseRepoPort interface {
+	Create(ctx context.Context, lease gwdomain.ExecutionLease) (gwdomain.ExecutionLease, error)
+	GetByID(ctx context.Context, orgID, leaseID uuid.UUID) (gwdomain.ExecutionLease, error)
+	MarkUsed(ctx context.Context, orgID, leaseID uuid.UUID) error
+	MarkExpired(ctx context.Context, orgID, leaseID uuid.UUID) error
+	MarkRevoked(ctx context.Context, orgID, leaseID uuid.UUID) error
+}
+
+type IntentRepoPort interface {
+	Create(ctx context.Context, intent gwdomain.ExecutionIntent) (gwdomain.ExecutionIntent, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (gwdomain.ExecutionIntent, error)
+	ListRecent(ctx context.Context, orgID uuid.UUID, limit int) ([]gwdomain.ExecutionIntent, error)
+	LinkApproval(ctx context.Context, orgID, intentID, approvalID uuid.UUID) error
+	MarkExecuted(ctx context.Context, orgID, intentID uuid.UUID) error
+}
+
 type ApprovalPort interface {
 	RequestApproval(ctx context.Context, req ApprovalRequest) (string, error)
 }
@@ -98,6 +156,7 @@ type ApprovalRequest struct {
 	ContextRedacted map[string]any
 	Reason          string
 	PolicyID        *uuid.UUID
+	IntentID        *uuid.UUID
 	TTLSeconds      int
 }
 
@@ -113,6 +172,8 @@ type Config struct {
 	HTTPRetries                 int
 	DisableSSRFProtection       bool
 	EgressAllowlist             string
+	LeaseTokenIssuer            string
+	LeaseTokenSigningKey        string
 }
 
 // runState agrupa el estado compartido del pipeline Run entre las funciones auxiliares.
@@ -122,6 +183,7 @@ type runState struct {
 	budget                *gwdomain.TimeoutBudget
 	input                 map[string]any
 	contextMap            map[string]any
+	executionLease        *gwdomain.ExecutionLease
 	tool                  tooldomain.Tool
 	isWrite               bool
 	idemMeta              gwdomain.IdempotencyMeta
@@ -152,6 +214,11 @@ type Usecases struct {
 	idempotency     IdempotencyPort
 	tenantCaps      TenantLimitsPort
 	actionOverrides ActionOverridesPort
+	protectedRes    ProtectedResourcePort
+	restoreEv       RestoreEvidencePort
+	leaseRepo       LeaseRepoPort
+	leaseCreds      LeaseCredentialBrokerPort
+	intentRepo      IntentRepoPort
 	approval        ApprovalPort
 	metrics         RunMetricsPort
 	cache           *jsonschema.CompilerCache
@@ -184,6 +251,31 @@ func NewUsecases(toolRepo ToolRepoPort, policyRepo PolicyRepoPort, auditRepo Aud
 		cfg:             cfg,
 		log:             log,
 	}
+}
+
+func (u *Usecases) WithIntentRepo(intentRepo IntentRepoPort) *Usecases {
+	u.intentRepo = intentRepo
+	return u
+}
+
+func (u *Usecases) WithProtectedResources(protectedRes ProtectedResourcePort) *Usecases {
+	u.protectedRes = protectedRes
+	return u
+}
+
+func (u *Usecases) WithRestoreEvidence(restoreEv RestoreEvidencePort) *Usecases {
+	u.restoreEv = restoreEv
+	return u
+}
+
+func (u *Usecases) WithLeaseRepo(leaseRepo LeaseRepoPort) *Usecases {
+	u.leaseRepo = leaseRepo
+	return u
+}
+
+func (u *Usecases) WithLeaseCredentialBroker(leaseCreds LeaseCredentialBrokerPort) *Usecases {
+	u.leaseCreds = leaseCreds
+	return u
 }
 
 func (u *Usecases) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest) (gwdomain.RunResponse, error) {
@@ -254,7 +346,8 @@ func (u *Usecases) Run(ctx context.Context, orgID uuid.UUID, req gwdomain.RunReq
 	idemMeta := gwdomain.IdempotencyMeta{Present: req.IdempotencyKey != nil, Outcome: gwdomain.IdempotencySkippedNotWrite}
 	st := &runState{
 		start: start, requestID: requestID, budget: budget, input: input, contextMap: contextMap,
-		tool: tool, isWrite: isWrite, idemMeta: idemMeta,
+		executionLease: req.ExecutionLease,
+		tool:           tool, isWrite: isWrite, idemMeta: idemMeta,
 	}
 	if resp, err := u.runResolveIdempotency(ctx, orgID, req, st); err != nil {
 		return gwdomain.RunResponse{}, err
@@ -489,7 +582,54 @@ func (u *Usecases) runPoliciesAndDecision(ctx context.Context, orgID uuid.UUID, 
 		return &resp, nil
 	}
 	// 9b. Approval check: policy requires human approval before execution
+	if st.limits.requireApproval() && req.IntentID != "" {
+		return nil, nil
+	}
 	if st.limits.requireApproval() && u.approval != nil {
+		ttlSeconds := st.limits.approvalTTLSeconds()
+		riskClass := classifyRiskClass(st.tool, st.input, st.contextMap, ttlSeconds > 0)
+		protectedResources, err := u.listProtectedResources(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		restoreEvidence, err := u.listRestoreEvidence(ctx, orgID, "prod", 5)
+		if err != nil {
+			return nil, err
+		}
+		preflight := evaluateDeterministicPreflight(st.tool, st.input, st.contextMap, protectedResources, restoreEvidence)
+		if preflight.required && preflight.status == gwdomain.PreflightStatusFailed {
+			resp := u.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, preflight.failureReason, preflight.failureCode, preflight.failureHTTP, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+			u.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
+			return &resp, nil
+		}
+		var intent *gwdomain.ExecutionIntent
+		if u.intentRepo != nil {
+			created, err := u.intentRepo.Create(ctx, gwdomain.ExecutionIntent{
+				OrgID:                orgID,
+				ToolID:               st.tool.ID,
+				ToolName:             st.tool.Name,
+				RequestID:            st.requestID,
+				Actor:                req.Actor,
+				Role:                 req.Role,
+				Scopes:               append([]string{}, req.Scopes...),
+				Input:                cloneMap(st.input),
+				Context:              cloneMap(st.contextMap),
+				PolicyID:             st.policyID,
+				RiskClass:            riskClass,
+				Reason:               st.matchReason,
+				Status:               gwdomain.IntentStatusPendingApproval,
+				PreflightStatus:      preflight.status,
+				PreflightSummary:     cloneMap(preflight.summary),
+				PreflightArtifactSHA: preflight.artifactSHA256,
+				PreflightCompletedAt: nowPtrIfRequired(preflight.required),
+				ExpiresAt:            time.Now().UTC().Add(time.Duration(ttlSeconds) * time.Second),
+			})
+			if err != nil {
+				u.log.Error().Err(err).Str("request_id", st.requestID).Msg("execution_intent_create_failed")
+				return nil, err
+			}
+			intent = &created
+		}
 		approvalID, err := u.approval.RequestApproval(ctx, ApprovalRequest{
 			OrgID:           orgID,
 			ToolID:          st.tool.ID,
@@ -501,14 +641,25 @@ func (u *Usecases) runPoliciesAndDecision(ctx context.Context, orgID uuid.UUID, 
 			ContextRedacted: redactToMap(st.contextMap),
 			Reason:          st.matchReason,
 			PolicyID:        st.policyID,
-			TTLSeconds:      st.limits.approvalTTLSeconds(),
+			IntentID:        intentIDPtr(intent),
+			TTLSeconds:      ttlSeconds,
 		})
 		if err != nil {
 			u.log.Error().Err(err).Str("request_id", st.requestID).Msg("approval_request_failed")
 			return nil, err
 		}
+		if intent != nil {
+			if parsedApprovalID, parseErr := uuid.Parse(approvalID); parseErr == nil {
+				_ = u.intentRepo.LinkApproval(ctx, orgID, intent.ID, parsedApprovalID)
+			}
+		}
 		reason := "pending human approval (id: " + approvalID + ")"
 		resp := u.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, reason, types.ErrCodeApprovalRequired, http.StatusAccepted, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
+		if intent != nil {
+			resp.IntentID = strPtr(intent.ID.String())
+			resp.RiskClass = strPtr(string(intent.RiskClass))
+		}
+		resp.ApprovalID = strPtr(approvalID)
 		u.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
 		return &resp, nil
 	}
@@ -619,6 +770,25 @@ func (u *Usecases) Simulate(ctx context.Context, orgID uuid.UUID, req gwdomain.R
 		decision = gwdomain.DecisionDeny
 		matchReason = "egress host denied"
 	}
+	protectedResources, err := u.listProtectedResources(ctx, orgID)
+	if err != nil {
+		return gwdomain.SimulateResponse{}, err
+	}
+	restoreEvidence, err := u.listRestoreEvidence(ctx, orgID, "prod", 5)
+	if err != nil {
+		return gwdomain.SimulateResponse{}, err
+	}
+	preflight := evaluateDeterministicPreflight(tool, st.input, st.contextMap, protectedResources, restoreEvidence)
+	st.explain["preflight_required"] = preflight.required
+	st.explain["preflight_status"] = string(preflight.status)
+	st.explain["preflight_summary"] = preflight.summary
+	if preflight.artifactSHA256 != nil {
+		st.explain["preflight_artifact_sha256"] = *preflight.artifactSHA256
+	}
+	if decision == gwdomain.DecisionAllow && preflight.required && preflight.status == gwdomain.PreflightStatusFailed {
+		decision = gwdomain.DecisionDeny
+		matchReason = preflight.failureReason
+	}
 
 	secrets, err := u.secretRepo.ListForTool(ctx, orgID, tool.ID)
 	if err != nil {
@@ -636,6 +806,8 @@ func (u *Usecases) Simulate(ctx context.Context, orgID uuid.UUID, req gwdomain.R
 		code := types.ErrCodePolicyDenied
 		if matchReason == "egress host denied" {
 			code = types.ErrCodeEgressDenied
+		} else if preflight.required && preflight.status == gwdomain.PreflightStatusFailed {
+			code = types.ErrCodePreflightFailed
 		}
 		return u.simulateDeny(st, tool, matchReason, code, http.StatusForbidden, ""), nil
 	}
@@ -964,6 +1136,27 @@ func intPtr(v int) *int {
 	return &v
 }
 
+func intentIDPtr(intent *gwdomain.ExecutionIntent) *uuid.UUID {
+	if intent == nil {
+		return nil
+	}
+	return &intent.ID
+}
+
+func (u *Usecases) listProtectedResources(ctx context.Context, orgID uuid.UUID) ([]ProtectedResource, error) {
+	if u.protectedRes == nil {
+		return nil, nil
+	}
+	return u.protectedRes.ListProtectedResources(ctx, orgID)
+}
+
+func (u *Usecases) listRestoreEvidence(ctx context.Context, orgID uuid.UUID, environment string, limit int) ([]RestoreEvidence, error) {
+	if u.restoreEv == nil {
+		return nil, nil
+	}
+	return u.restoreEv.ListRestoreEvidence(ctx, orgID, environment, limit)
+}
+
 func (u *Usecases) errorRun(ctx context.Context, orgID uuid.UUID, req gwdomain.RunRequest, tool tooldomain.Tool, requestID string, policyID *uuid.UUID, reasonTemplate, reason string, code, msg *string, httpStatus int, start time.Time, input, contextMap map[string]any, dlpSummary map[string]any, idem gwdomain.IdempotencyMeta, timeoutMS int, budgetRemaining *int, stageDur map[string]int64) gwdomain.RunResponse {
 	latency := time.Since(start).Milliseconds()
 	_ = u.auditRepo.Create(ctx, auditdomain.AuditEvent{
@@ -1004,4 +1197,3 @@ func (u *Usecases) errorRun(ctx context.Context, orgID uuid.UUID, req gwdomain.R
 		Idempotency: idem,
 	}
 }
-

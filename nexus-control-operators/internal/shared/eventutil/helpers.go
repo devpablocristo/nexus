@@ -1,3 +1,4 @@
+// Package eventutil provides helpers for decoding operator event payloads.
 package eventutil
 
 import (
@@ -116,6 +117,17 @@ func ToStringSlice(v any) []string {
 	for _, it := range raw {
 		if s, ok := it.(string); ok && strings.TrimSpace(s) != "" {
 			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func ToStringMap(v any) map[string]string {
+	raw := ToMap(v)
+	out := map[string]string{}
+	for k, val := range raw {
+		if s := strings.TrimSpace(AsString(val)); s != "" {
+			out[k] = s
 		}
 	}
 	return out

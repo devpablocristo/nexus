@@ -1,14 +1,19 @@
 package operatorproxy
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
+
+	"nexus/pkg/leaseauth"
 )
 
 func TestForwardEventsWithInternalKey(t *testing.T) {
@@ -82,6 +87,84 @@ func TestAppendEventWithInternalKey(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"ok":true}`, rec.Body.String())
+}
+
+func TestForwardActionWithExecutionLeaseHeaders(t *testing.T) {
+	t.Setenv("NEXUS_AI_OPERATORS_INTERNAL_KEY", "op-key")
+	t.Setenv("NEXUS_OPERATOR_API_KEY", "saas-api")
+	t.Setenv("NEXUS_EXECUTION_LEASE_TOKEN_ISSUER", "nexus-core-test")
+	t.Setenv("NEXUS_EXECUTION_LEASE_SIGNING_KEY", "lease-secret")
+
+	token, err := leaseauth.SignToken("lease-secret", leaseauth.Claims{
+		OrgID:          "org-1",
+		LeaseID:        "lease-1",
+		IntentID:       "intent-1",
+		ToolName:       "operator-action",
+		RiskClass:      "mutate_prod",
+		CredentialMode: "aws_sts",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "nexus-core-test",
+			Subject:   "execution_lease",
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+			NotBefore: jwt.NewNumericDate(time.Now().UTC()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(5 * time.Minute)),
+		},
+	})
+	require.NoError(t, err)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/actions/apply", r.URL.Path)
+		require.Equal(t, "Bearer "+token, r.Header.Get("Authorization"))
+		require.Equal(t, token, r.Header.Get("X-Nexus-Execution-Token"))
+		require.Equal(t, "lease-1", r.Header.Get("X-Nexus-Lease-Id"))
+		require.Equal(t, "intent-1", r.Header.Get("X-Nexus-Intent-Id"))
+		require.Equal(t, "aws_sts", r.Header.Get("X-Nexus-Credential-Mode"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer upstream.Close()
+	t.Setenv("NEXUS_SAAS_URL", upstream.URL)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := NewHandlerFromEnv()
+	h.Register(r)
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/operators/actions/apply", bytes.NewReader([]byte(`{"foo":"bar"}`)))
+	req.Header.Set(headerOperatorKey, "op-key")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Nexus-Execution-Token", token)
+	req.Header.Set("X-Nexus-Lease-Id", "lease-1")
+	req.Header.Set("X-Nexus-Intent-Id", "intent-1")
+	req.Header.Set("X-Nexus-Credential-Mode", "aws_sts")
+	req.Header.Set("X-Nexus-Tool-Name", "operator-action")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `{"ok":true}`, rec.Body.String())
+}
+
+func TestRejectsInvalidExecutionLeaseToken(t *testing.T) {
+	t.Setenv("NEXUS_AI_OPERATORS_INTERNAL_KEY", "op-key")
+	t.Setenv("NEXUS_OPERATOR_API_KEY", "saas-api")
+	t.Setenv("NEXUS_SAAS_URL", "http://example.invalid")
+	t.Setenv("NEXUS_EXECUTION_LEASE_TOKEN_ISSUER", "nexus-core-test")
+	t.Setenv("NEXUS_EXECUTION_LEASE_SIGNING_KEY", "lease-secret")
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := NewHandlerFromEnv()
+	h.Register(r)
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/operators/actions/apply", bytes.NewReader([]byte(`{"foo":"bar"}`)))
+	req.Header.Set(headerOperatorKey, "op-key")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer invalid-token")
+	req.Header.Set("X-Nexus-Credential-Mode", "aws_sts")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 func TestMain(m *testing.M) {

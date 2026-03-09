@@ -1,3 +1,4 @@
+// Package actionengine exposes HTTP handlers for operator actions.
 package actionengine
 
 import (
@@ -94,6 +95,7 @@ func bindEngineRequest(c *gin.Context) (EngineRequest, bool) {
 		TTLSeconds:      req.TTLSeconds,
 		Params:          req.Params,
 		EvidenceRefs:    req.EvidenceRefs,
+		LeaseHeaders:    req.LeaseHeaders,
 		ApprovalGranted: req.ApprovalGranted,
 		ApprovalComment: req.ApprovalComment,
 	}

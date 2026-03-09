@@ -4,10 +4,14 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { EditLimitsModal } from '../components/EditLimitsModal';
 import {
+  createProtectedResource,
+  deleteProtectedResource,
   getAdminActivity,
   getAdminBootstrap,
+  getAdminRestoreEvidence,
   getBillingStatus,
   getOrgMembers,
+  getProtectedResources,
   getTools,
   deleteTenant,
   reactivateTenant,
@@ -27,6 +31,15 @@ const USAGE_METRICS: Array<{ key: keyof UsageSummary['counters']; label: string 
 export default function AdminPage() {
   const [editingLimits, setEditingLimits] = useState(false);
   const [tenantActionError, setTenantActionError] = useState('');
+  const [protectedResourceError, setProtectedResourceError] = useState('');
+  const [protectedResourceForm, setProtectedResourceForm] = useState({
+    name: '',
+    resource_type: 'terraform_address',
+    match_value: '',
+    match_mode: 'exact',
+    environment: 'prod',
+    reason: '',
+  });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -69,6 +82,18 @@ export default function AdminPage() {
     enabled: canReadAdmin,
   });
 
+  const protectedResourcesQuery = useQuery({
+    queryKey: ['admin-protected-resources'],
+    queryFn: getProtectedResources,
+    enabled: canReadAdmin,
+  });
+
+  const restoreEvidenceQuery = useQuery({
+    queryKey: ['admin-restore-evidence', 5, 'prod'],
+    queryFn: () => getAdminRestoreEvidence(5, 'prod'),
+    enabled: canReadAdmin,
+  });
+
   const updateLimitsMutation = useMutation({
     mutationFn: updateAdminTenantSettings,
     onSuccess: () => {
@@ -107,6 +132,34 @@ export default function AdminPage() {
       navigate('/suspended', { replace: true });
     },
     onError: (error) => setTenantActionError((error as Error).message),
+  });
+
+  const createProtectedResourceMutation = useMutation({
+    mutationFn: createProtectedResource,
+    onSuccess: () => {
+      setProtectedResourceError('');
+      setProtectedResourceForm({
+        name: '',
+        resource_type: 'terraform_address',
+        match_value: '',
+        match_mode: 'exact',
+        environment: 'prod',
+        reason: '',
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin-protected-resources'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-activity'] });
+    },
+    onError: (error) => setProtectedResourceError((error as Error).message),
+  });
+
+  const deleteProtectedResourceMutation = useMutation({
+    mutationFn: deleteProtectedResource,
+    onSuccess: () => {
+      setProtectedResourceError('');
+      queryClient.invalidateQueries({ queryKey: ['admin-protected-resources'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-activity'] });
+    },
+    onError: (error) => setProtectedResourceError((error as Error).message),
   });
 
   const usage = usageQuery.data ?? billingStatusQuery.data?.usage;
@@ -307,6 +360,122 @@ export default function AdminPage() {
 
       <section className="billing-section">
         <div className="admin-section-title">
+          <h3>Protected Resources</h3>
+          <span className="muted">Crown jewels blocked by deterministic preflight.</span>
+        </div>
+        {protectedResourcesQuery.error && <p className="field-error">{(protectedResourcesQuery.error as Error).message}</p>}
+        <div className="admin-activity-table-wrap">
+          <table className="table admin-activity-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Match</th>
+                <th>Env</th>
+                <th>Reason</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {(protectedResourcesQuery.data?.items ?? []).map((item) => (
+                <tr key={item.id}>
+                  <td>{item.name}</td>
+                  <td>{item.resource_type}</td>
+                  <td>
+                    <code>{item.match_mode}</code> {item.match_value}
+                  </td>
+                  <td>{item.environment}</td>
+                  <td>{item.reason || '—'}</td>
+                  <td>
+                    {canWriteAdmin && (
+                      <button
+                        className="btn-danger-sm"
+                        disabled={deleteProtectedResourceMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Delete protected resource "${item.name}"?`)) {
+                            deleteProtectedResourceMutation.mutate(item.id);
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!protectedResourcesQuery.isLoading && (protectedResourcesQuery.data?.items ?? []).length === 0 && (
+                <tr>
+                  <td colSpan={6} className="muted">
+                    No protected resources configured yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {canWriteAdmin && (
+          <form
+            className="admin-protected-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createProtectedResourceMutation.mutate(protectedResourceForm);
+            }}
+          >
+            <input
+              value={protectedResourceForm.name}
+              onChange={(event) => setProtectedResourceForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Name"
+            />
+            <select
+              value={protectedResourceForm.resource_type}
+              onChange={(event) =>
+                setProtectedResourceForm((current) => ({ ...current, resource_type: event.target.value }))
+              }
+            >
+              <option value="terraform_address">Terraform Address</option>
+              <option value="kubernetes_object">Kubernetes Object</option>
+              <option value="host">Host</option>
+              <option value="generic">Generic</option>
+            </select>
+            <input
+              value={protectedResourceForm.match_value}
+              onChange={(event) =>
+                setProtectedResourceForm((current) => ({ ...current, match_value: event.target.value }))
+              }
+              placeholder="Match value"
+            />
+            <select
+              value={protectedResourceForm.match_mode}
+              onChange={(event) => setProtectedResourceForm((current) => ({ ...current, match_mode: event.target.value }))}
+            >
+              <option value="exact">Exact</option>
+              <option value="contains">Contains</option>
+            </select>
+            <select
+              value={protectedResourceForm.environment}
+              onChange={(event) =>
+                setProtectedResourceForm((current) => ({ ...current, environment: event.target.value }))
+              }
+            >
+              <option value="prod">Prod</option>
+              <option value="nonprod">Nonprod</option>
+              <option value="*">Any</option>
+            </select>
+            <input
+              value={protectedResourceForm.reason}
+              onChange={(event) => setProtectedResourceForm((current) => ({ ...current, reason: event.target.value }))}
+              placeholder="Reason"
+            />
+            <button className="btn-secondary" disabled={createProtectedResourceMutation.isPending}>
+              {createProtectedResourceMutation.isPending ? 'Saving...' : 'Add Protected Resource'}
+            </button>
+          </form>
+        )}
+        {protectedResourceError && <p className="field-error">{protectedResourceError}</p>}
+      </section>
+
+      <section className="billing-section">
+        <div className="admin-section-title">
           <h3>Recent Activity</h3>
           <Link to="/admin/activity" className="admin-view-all-link">
             View all →
@@ -336,6 +505,45 @@ export default function AdminPage() {
                 <tr>
                   <td colSpan={4} className="muted">
                     No activity found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="billing-section">
+        <div className="admin-section-title">
+          <h3>Restore Evidence</h3>
+          <span className="muted">Recent DR validation artifacts for prod preflights.</span>
+        </div>
+        {restoreEvidenceQuery.error && <p className="field-error">{(restoreEvidenceQuery.error as Error).message}</p>}
+        <div className="admin-activity-table-wrap">
+          <table className="table admin-activity-table">
+            <thead>
+              <tr>
+                <th>Completed</th>
+                <th>System</th>
+                <th>Status</th>
+                <th>Snapshot</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(restoreEvidenceQuery.data?.items ?? []).map((item) => (
+                <tr key={item.id}>
+                  <td>{formatDateTime(item.completed_at || item.created_at)}</td>
+                  <td>{item.system}</td>
+                  <td>{item.status}</td>
+                  <td>{item.snapshot_id || '—'}</td>
+                  <td>{item.source || '—'}</td>
+                </tr>
+              ))}
+              {!restoreEvidenceQuery.isLoading && (restoreEvidenceQuery.data?.items ?? []).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    No restore evidence recorded yet.
                   </td>
                 </tr>
               )}

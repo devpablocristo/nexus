@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"nexus-core/internal/shared/leasehttp"
 )
 
 const headerOperatorKey = "X-NEXUS-AI-KEY"
@@ -53,6 +55,7 @@ func NewHandlerFromEnv() *Handler {
 func (h *Handler) Register(r *gin.Engine) {
 	g := r.Group("/internal/operators")
 	g.Use(h.requireInternalKey())
+	g.Use(leasehttp.NewFromEnv().Middleware())
 	g.GET("/events", h.forward(http.MethodGet, "/v1/events", "audit:read,admin:console:read", "operator/observer"))
 	g.POST("/events/append", h.appendEvent())
 	g.POST("/actions/apply", h.forward(http.MethodPost, "/v1/actions/apply", "admin:console:write", "operator/responder"))
@@ -92,6 +95,7 @@ func (h *Handler) appendEvent() gin.HandlerFunc {
 		}
 		upReq.Header.Set("Content-Type", "application/json")
 		upReq.Header.Set("X-NEXUS-SAAS-KEY", h.saasInternalKey)
+		copyExecutionLeaseHeaders(c.Request, upReq)
 		resp, err := h.client.Do(upReq)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "upstream unavailable"})
@@ -154,6 +158,7 @@ func (h *Handler) forward(method, targetPath, scopes, actor string) gin.HandlerF
 		req.Header.Set("X-NEXUS-SCOPES", scopes)
 		req.Header.Set("X-NEXUS-ACTOR", actor)
 		req.Header.Set("Content-Type", "application/json")
+		copyExecutionLeaseHeaders(c.Request, req)
 
 		resp, err := h.client.Do(req)
 		if err != nil {
@@ -171,6 +176,25 @@ func (h *Handler) forward(method, targetPath, scopes, actor string) gin.HandlerF
 		if len(payload) > 0 {
 			c.Header("Content-Type", "application/json")
 			_, _ = c.Writer.Write(payload)
+		}
+	}
+}
+
+func copyExecutionLeaseHeaders(src *http.Request, dst *http.Request) {
+	for _, header := range []string{
+		"Authorization",
+		"X-Nexus-Execution-Token",
+		"X-Nexus-Lease-Id",
+		"X-Nexus-Intent-Id",
+		"X-Nexus-Credential-Mode",
+		"X-Nexus-Tool-Name",
+		"X-Nexus-Risk-Class",
+		"X-Nexus-Credential-Scope",
+		"X-Nexus-Credential-Provider",
+		"X-Nexus-Target-Env",
+	} {
+		if value := strings.TrimSpace(src.Header.Get(header)); value != "" {
+			dst.Header.Set(header, value)
 		}
 	}
 }

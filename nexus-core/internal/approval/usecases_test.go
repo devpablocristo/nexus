@@ -16,6 +16,7 @@ type stubRepo struct {
 	decided   bool
 	decidedID uuid.UUID
 	expired   int64
+	intentID  *uuid.UUID
 }
 
 func (r *stubRepo) Create(_ context.Context, req domain.CreateRequest) (domain.PendingApproval, error) {
@@ -23,6 +24,7 @@ func (r *stubRepo) Create(_ context.Context, req domain.CreateRequest) (domain.P
 		ID:        uuid.New(),
 		OrgID:     req.OrgID,
 		ToolID:    req.ToolID,
+		IntentID:  req.IntentID,
 		RequestID: req.RequestID,
 		ToolName:  req.ToolName,
 		Actor:     req.Actor,
@@ -36,7 +38,7 @@ func (r *stubRepo) Create(_ context.Context, req domain.CreateRequest) (domain.P
 }
 
 func (r *stubRepo) GetByID(_ context.Context, orgID, id uuid.UUID) (domain.PendingApproval, error) {
-	return domain.PendingApproval{ID: id, OrgID: orgID, Status: domain.StatusPending}, nil
+	return domain.PendingApproval{ID: id, OrgID: orgID, Status: domain.StatusPending, IntentID: r.intentID}, nil
 }
 
 func (r *stubRepo) ListPending(_ context.Context, _ uuid.UUID, _ int) ([]domain.PendingApproval, error) {
@@ -54,6 +56,21 @@ func (r *stubRepo) Decide(_ context.Context, _ uuid.UUID, id uuid.UUID, _ domain
 
 func (r *stubRepo) ExpireOld(_ context.Context) (int64, error) {
 	return r.expired, nil
+}
+
+type stubIntentPort struct {
+	approved uuid.UUID
+	rejected uuid.UUID
+}
+
+func (s *stubIntentPort) MarkIntentApproved(_ context.Context, _ uuid.UUID, intentID uuid.UUID) error {
+	s.approved = intentID
+	return nil
+}
+
+func (s *stubIntentPort) MarkIntentRejected(_ context.Context, _ uuid.UUID, intentID uuid.UUID) error {
+	s.rejected = intentID
+	return nil
 }
 
 func TestRequestApproval_DefaultTTL(t *testing.T) {
@@ -95,6 +112,29 @@ func TestApproveReject(t *testing.T) {
 	}
 	if !repo.decided {
 		t.Error("expected Decide to be called for reject")
+	}
+}
+
+func TestApproveRejectSyncsIntentStatus(t *testing.T) {
+	intentID := uuid.New()
+	repo := &stubRepo{intentID: &intentID}
+	intentPort := &stubIntentPort{}
+	svc := NewUsecases(repo).WithIntentPort(intentPort)
+
+	approvalID := uuid.New()
+	orgID := uuid.New()
+	if err := svc.Approve(context.Background(), orgID, approvalID, "admin@co"); err != nil {
+		t.Fatal(err)
+	}
+	if intentPort.approved != intentID {
+		t.Fatalf("expected approved intent %s, got %s", intentID, intentPort.approved)
+	}
+
+	if err := svc.Reject(context.Background(), orgID, approvalID, "admin@co"); err != nil {
+		t.Fatal(err)
+	}
+	if intentPort.rejected != intentID {
+		t.Fatalf("expected rejected intent %s, got %s", intentID, intentPort.rejected)
 	}
 }
 

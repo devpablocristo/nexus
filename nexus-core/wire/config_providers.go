@@ -23,5 +23,7 @@ func ProvideGatewayConfig(cfg config.ServiceConfig) gateway.Config {
 		IdempotencyStalenessSeconds: 120,
 		DisableSSRFProtection:       cfg.DisableSSRFProtection,
 		EgressAllowlist:             cfg.EgressAllowlist,
+		LeaseTokenIssuer:            cfg.ExecutionLeaseTokenIssuer,
+		LeaseTokenSigningKey:        cfg.ExecutionLeaseSigningKey,
 	}
 }

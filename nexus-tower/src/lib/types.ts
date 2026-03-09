@@ -210,6 +210,36 @@ export type AdminActivityItem = {
   created_at: string;
 };
 
+export type ProtectedResourceItem = {
+  id: string;
+  name: string;
+  resource_type: string;
+  match_value: string;
+  match_mode: 'exact' | 'contains' | string;
+  environment: 'prod' | 'nonprod' | '*' | string;
+  reason?: string;
+  enabled: boolean;
+  created_by?: string;
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RestoreEvidenceItem = {
+  id: string;
+  environment: string;
+  system: string;
+  status: 'passed' | 'failed' | string;
+  snapshot_id?: string;
+  restore_target?: string;
+  started_at?: string;
+  completed_at?: string;
+  source?: string;
+  artifact_sha256?: string;
+  summary: Record<string, unknown>;
+  created_at: string;
+};
+
 export type NotificationPreference = {
   notification_type: string;
   channel: string;
@@ -224,5 +254,56 @@ export type InAppNotification = {
   title: string;
   body: string;
   read_at?: string | null;
+  created_at: string;
+};
+
+export type ExecutionIntentItem = {
+  id: string;
+  request_id: string;
+  tool_name: string;
+  actor?: string;
+  role?: string;
+  scopes: string[];
+  input: Record<string, unknown>;
+  context: Record<string, unknown>;
+  policy_id?: string;
+  risk_class: 'read' | 'plan' | 'mutate_nonprod' | 'mutate_prod' | 'destructive_prod' | 'break_glass';
+  reason: string;
+  approval_id?: string;
+  status: 'pending_approval' | 'approved' | 'rejected' | 'executed' | 'expired';
+  preflight_status: 'not_required' | 'passed' | 'failed';
+  preflight_summary: Record<string, unknown>;
+  preflight_artifact_sha256?: string;
+  preflight_completed_at?: string;
+  expires_at: string;
+  approved_at?: string;
+  executed_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PreflightReview = {
+  intent_id: string;
+  tool_name: string;
+  risk_class: ExecutionIntentItem['risk_class'];
+  reason: string;
+  status: ExecutionIntentItem['preflight_status'];
+  summary: Record<string, unknown>;
+  artifact_sha256?: string;
+  completed_at?: string;
+  approval_id?: string;
+  intent_status: ExecutionIntentItem['status'];
+};
+
+export type ExecutionLeaseItem = {
+  id: string;
+  intent_id: string;
+  tool_name: string;
+  risk_class: ExecutionIntentItem['risk_class'];
+  status: 'active' | 'used' | 'expired' | 'revoked' | string;
+  credential_mode: string;
+  credential_hints: Record<string, unknown>;
+  expires_at: string;
+  used_at?: string;
   created_at: string;
 };

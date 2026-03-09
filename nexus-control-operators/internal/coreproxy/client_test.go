@@ -38,6 +38,75 @@ func TestClient_DoJSON_Success(t *testing.T) {
 	}
 }
 
+func TestClient_DoJSON_ForwardsExecutionLeaseHeadersFromContext(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-NEXUS-AI-KEY") != "test-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer lease-token" {
+			t.Fatalf("expected Authorization header, got %q", got)
+		}
+		if got := r.Header.Get("X-Nexus-Execution-Token"); got != "lease-token" {
+			t.Fatalf("expected execution token header, got %q", got)
+		}
+		if got := r.Header.Get("X-Nexus-Lease-Id"); got != "lease-1" {
+			t.Fatalf("expected lease id header, got %q", got)
+		}
+		if got := r.Header.Get("X-Nexus-Credential-Mode"); got != "aws_sts" {
+			t.Fatalf("expected credential mode header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "test-key", 2*time.Second, zerolog.Nop())
+	client.retryBackoffBase = time.Millisecond
+
+	ctx := WithExecutionLeaseHeaders(context.Background(), map[string]string{
+		"Authorization":           "Bearer lease-token",
+		"X-Nexus-Execution-Token": "lease-token",
+		"X-Nexus-Lease-Id":        "lease-1",
+		"X-Nexus-Credential-Mode": "aws_sts",
+		"X-Unrelated":             "ignored",
+	})
+
+	var out map[string]any
+	err := client.DoJSON(ctx, "POST", "/test", map[string]string{"foo": "bar"}, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestClient_DoJSON_IgnoresEmptyExecutionLeaseHeaders(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Nexus-Execution-Token"); got != "" {
+			t.Fatalf("expected empty execution token header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "test-key", 2*time.Second, zerolog.Nop())
+	client.retryBackoffBase = time.Millisecond
+
+	ctx := WithExecutionLeaseHeaders(context.Background(), map[string]string{
+		"X-Nexus-Execution-Token": "   ",
+	})
+
+	var out map[string]any
+	err := client.DoJSON(ctx, "POST", "/test", map[string]string{"foo": "bar"}, &out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestClient_DoJSON_ServerError(t *testing.T) {
 	t.Parallel()
 

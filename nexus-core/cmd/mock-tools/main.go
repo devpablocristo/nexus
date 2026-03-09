@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"nexus-core/internal/shared/leasehttp"
 )
 
 func main() {
@@ -16,7 +18,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-	r := NewRouter(auth)
+	r := NewRouter(auth, leasehttp.NewFromEnv())
 	srv := &http.Server{
 		Addr:              "0.0.0.0:8081",
 		Handler:           r,

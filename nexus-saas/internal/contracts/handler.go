@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,6 +42,9 @@ type Handler struct {
 
 type entitlementsStore interface {
 	GetTenantSettings(ctx context.Context, orgID uuid.UUID) (admindomain.TenantSettings, bool, error)
+	ListProtectedResources(ctx context.Context, orgID uuid.UUID) ([]admindomain.ProtectedResource, error)
+	ListRestoreEvidence(ctx context.Context, orgID uuid.UUID, environment string, limit int) ([]admindomain.RestoreEvidence, error)
+	CreateRestoreEvidence(ctx context.Context, evidence admindomain.RestoreEvidence) (admindomain.RestoreEvidence, error)
 }
 
 type usageSink interface {
@@ -107,6 +111,9 @@ func (h *Handler) RegisterInternal(r *gin.Engine) {
 	g.GET("/entitlements/:org_id", h.getEntitlements)
 	g.GET("/assistant/context/:org_id", h.getAssistantContext)
 	g.GET("/runtime-overrides/:org_id/:tool_name", h.getRuntimeOverrides)
+	g.GET("/protected-resources/:org_id", h.getProtectedResources)
+	g.GET("/restore-evidence/:org_id", h.getRestoreEvidence)
+	g.POST("/restore-evidence", h.recordRestoreEvidence)
 }
 
 func (h *Handler) requireInternalKey(c *gin.Context) {
@@ -137,6 +144,20 @@ type operationalEventRequest struct {
 	OrgID     string         `json:"org_id" binding:"required"`
 	EventType string         `json:"event_type" binding:"required"`
 	Payload   map[string]any `json:"payload"`
+}
+
+type restoreEvidenceRequest struct {
+	OrgID          string         `json:"org_id" binding:"required"`
+	Environment    string         `json:"environment"`
+	System         string         `json:"system"`
+	Status         string         `json:"status"`
+	SnapshotID     string         `json:"snapshot_id"`
+	RestoreTarget  string         `json:"restore_target"`
+	StartedAt      string         `json:"started_at"`
+	CompletedAt    string         `json:"completed_at"`
+	Source         string         `json:"source"`
+	ArtifactSHA256 string         `json:"artifact_sha256"`
+	Summary        map[string]any `json:"summary"`
 }
 
 func (h *Handler) ingestUsageEvent(c *gin.Context) {
@@ -249,6 +270,148 @@ func (h *Handler) getRuntimeOverrides(c *gin.Context) {
 		"deny_reason":         overrides.DenyReason,
 		"tenant_rpm_override": overrides.TenantRPMOverride,
 		"tool_rpm_override":   overrides.ToolRPMOverride,
+	})
+}
+
+func (h *Handler) getProtectedResources(c *gin.Context) {
+	if h.admin == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "UNAVAILABLE", "message": "protected resources unavailable"}})
+		return
+	}
+	orgID, err := uuid.Parse(strings.TrimSpace(c.Param("org_id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid org_id"}})
+		return
+	}
+	items, err := h.admin.ListProtectedResources(c.Request.Context(), orgID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "INTERNAL", "message": "failed to read protected resources"}})
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		if !item.Enabled {
+			continue
+		}
+		out = append(out, gin.H{
+			"id":            item.ID.String(),
+			"name":          item.Name,
+			"resource_type": item.ResourceType,
+			"match_value":   item.MatchValue,
+			"match_mode":    item.MatchMode,
+			"environment":   item.Environment,
+			"reason":        item.Reason,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"org_id": orgID.String(),
+		"items":  out,
+	})
+}
+
+func (h *Handler) getRestoreEvidence(c *gin.Context) {
+	if h.admin == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "UNAVAILABLE", "message": "restore evidence unavailable"}})
+		return
+	}
+	orgID, err := uuid.Parse(strings.TrimSpace(c.Param("org_id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid org_id"}})
+		return
+	}
+	environment := strings.TrimSpace(strings.ToLower(c.Query("environment")))
+	limit := 20
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		if parsed, convErr := strconv.Atoi(raw); convErr == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	items, err := h.admin.ListRestoreEvidence(c.Request.Context(), orgID, environment, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "INTERNAL", "message": "failed to read restore evidence"}})
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, item := range items {
+		out = append(out, gin.H{
+			"id":              item.ID.String(),
+			"environment":     item.Environment,
+			"system":          item.System,
+			"status":          item.Status,
+			"snapshot_id":     item.SnapshotID,
+			"restore_target":  item.RestoreTarget,
+			"started_at":      formatTimePtr(item.StartedAt),
+			"completed_at":    formatTimePtr(item.CompletedAt),
+			"source":          item.Source,
+			"artifact_sha256": item.ArtifactSHA256,
+			"summary":         item.Summary,
+			"created_at":      item.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"org_id":      orgID.String(),
+		"environment": environment,
+		"items":       out,
+	})
+}
+
+func (h *Handler) recordRestoreEvidence(c *gin.Context) {
+	if h.admin == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "UNAVAILABLE", "message": "restore evidence unavailable"}})
+		return
+	}
+	var req restoreEvidenceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid json"}})
+		return
+	}
+	orgID, err := uuid.Parse(strings.TrimSpace(req.OrgID))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid org_id"}})
+		return
+	}
+	startedAt, err := parseOptionalRFC3339(req.StartedAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid started_at"}})
+		return
+	}
+	completedAt, err := parseOptionalRFC3339(req.CompletedAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "VALIDATION", "message": "invalid completed_at"}})
+		return
+	}
+	item, err := h.admin.CreateRestoreEvidence(c.Request.Context(), admindomain.RestoreEvidence{
+		ID:             uuid.New(),
+		OrgID:          orgID,
+		Environment:    strings.TrimSpace(strings.ToLower(req.Environment)),
+		System:         strings.TrimSpace(strings.ToLower(req.System)),
+		Status:         strings.TrimSpace(strings.ToLower(req.Status)),
+		SnapshotID:     strings.TrimSpace(req.SnapshotID),
+		RestoreTarget:  strings.TrimSpace(req.RestoreTarget),
+		StartedAt:      startedAt,
+		CompletedAt:    completedAt,
+		Source:         strings.TrimSpace(req.Source),
+		ArtifactSHA256: strings.TrimSpace(req.ArtifactSHA256),
+		Summary:        req.Summary,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "INTERNAL", "message": "failed to record restore evidence"}})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"id":              item.ID.String(),
+		"org_id":          item.OrgID.String(),
+		"environment":     item.Environment,
+		"system":          item.System,
+		"status":          item.Status,
+		"snapshot_id":     item.SnapshotID,
+		"restore_target":  item.RestoreTarget,
+		"started_at":      formatTimePtr(item.StartedAt),
+		"completed_at":    formatTimePtr(item.CompletedAt),
+		"source":          item.Source,
+		"artifact_sha256": item.ArtifactSHA256,
+		"summary":         item.Summary,
+		"created_at":      item.CreatedAt.UTC().Format(time.RFC3339),
 	})
 }
 
@@ -574,4 +737,24 @@ func isPendingProposal(status proposaldomain.Status) bool {
 func usagePeriodUTC(now time.Time) time.Time {
 	now = now.UTC()
 	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+func parseOptionalRFC3339(raw string) (*time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, err
+	}
+	parsed = parsed.UTC()
+	return &parsed, nil
+}
+
+func formatTimePtr(v *time.Time) string {
+	if v == nil || v.IsZero() {
+		return ""
+	}
+	return v.UTC().Format(time.RFC3339)
 }

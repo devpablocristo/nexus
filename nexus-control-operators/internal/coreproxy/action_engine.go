@@ -82,6 +82,7 @@ func (e *CoreActionEngine) Apply(ctx context.Context, orgID uuid.UUID, actor *st
 	if actionReq.Scope == nil {
 		body["scope"] = map[string]any{"level": "org", "org_id": orgID.String()}
 	}
+	ctx = WithExecutionLeaseHeaders(ctx, actionReq.LeaseHeaders)
 	var resp map[string]any
 	if err := e.client.DoJSON(ctx, "POST", "/internal/operators/actions/apply", body, &resp); err != nil {
 		return opsaction.EngineResult{}, err
@@ -154,7 +155,7 @@ func proposalIDOrNew(id *uuid.UUID) uuid.UUID {
 }
 
 type proposalEntry struct {
-	ID  string                 `json:"id"`
+	ID  string                  `json:"id"`
 	Req opsaction.EngineRequest `json:"req"`
 }
 

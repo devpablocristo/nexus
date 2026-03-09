@@ -16,6 +16,31 @@ trap cleanup EXIT
 
 cp -R "${INFRA_DIR}/." "${WORK_DIR}/"
 
+python3 - "${INFRA_DIR}" <<'PY'
+from pathlib import Path
+import sys
+
+infra_dir = Path(sys.argv[1])
+db_main = (infra_dir / "modules" / "database" / "main.tf").read_text()
+root_vars = (infra_dir / "variables.tf").read_text()
+cdn_vars = (infra_dir / "modules" / "cdn" / "variables.tf").read_text()
+
+required_db_markers = [
+    "deletion_protection          = true",
+    "skip_final_snapshot          = false",
+    "copy_tags_to_snapshot        = true",
+]
+for marker in required_db_markers:
+    if db_main.count(marker) < 2:
+        raise SystemExit(f"missing required RDS guardrail: {marker}")
+
+if 'variable "tower_force_destroy"' not in root_vars or 'default     = false' not in root_vars:
+    raise SystemExit("tower_force_destroy must exist with default false")
+
+if 'variable "force_destroy_bucket"' not in cdn_vars or 'default = false' not in cdn_vars:
+    raise SystemExit("cdn force_destroy_bucket must default to false")
+PY
+
 python3 - "${WORK_DIR}/main.tf" <<'PY'
 from pathlib import Path
 import re

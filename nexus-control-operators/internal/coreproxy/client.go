@@ -1,3 +1,4 @@
+// Package coreproxy provides HTTP clients for protected nexus-core routes.
 package coreproxy
 
 import (
@@ -91,6 +92,7 @@ func (c *Client) doJSONOnce(ctx context.Context, method, path string, rawBody []
 	}
 	req.Header.Set("X-NEXUS-AI-KEY", c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	applyExecutionLeaseHeaders(ctx, req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {

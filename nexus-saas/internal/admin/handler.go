@@ -27,6 +27,11 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.GET("/admin/bootstrap", h.bootstrap)
 	rg.GET("/admin/tenant-settings", h.getTenantSettings)
 	rg.PUT("/admin/tenant-settings", h.upsertTenantSettings)
+	rg.GET("/admin/protected-resources", h.listProtectedResources)
+	rg.GET("/admin/restore-evidence", h.listRestoreEvidence)
+	rg.POST("/admin/restore-evidence", h.recordRestoreEvidence)
+	rg.POST("/admin/protected-resources", h.createProtectedResource)
+	rg.DELETE("/admin/protected-resources/:id", h.deleteProtectedResource)
 	rg.PUT("/admin/tenants/:org_id/suspend", h.suspendTenant)
 	rg.PUT("/admin/tenants/:org_id/reactivate", h.reactivateTenant)
 	rg.DELETE("/admin/tenants/:org_id", h.deleteTenant)
@@ -115,6 +120,122 @@ func (h *Handler) listActivity(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+func (h *Handler) listProtectedResources(c *gin.Context) {
+	orgID := mustOrgID(c)
+	items, err := h.uc.ListProtectedResources(c.Request.Context(), orgID, actorFromCtx(c), roleFromCtx(c), scopesFromCtx(c))
+	if err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	resp := admindto.ProtectedResourcesResponse{Items: make([]admindto.ProtectedResourceItem, 0, len(items))}
+	for _, item := range items {
+		resp.Items = append(resp.Items, toProtectedResourceDTO(item))
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) createProtectedResource(c *gin.Context) {
+	orgID := mustOrgID(c)
+	var req admindto.CreateProtectedResourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errors.BadRequest(c, "invalid json")
+		return
+	}
+	item, err := h.uc.CreateProtectedResource(c.Request.Context(), orgID, actorFromCtx(c), roleFromCtx(c), scopesFromCtx(c), CreateProtectedResourceRequest{
+		Name:         req.Name,
+		ResourceType: req.ResourceType,
+		MatchValue:   req.MatchValue,
+		MatchMode:    req.MatchMode,
+		Environment:  req.Environment,
+		Reason:       req.Reason,
+		Enabled:      req.Enabled,
+	})
+	if err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toProtectedResourceDTO(item))
+}
+
+func (h *Handler) listRestoreEvidence(c *gin.Context) {
+	orgID := mustOrgID(c)
+	items, err := h.uc.ListRestoreEvidence(
+		c.Request.Context(),
+		orgID,
+		actorFromCtx(c),
+		roleFromCtx(c),
+		scopesFromCtx(c),
+		c.Query("environment"),
+		parseLimit(c.Query("limit")),
+	)
+	if err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	resp := admindto.RestoreEvidenceResponse{Items: make([]admindto.RestoreEvidenceItem, 0, len(items))}
+	for _, item := range items {
+		resp.Items = append(resp.Items, toRestoreEvidenceDTO(item))
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) recordRestoreEvidence(c *gin.Context) {
+	orgID := mustOrgID(c)
+	actor := actorFromCtx(c)
+	role := roleFromCtx(c)
+	scopes := scopesFromCtx(c)
+	if _, canWrite := adminCapabilities(role, scopes); !canWrite {
+		errors.WriteFrom(c, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console write permission required"))
+		return
+	}
+	var req admindto.RecordRestoreEvidenceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errors.BadRequest(c, "invalid json")
+		return
+	}
+	startedAt, err := parseOptionalRFC3339(req.StartedAt)
+	if err != nil {
+		errors.BadRequest(c, "invalid started_at")
+		return
+	}
+	completedAt, err := parseOptionalRFC3339(req.CompletedAt)
+	if err != nil {
+		errors.BadRequest(c, "invalid completed_at")
+		return
+	}
+	item, err := h.uc.RecordRestoreEvidence(c.Request.Context(), orgID, actor, RecordRestoreEvidenceRequest{
+		Environment:    req.Environment,
+		System:         req.System,
+		Status:         req.Status,
+		SnapshotID:     req.SnapshotID,
+		RestoreTarget:  req.RestoreTarget,
+		StartedAt:      startedAt,
+		CompletedAt:    completedAt,
+		Source:         req.Source,
+		ArtifactSHA256: req.ArtifactSHA256,
+		Summary:        req.Summary,
+	})
+	if err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toRestoreEvidenceDTO(item))
+}
+
+func (h *Handler) deleteProtectedResource(c *gin.Context) {
+	orgID := mustOrgID(c)
+	resourceID, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		errors.BadRequest(c, "invalid protected resource id")
+		return
+	}
+	if err := h.uc.DeleteProtectedResource(c.Request.Context(), orgID, actorFromCtx(c), roleFromCtx(c), scopesFromCtx(c), resourceID); err != nil {
+		errors.WriteFrom(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 func toTenantSettingsDTO(s admindomain.TenantSettings) admindto.TenantSettings {
 	return admindto.TenantSettings{
 		PlanCode:   s.PlanCode,
@@ -125,6 +246,53 @@ func toTenantSettingsDTO(s admindomain.TenantSettings) admindto.TenantSettings {
 		UpdatedAt:  formatTime(s.UpdatedAt),
 		CreatedAt:  formatTime(s.CreatedAt),
 	}
+}
+
+func toProtectedResourceDTO(item admindomain.ProtectedResource) admindto.ProtectedResourceItem {
+	return admindto.ProtectedResourceItem{
+		ID:           item.ID.String(),
+		Name:         item.Name,
+		ResourceType: item.ResourceType,
+		MatchValue:   item.MatchValue,
+		MatchMode:    item.MatchMode,
+		Environment:  item.Environment,
+		Reason:       item.Reason,
+		Enabled:      item.Enabled,
+		CreatedBy:    item.CreatedBy,
+		UpdatedBy:    item.UpdatedBy,
+		CreatedAt:    formatTime(item.CreatedAt),
+		UpdatedAt:    formatTime(item.UpdatedAt),
+	}
+}
+
+func toRestoreEvidenceDTO(item admindomain.RestoreEvidence) admindto.RestoreEvidenceItem {
+	return admindto.RestoreEvidenceItem{
+		ID:             item.ID.String(),
+		Environment:    item.Environment,
+		System:         item.System,
+		Status:         item.Status,
+		SnapshotID:     item.SnapshotID,
+		RestoreTarget:  item.RestoreTarget,
+		StartedAt:      formatTimePtr(item.StartedAt),
+		CompletedAt:    formatTimePtr(item.CompletedAt),
+		Source:         item.Source,
+		ArtifactSHA256: item.ArtifactSHA256,
+		Summary:        item.Summary,
+		CreatedAt:      formatTime(item.CreatedAt),
+	}
+}
+
+func parseOptionalRFC3339(raw string) (*time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil, err
+	}
+	parsed = parsed.UTC()
+	return &parsed, nil
 }
 
 func (h *Handler) suspendTenant(c *gin.Context) {

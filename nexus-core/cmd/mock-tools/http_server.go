@@ -11,6 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+
+	"nexus-core/internal/shared/leasehttp"
+	"nexus/pkg/leaseauth"
 )
 
 type AuthArtifacts struct {
@@ -31,7 +34,7 @@ func NewAuthArtifacts() (*AuthArtifacts, error) {
 	}, nil
 }
 
-func NewRouter(auth *AuthArtifacts) *gin.Engine {
+func NewRouter(auth *AuthArtifacts, leaseVerifier *leasehttp.Verifier) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -81,20 +84,30 @@ func NewRouter(auth *AuthArtifacts) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"token": raw})
 	})
 
-	r.POST("/echo", func(c *gin.Context) {
+	leaseProtected := r.Group("/")
+	if leaseVerifier != nil {
+		leaseProtected.Use(leaseVerifier.Middleware())
+	}
+
+	leaseProtected.POST("/echo", func(c *gin.Context) {
 		var v any
 		_ = c.ShouldBindJSON(&v)
 		authPresent := c.GetHeader("Authorization") != ""
 		injectedHeaderPresent := c.GetHeader("X-Injected-Token") != ""
+		claims, _ := c.Get(leasehttp.ContextKeyClaims)
+		leaseClaims, _ := claims.(leaseauth.Claims)
 		c.JSON(http.StatusOK, gin.H{
-			"received":                 v,
-			"server_time":              time.Now().UTC().Format(time.RFC3339),
-			"auth_present":             authPresent,
-			"x_injected_token_present": injectedHeaderPresent,
+			"received":                  v,
+			"server_time":               time.Now().UTC().Format(time.RFC3339),
+			"auth_present":              authPresent,
+			"x_injected_token_present":  injectedHeaderPresent,
+			"execution_lease_verified":  leaseClaims.LeaseID != "",
+			"execution_lease_id":        leaseClaims.LeaseID,
+			"execution_credential_mode": leaseClaims.CredentialMode,
 		})
 	})
 
-	r.POST("/transfer", func(c *gin.Context) {
+	leaseProtected.POST("/transfer", func(c *gin.Context) {
 		var body struct {
 			Amount   float64 `json:"amount"`
 			SleepMS  int     `json:"sleep_ms"`

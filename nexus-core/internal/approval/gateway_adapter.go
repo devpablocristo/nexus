@@ -19,6 +19,7 @@ func (a *GatewayAdapter) RequestApproval(ctx context.Context, req gateway.Approv
 	pa, err := a.uc.RequestApproval(ctx, domain.CreateRequest{
 		OrgID:           req.OrgID,
 		ToolID:          req.ToolID,
+		IntentID:        req.IntentID,
 		RequestID:       req.RequestID,
 		ToolName:        req.ToolName,
 		Actor:           req.Actor,

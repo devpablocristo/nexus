@@ -1,3 +1,37 @@
+# DB Backup And DR Evidence
+
+## Goal
+
+Validate that production database restores are periodically tested and leave machine-readable evidence that Nexus can use during sensitive preflights.
+
+## Evidence Flow
+
+1. Run `scripts/dr/test_restore.sh <snapshot-id> [temp-instance-id]`.
+2. The script restores the snapshot to a temporary RDS instance.
+3. It checks connectivity against `nexus_core` and `nexus_saas`.
+4. It writes a JSON artifact with timestamps, snapshot id, target instance, endpoint, and check results.
+5. If `NEXUS_SAAS_URL`, `NEXUS_SAAS_INTERNAL_KEY`, and `RESTORE_EVIDENCE_ORG_ID` are configured, it publishes that artifact to `nexus-saas` internal contracts.
+
+## Required Environment
+
+- `DB_USER`
+- `DB_PASSWORD`
+- optional: `NEXUS_SAAS_URL`
+- optional: `NEXUS_SAAS_INTERNAL_KEY`
+- optional: `RESTORE_EVIDENCE_ORG_ID`
+- optional: `RESTORE_EVIDENCE_ENV` (`prod` by default)
+- optional: `RESTORE_EVIDENCE_SYSTEM` (`database` by default)
+- optional: `RESTORE_EVIDENCE_FILE`
+
+## Operational Rule
+
+- Sensitive production preflights should require a recent successful restore evidence artifact.
+- If restore evidence is missing or stale, the execution must be blocked until DR validation is refreshed.
+
+## Retention
+
+- Keep the JSON artifact alongside the CI/job logs or upload it to your artifact store.
+- The SaaS registry keeps the structured record needed by Nexus runtime checks.
 # Database Backup & Disaster Recovery
 
 ## Scope

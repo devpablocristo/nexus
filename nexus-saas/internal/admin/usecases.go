@@ -2,11 +2,13 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	admindomain "nexus-saas/internal/admin/usecases/domain"
 	"nexus-saas/internal/shared/authz"
@@ -24,6 +26,11 @@ type RepositoryPort interface {
 	UpdateTenantLifecycle(ctx context.Context, orgID uuid.UUID, status string, deletedAt *time.Time, updatedBy *string) (admindomain.TenantSettings, error)
 	CreateAdminActivityEvent(ctx context.Context, ev admindomain.AdminActivityEvent) error
 	ListAdminActivityEvents(ctx context.Context, orgID uuid.UUID, limit int) ([]admindomain.AdminActivityEvent, error)
+	ListProtectedResources(ctx context.Context, orgID uuid.UUID) ([]admindomain.ProtectedResource, error)
+	CreateProtectedResource(ctx context.Context, resource admindomain.ProtectedResource) (admindomain.ProtectedResource, error)
+	DeleteProtectedResource(ctx context.Context, orgID, resourceID uuid.UUID) error
+	ListRestoreEvidence(ctx context.Context, orgID uuid.UUID, environment string, limit int) ([]admindomain.RestoreEvidence, error)
+	CreateRestoreEvidence(ctx context.Context, evidence admindomain.RestoreEvidence) (admindomain.RestoreEvidence, error)
 }
 
 type NotificationPort interface {
@@ -49,6 +56,29 @@ type BootstrapResponse struct {
 type UpsertTenantSettingsRequest struct {
 	PlanCode   string
 	HardLimits map[string]any
+}
+
+type CreateProtectedResourceRequest struct {
+	Name         string
+	ResourceType string
+	MatchValue   string
+	MatchMode    string
+	Environment  string
+	Reason       string
+	Enabled      *bool
+}
+
+type RecordRestoreEvidenceRequest struct {
+	Environment    string
+	System         string
+	Status         string
+	SnapshotID     string
+	RestoreTarget  string
+	StartedAt      *time.Time
+	CompletedAt    *time.Time
+	Source         string
+	ArtifactSHA256 string
+	Summary        map[string]any
 }
 
 func NewUsecases(repo RepositoryPort) *Usecases {
@@ -267,6 +297,203 @@ func (u *Usecases) ListActivity(ctx context.Context, orgID uuid.UUID, actor, rol
 	return items, nil
 }
 
+func (u *Usecases) ListProtectedResources(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string) ([]admindomain.ProtectedResource, error) {
+	canRead, _ := adminCapabilities(role, scopes)
+	if !canRead {
+		return nil, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console read permission required")
+	}
+	items, err := u.repo.ListProtectedResources(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        orgID,
+		Actor:        actor,
+		Action:       "protected_resources.read",
+		ResourceType: "protected_resource",
+		Payload: map[string]any{
+			"count": len(items),
+		},
+	})
+	return items, nil
+}
+
+func (u *Usecases) CreateProtectedResource(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, req CreateProtectedResourceRequest) (admindomain.ProtectedResource, error) {
+	_, canWrite := adminCapabilities(role, scopes)
+	if !canWrite {
+		return admindomain.ProtectedResource{}, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console write permission required")
+	}
+	name := strings.TrimSpace(req.Name)
+	resourceType := strings.TrimSpace(strings.ToLower(req.ResourceType))
+	matchValue := strings.TrimSpace(req.MatchValue)
+	matchMode := strings.TrimSpace(strings.ToLower(req.MatchMode))
+	if matchMode == "" {
+		matchMode = admindomain.ProtectedResourceMatchExact
+	}
+	environment := strings.TrimSpace(strings.ToLower(req.Environment))
+	if environment == "" {
+		environment = "*"
+	}
+	reason := strings.TrimSpace(req.Reason)
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	if name == "" || resourceType == "" || matchValue == "" {
+		return admindomain.ProtectedResource{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "name, resource_type, and match_value are required")
+	}
+	switch matchMode {
+	case admindomain.ProtectedResourceMatchExact, admindomain.ProtectedResourceMatchContains:
+	default:
+		return admindomain.ProtectedResource{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "match_mode must be exact or contains")
+	}
+	switch environment {
+	case "*", "prod", "nonprod":
+	default:
+		return admindomain.ProtectedResource{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "environment must be *, prod, or nonprod")
+	}
+	resource, err := u.repo.CreateProtectedResource(ctx, admindomain.ProtectedResource{
+		ID:           uuid.New(),
+		OrgID:        orgID,
+		Name:         name,
+		ResourceType: resourceType,
+		MatchValue:   matchValue,
+		MatchMode:    matchMode,
+		Environment:  environment,
+		Reason:       reason,
+		Enabled:      enabled,
+		CreatedBy:    actor,
+		UpdatedBy:    actor,
+	})
+	if err != nil {
+		return admindomain.ProtectedResource{}, err
+	}
+	resourceID := resource.ID.String()
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        orgID,
+		Actor:        actor,
+		Action:       "protected_resource.create",
+		ResourceType: "protected_resource",
+		ResourceID:   &resourceID,
+		Payload: map[string]any{
+			"name":          resource.Name,
+			"resource_type": resource.ResourceType,
+			"match_mode":    resource.MatchMode,
+			"environment":   resource.Environment,
+			"enabled":       resource.Enabled,
+		},
+	})
+	return resource, nil
+}
+
+func (u *Usecases) DeleteProtectedResource(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, resourceID uuid.UUID) error {
+	_, canWrite := adminCapabilities(role, scopes)
+	if !canWrite {
+		return types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console write permission required")
+	}
+	if resourceID == uuid.Nil {
+		return types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "invalid protected resource id")
+	}
+	if err := u.repo.DeleteProtectedResource(ctx, orgID, resourceID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return types.NewHTTPError(http.StatusNotFound, types.ErrCodeNotFound, "protected resource not found")
+		}
+		return err
+	}
+	id := resourceID.String()
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        orgID,
+		Actor:        actor,
+		Action:       "protected_resource.delete",
+		ResourceType: "protected_resource",
+		ResourceID:   &id,
+	})
+	return nil
+}
+
+func (u *Usecases) ListRestoreEvidence(ctx context.Context, orgID uuid.UUID, actor, role *string, scopes []string, environment string, limit int) ([]admindomain.RestoreEvidence, error) {
+	canRead, _ := adminCapabilities(role, scopes)
+	if !canRead {
+		return nil, types.NewHTTPError(http.StatusForbidden, types.ErrCodeUnauthorized, "admin console read permission required")
+	}
+	items, err := u.repo.ListRestoreEvidence(ctx, orgID, environment, limit)
+	if err != nil {
+		return nil, err
+	}
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        orgID,
+		Actor:        actor,
+		Action:       "restore_evidence.read",
+		ResourceType: "restore_evidence",
+		Payload: map[string]any{
+			"count":       len(items),
+			"environment": strings.TrimSpace(strings.ToLower(environment)),
+			"limit":       limit,
+		},
+	})
+	return items, nil
+}
+
+func (u *Usecases) RecordRestoreEvidence(ctx context.Context, orgID uuid.UUID, actor *string, req RecordRestoreEvidenceRequest) (admindomain.RestoreEvidence, error) {
+	environment := strings.TrimSpace(strings.ToLower(req.Environment))
+	if environment == "" {
+		environment = "prod"
+	}
+	system := strings.TrimSpace(strings.ToLower(req.System))
+	if system == "" {
+		system = "database"
+	}
+	status := strings.TrimSpace(strings.ToLower(req.Status))
+	if status == "" {
+		status = admindomain.RestoreEvidenceStatusPassed
+	}
+	switch environment {
+	case "prod", "nonprod", "*":
+	default:
+		return admindomain.RestoreEvidence{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "environment must be prod, nonprod, or *")
+	}
+	switch status {
+	case admindomain.RestoreEvidenceStatusPassed, admindomain.RestoreEvidenceStatusFailed:
+	default:
+		return admindomain.RestoreEvidence{}, types.NewHTTPError(http.StatusBadRequest, types.ErrCodeValidation, "status must be passed or failed")
+	}
+	evidence, err := u.repo.CreateRestoreEvidence(ctx, admindomain.RestoreEvidence{
+		ID:             uuid.New(),
+		OrgID:          orgID,
+		Environment:    environment,
+		System:         system,
+		Status:         status,
+		SnapshotID:     strings.TrimSpace(req.SnapshotID),
+		RestoreTarget:  strings.TrimSpace(req.RestoreTarget),
+		StartedAt:      req.StartedAt,
+		CompletedAt:    req.CompletedAt,
+		Source:         strings.TrimSpace(req.Source),
+		ArtifactSHA256: strings.TrimSpace(req.ArtifactSHA256),
+		Summary:        cloneStringAnyMap(req.Summary),
+	})
+	if err != nil {
+		return admindomain.RestoreEvidence{}, err
+	}
+	resourceID := evidence.ID.String()
+	_ = u.repo.CreateAdminActivityEvent(ctx, admindomain.AdminActivityEvent{
+		OrgID:        orgID,
+		Actor:        actor,
+		Action:       "restore_evidence.record",
+		ResourceType: "restore_evidence",
+		ResourceID:   &resourceID,
+		Payload: map[string]any{
+			"environment":     evidence.Environment,
+			"system":          evidence.System,
+			"status":          evidence.Status,
+			"snapshot_id":     evidence.SnapshotID,
+			"restore_target":  evidence.RestoreTarget,
+			"artifact_sha256": evidence.ArtifactSHA256,
+			"source":          evidence.Source,
+		},
+	})
+	return evidence, nil
+}
+
 func adminCapabilities(role *string, scopes []string) (bool, bool) {
 	isPrivilegedRole := authz.IsRole(role, "admin", "secops")
 	canRead := isPrivilegedRole || authz.HasAnyScope(scopes, scopeConsoleRead, scopeConsoleWrite)
@@ -330,6 +557,17 @@ func defaultHardLimits(planCode string) map[string]any {
 // que necesitan sincronizar cambios de plan sin duplicar reglas.
 func DefaultHardLimits(planCode string) map[string]any {
 	return defaultHardLimits(planCode)
+}
+
+func cloneStringAnyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
 }
 
 func (u *Usecases) notifyTenantAsync(orgID uuid.UUID, notifType string, data map[string]string) {

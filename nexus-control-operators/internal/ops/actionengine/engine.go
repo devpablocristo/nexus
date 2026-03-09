@@ -1,3 +1,4 @@
+// Package actionengine governs operator mitigation proposals and executions.
 package actionengine
 
 import (
@@ -37,25 +38,26 @@ type EngineConfig struct {
 }
 
 type EngineRequest struct {
-	IncidentID      *uuid.UUID      `json:"incident_id,omitempty"`
-	ProposalID      *uuid.UUID      `json:"proposal_id,omitempty"`
-	ActionType      string          `json:"action_type,omitempty"`
-	Scope           map[string]any  `json:"scope,omitempty"`
-	TTLSeconds      int             `json:"ttl_seconds,omitempty"`
-	Params          map[string]any  `json:"params,omitempty"`
-	EvidenceRefs    []string        `json:"evidence_refs,omitempty"`
-	ApprovalGranted bool            `json:"approval_granted,omitempty"`
-	ApprovalComment *string         `json:"approval_comment,omitempty"`
+	IncidentID      *uuid.UUID        `json:"incident_id,omitempty"`
+	ProposalID      *uuid.UUID        `json:"proposal_id,omitempty"`
+	ActionType      string            `json:"action_type,omitempty"`
+	Scope           map[string]any    `json:"scope,omitempty"`
+	TTLSeconds      int               `json:"ttl_seconds,omitempty"`
+	Params          map[string]any    `json:"params,omitempty"`
+	EvidenceRefs    []string          `json:"evidence_refs,omitempty"`
+	LeaseHeaders    map[string]string `json:"lease_headers,omitempty"`
+	ApprovalGranted bool              `json:"approval_granted,omitempty"`
+	ApprovalComment *string           `json:"approval_comment,omitempty"`
 }
 
 type EngineResult struct {
-	Proposal        actiondomain.Proposal  `json:"proposal"`
-	Execution       *actiondomain.Execution `json:"execution,omitempty"`
-	IdempotencyKey  string                  `json:"idempotency_key"`
-	ScopeHash       string                  `json:"scope_hash"`
-	ParamsHash      string                  `json:"params_hash"`
-	ApprovalRequired bool                   `json:"approval_required"`
-	Replay          bool                    `json:"replay"`
+	Proposal         actiondomain.Proposal   `json:"proposal"`
+	Execution        *actiondomain.Execution `json:"execution,omitempty"`
+	IdempotencyKey   string                  `json:"idempotency_key"`
+	ScopeHash        string                  `json:"scope_hash"`
+	ParamsHash       string                  `json:"params_hash"`
+	ApprovalRequired bool                    `json:"approval_required"`
+	Replay           bool                    `json:"replay"`
 }
 
 type Engine interface {
@@ -225,12 +227,12 @@ func (e *engine) Apply(ctx context.Context, orgID uuid.UUID, actor *string, req 
 		return EngineResult{}, err
 	}
 	_ = e.emit(ctx, orgID, actor, updated.IncidentID, &updated.ID, "action.applied", map[string]any{
-		"proposal_id":   updated.ID.String(),
-		"action_id":     execution.ID.String(),
-		"action_type":   updated.ActionType,
-		"scope":         updated.Scope,
-		"ttl_seconds":   updated.TTLSeconds,
-		"applied_by":    actor,
+		"proposal_id": updated.ID.String(),
+		"action_id":   execution.ID.String(),
+		"action_type": updated.ActionType,
+		"scope":       updated.Scope,
+		"ttl_seconds": updated.TTLSeconds,
+		"applied_by":  actor,
 	})
 
 	idemKey := dryRunResult.IdempotencyKey
@@ -422,10 +424,10 @@ func (e *engine) validateActionSchema(ctx context.Context, catalog actiondomain.
 		return types.NewHTTPError(500, types.ErrCodeSchemaInvalid, "catalog schema compile failed")
 	}
 	candidate := map[string]any{
-		"action_type":   req.ActionType,
-		"scope":         scope,
-		"ttl_seconds":   req.TTLSeconds,
-		"params":        params,
+		"action_type": req.ActionType,
+		"scope":       scope,
+		"ttl_seconds": req.TTLSeconds,
+		"params":      params,
 	}
 	if len(req.EvidenceRefs) > 0 {
 		candidate["evidence_refs"] = req.EvidenceRefs
@@ -635,9 +637,9 @@ func (e *engine) emit(ctx context.Context, orgID uuid.UUID, actor *string, incid
 		corr.ActionID = &id
 	}
 	_, err := e.emitter.Emit(ctx, opseventstore.EmitInput{
-		EventType: eventType,
-		Version:   1,
-		OrgID:     orgID,
+		EventType:   eventType,
+		Version:     1,
+		OrgID:       orgID,
 		Correlation: corr,
 		Actor: opsdomain.Actor{
 			ActorID:   actor,

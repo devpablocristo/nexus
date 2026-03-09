@@ -20,6 +20,10 @@
           "evidence_refs": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 }
+          },
+          "lease_headers": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
           }
         },
         "additionalProperties": false

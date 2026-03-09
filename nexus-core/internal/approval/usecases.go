@@ -17,11 +17,22 @@ type RepoPort interface {
 }
 
 type Usecases struct {
-	repo RepoPort
+	repo    RepoPort
+	intents IntentStatusPort
+}
+
+type IntentStatusPort interface {
+	MarkIntentApproved(ctx context.Context, orgID, intentID uuid.UUID) error
+	MarkIntentRejected(ctx context.Context, orgID, intentID uuid.UUID) error
 }
 
 func NewUsecases(repo RepoPort) *Usecases {
 	return &Usecases{repo: repo}
+}
+
+func (u *Usecases) WithIntentPort(port IntentStatusPort) *Usecases {
+	u.intents = port
+	return u
 }
 
 func (u *Usecases) RequestApproval(ctx context.Context, req domain.CreateRequest) (domain.PendingApproval, error) {
@@ -40,11 +51,31 @@ func (u *Usecases) GetByID(ctx context.Context, orgID, id uuid.UUID) (domain.Pen
 }
 
 func (u *Usecases) Approve(ctx context.Context, orgID, id uuid.UUID, decidedBy string) error {
-	return u.repo.Decide(ctx, orgID, id, domain.StatusApproved, decidedBy)
+	item, err := u.repo.GetByID(ctx, orgID, id)
+	if err != nil {
+		return err
+	}
+	if err := u.repo.Decide(ctx, orgID, id, domain.StatusApproved, decidedBy); err != nil {
+		return err
+	}
+	if item.IntentID != nil && u.intents != nil {
+		return u.intents.MarkIntentApproved(ctx, orgID, *item.IntentID)
+	}
+	return nil
 }
 
 func (u *Usecases) Reject(ctx context.Context, orgID, id uuid.UUID, decidedBy string) error {
-	return u.repo.Decide(ctx, orgID, id, domain.StatusRejected, decidedBy)
+	item, err := u.repo.GetByID(ctx, orgID, id)
+	if err != nil {
+		return err
+	}
+	if err := u.repo.Decide(ctx, orgID, id, domain.StatusRejected, decidedBy); err != nil {
+		return err
+	}
+	if item.IntentID != nil && u.intents != nil {
+		return u.intents.MarkIntentRejected(ctx, orgID, *item.IntentID)
+	}
+	return nil
 }
 
 func (u *Usecases) ExpireOld(ctx context.Context) (int64, error) {

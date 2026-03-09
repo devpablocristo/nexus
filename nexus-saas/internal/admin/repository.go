@@ -143,6 +143,160 @@ func (r *Repository) ListAdminActivityEvents(ctx context.Context, orgID uuid.UUI
 	return out, nil
 }
 
+func (r *Repository) ListProtectedResources(ctx context.Context, orgID uuid.UUID) ([]admindomain.ProtectedResource, error) {
+	var rows []models.ProtectedResource
+	if err := r.db.WithContext(ctx).
+		Where("org_id = ?", orgID).
+		Order("created_at desc").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]admindomain.ProtectedResource, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, admindomain.ProtectedResource{
+			ID:           row.ID,
+			OrgID:        row.OrgID,
+			Name:         row.Name,
+			ResourceType: row.ResourceType,
+			MatchValue:   row.MatchValue,
+			MatchMode:    row.MatchMode,
+			Environment:  row.Environment,
+			Reason:       row.Reason,
+			Enabled:      row.Enabled,
+			CreatedBy:    row.CreatedBy,
+			UpdatedBy:    row.UpdatedBy,
+			CreatedAt:    row.CreatedAt,
+			UpdatedAt:    row.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (r *Repository) CreateProtectedResource(ctx context.Context, resource admindomain.ProtectedResource) (admindomain.ProtectedResource, error) {
+	row := models.ProtectedResource{
+		ID:           resource.ID,
+		OrgID:        resource.OrgID,
+		Name:         resource.Name,
+		ResourceType: resource.ResourceType,
+		MatchValue:   resource.MatchValue,
+		MatchMode:    resource.MatchMode,
+		Environment:  resource.Environment,
+		Reason:       resource.Reason,
+		Enabled:      resource.Enabled,
+		CreatedBy:    resource.CreatedBy,
+		UpdatedBy:    resource.UpdatedBy,
+	}
+	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+		return admindomain.ProtectedResource{}, err
+	}
+	return admindomain.ProtectedResource{
+		ID:           row.ID,
+		OrgID:        row.OrgID,
+		Name:         row.Name,
+		ResourceType: row.ResourceType,
+		MatchValue:   row.MatchValue,
+		MatchMode:    row.MatchMode,
+		Environment:  row.Environment,
+		Reason:       row.Reason,
+		Enabled:      row.Enabled,
+		CreatedBy:    row.CreatedBy,
+		UpdatedBy:    row.UpdatedBy,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	}, nil
+}
+
+func (r *Repository) DeleteProtectedResource(ctx context.Context, orgID, resourceID uuid.UUID) error {
+	res := r.db.WithContext(ctx).
+		Where("org_id = ? AND id = ?", orgID, resourceID).
+		Delete(&models.ProtectedResource{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (r *Repository) ListRestoreEvidence(ctx context.Context, orgID uuid.UUID, environment string, limit int) ([]admindomain.RestoreEvidence, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	query := r.db.WithContext(ctx).
+		Where("org_id = ?", orgID)
+	if env := strings.TrimSpace(strings.ToLower(environment)); env != "" {
+		query = query.Where("environment = ?", env)
+	}
+	var rows []models.RestoreEvidence
+	if err := query.Order("created_at desc").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]admindomain.RestoreEvidence, 0, len(rows))
+	for _, row := range rows {
+		var summary map[string]any
+		_ = json.Unmarshal(row.Summary, &summary)
+		if summary == nil {
+			summary = map[string]any{}
+		}
+		out = append(out, admindomain.RestoreEvidence{
+			ID:             row.ID,
+			OrgID:          row.OrgID,
+			Environment:    row.Environment,
+			System:         row.System,
+			Status:         row.Status,
+			SnapshotID:     row.SnapshotID,
+			RestoreTarget:  row.RestoreTarget,
+			StartedAt:      row.StartedAt,
+			CompletedAt:    row.CompletedAt,
+			Source:         row.Source,
+			ArtifactSHA256: row.ArtifactSHA256,
+			Summary:        summary,
+			CreatedAt:      row.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (r *Repository) CreateRestoreEvidence(ctx context.Context, evidence admindomain.RestoreEvidence) (admindomain.RestoreEvidence, error) {
+	summaryJSON, _ := json.Marshal(evidence.Summary)
+	row := models.RestoreEvidence{
+		ID:             evidence.ID,
+		OrgID:          evidence.OrgID,
+		Environment:    evidence.Environment,
+		System:         evidence.System,
+		Status:         evidence.Status,
+		SnapshotID:     evidence.SnapshotID,
+		RestoreTarget:  evidence.RestoreTarget,
+		StartedAt:      evidence.StartedAt,
+		CompletedAt:    evidence.CompletedAt,
+		Source:         evidence.Source,
+		ArtifactSHA256: evidence.ArtifactSHA256,
+		Summary:        summaryJSON,
+	}
+	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+		return admindomain.RestoreEvidence{}, err
+	}
+	return admindomain.RestoreEvidence{
+		ID:             row.ID,
+		OrgID:          row.OrgID,
+		Environment:    row.Environment,
+		System:         row.System,
+		Status:         row.Status,
+		SnapshotID:     row.SnapshotID,
+		RestoreTarget:  row.RestoreTarget,
+		StartedAt:      row.StartedAt,
+		CompletedAt:    row.CompletedAt,
+		Source:         row.Source,
+		ArtifactSHA256: row.ArtifactSHA256,
+		Summary:        evidence.Summary,
+		CreatedAt:      row.CreatedAt,
+	}, nil
+}
+
 func (r *Repository) GetRunRPM(ctx context.Context, orgID uuid.UUID) (int, error) {
 	settings, ok, err := r.GetTenantSettings(ctx, orgID)
 	if err != nil || !ok || settings.HardLimits == nil {

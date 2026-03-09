@@ -122,6 +122,7 @@ func (h *Handler) reject(c *gin.Context) {
 func toDTO(a domain.PendingApproval) approvaldto.ApprovalItem {
 	return approvaldto.ApprovalItem{
 		ID:              a.ID.String(),
+		IntentID:        uuidToStringPtr(a.IntentID),
 		RequestID:       a.RequestID,
 		ToolName:        a.ToolName,
 		Actor:           a.Actor,
@@ -135,6 +136,14 @@ func toDTO(a domain.PendingApproval) approvaldto.ApprovalItem {
 		ExpiresAt:       a.ExpiresAt,
 		CreatedAt:       a.CreatedAt,
 	}
+}
+
+func uuidToStringPtr(id *uuid.UUID) *string {
+	if id == nil {
+		return nil
+	}
+	s := id.String()
+	return &s
 }
 
 func mustOrgID(c *gin.Context) uuid.UUID {

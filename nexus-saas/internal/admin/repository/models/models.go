@@ -28,3 +28,35 @@ type AdminActivityEvent struct {
 	Payload      datatypes.JSON `gorm:"column:payload_json;type:jsonb"`
 	CreatedAt    time.Time
 }
+
+type ProtectedResource struct {
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey"`
+	OrgID        uuid.UUID `gorm:"type:uuid;index"`
+	Name         string
+	ResourceType string
+	MatchValue   string
+	MatchMode    string
+	Environment  string
+	Reason       string
+	Enabled      bool
+	CreatedBy    *string
+	UpdatedBy    *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type RestoreEvidence struct {
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey"`
+	OrgID          uuid.UUID `gorm:"type:uuid;index"`
+	Environment    string
+	System         string
+	Status         string
+	SnapshotID     string
+	RestoreTarget  string
+	StartedAt      *time.Time
+	CompletedAt    *time.Time
+	Source         string
+	ArtifactSHA256 string
+	Summary        datatypes.JSON `gorm:"column:summary_json;type:jsonb"`
+	CreatedAt      time.Time
+}

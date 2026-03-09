@@ -6,6 +6,7 @@ import { NotificationBell } from './NotificationBell';
 
 const navItems = [
   { to: '/tools', label: 'Tools' },
+  { to: '/execution-control', label: 'Execution Control' },
   { to: '/audit', label: 'Audit Log' },
   { to: '/monitoring', label: 'Monitoring' },
   { to: '/secrets', label: 'Secrets' },

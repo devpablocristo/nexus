@@ -26,6 +26,7 @@ import AdminPage from '../pages/AdminPage';
 import AdminActivityPage from '../pages/AdminActivityPage';
 import NotificationPreferencesPage from '../pages/NotificationPreferencesPage';
 import DeveloperPage from '../pages/DeveloperPage';
+import ExecutionControlPage from '../pages/ExecutionControlPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import SuspendedPage from '../pages/SuspendedPage';
 import OnboardingPage from '../pages/OnboardingPage';
@@ -74,6 +75,7 @@ export function App() {
         <Route element={<ProtectedLayout />}>
           <Route path="/" element={<Navigate to="/tools" replace />} />
           <Route path="/tools" element={<ToolsPage />} />
+          <Route path="/execution-control" element={<ExecutionControlPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/settings" element={<SettingsPage />} />

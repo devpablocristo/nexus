@@ -160,7 +160,8 @@ func (u *Usecases) validateURLAndEgress(ctx context.Context, orgID uuid.UUID, re
 	return &resp, nil
 }
 
-// resolveSecrets carga secretos de la tool y popula st.headers.
+// resolveSecrets carga secretos de la tool y, si existe lease, materializa
+// credenciales efimeras para reemplazar o complementar auth estatica.
 func (u *Usecases) resolveSecrets(ctx context.Context, orgID uuid.UUID, st *runState) error {
 	st.headers = map[string]string{}
 	secrets, err := u.secretRepo.ListForTool(ctx, orgID, st.tool.ID)
@@ -176,6 +177,23 @@ func (u *Usecases) resolveSecrets(ctx context.Context, orgID uuid.UUID, st *runS
 		}
 		if strings.EqualFold(secret.SecretType, "bearer") {
 			st.headers["Authorization"] = "Bearer " + secret.PlaintextValue
+		}
+	}
+	if st.executionLease != nil && u.leaseCreds != nil {
+		material, err := u.leaseCreds.Issue(ctx, orgID, st.tool, *st.executionLease)
+		if err != nil {
+			return err
+		}
+		if material.ReplaceHeaders {
+			for header := range st.headers {
+				delete(st.headers, header)
+			}
+		}
+		for k, v := range material.Headers {
+			if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
+				continue
+			}
+			st.headers[k] = v
 		}
 	}
 	st.headers["X-Nexus-Request-Id"] = st.requestID

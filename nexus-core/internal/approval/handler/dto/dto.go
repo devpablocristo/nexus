@@ -4,6 +4,7 @@ import "time"
 
 type ApprovalItem struct {
 	ID              string         `json:"id"`
+	IntentID        *string        `json:"intent_id,omitempty"`
 	RequestID       string         `json:"request_id"`
 	ToolName        string         `json:"tool_name"`
 	Actor           *string        `json:"actor,omitempty"`

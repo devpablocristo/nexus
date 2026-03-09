@@ -10,15 +10,20 @@ import type {
   BillingStatus,
   EventItem,
   EgressRuleItem,
+  ExecutionLeaseItem,
   IncidentItem,
   NotificationPreference,
   InAppNotification,
   OrgMemberItem,
   PolicyItem,
+  PreflightReview,
+  ProtectedResourceItem,
+  RestoreEvidenceItem,
   SecretItem,
   ToolItem,
   UserMe,
   UsageSummary,
+  ExecutionIntentItem,
 } from './types';
 
 // Core (gateway/config APIs)
@@ -212,6 +217,35 @@ export async function getAdminActivity(limit = 50): Promise<{ items: AdminActivi
   return requestJSON('saas', `/v1/admin/activity?${qs}`);
 }
 
+export async function getProtectedResources(): Promise<{ items: ProtectedResourceItem[] }> {
+  return requestJSON('saas', '/v1/admin/protected-resources');
+}
+
+export async function getAdminRestoreEvidence(limit = 10, environment = ''): Promise<{ items: RestoreEvidenceItem[] }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (environment) params.set('environment', environment);
+  return requestJSON('saas', `/v1/admin/restore-evidence?${params.toString()}`);
+}
+
+export async function createProtectedResource(req: {
+  name: string;
+  resource_type: string;
+  match_value: string;
+  match_mode: string;
+  environment: string;
+  reason?: string;
+  enabled?: boolean;
+}): Promise<ProtectedResourceItem> {
+  return requestJSON('saas', '/v1/admin/protected-resources', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  });
+}
+
+export async function deleteProtectedResource(id: string): Promise<void> {
+  await requestJSON<void>('saas', `/v1/admin/protected-resources/${id}`, { method: 'DELETE' });
+}
+
 export async function suspendTenant(orgID: string): Promise<AdminTenantSettings> {
   return requestJSON('saas', `/v1/admin/tenants/${orgID}/suspend`, {
     method: 'PUT',
@@ -234,6 +268,26 @@ export async function runTool(toolName: string, input: Record<string, unknown>):
   return requestJSON('core', '/v1/run', {
     method: 'POST',
     body: JSON.stringify({ tool_name: toolName, input }),
+  });
+}
+
+export async function getExecutionIntents(limit = 50): Promise<{ items: ExecutionIntentItem[] }> {
+  const qs = new URLSearchParams({ limit: String(limit) }).toString();
+  return requestJSON('core', `/v1/run/intents?${qs}`);
+}
+
+export async function getExecutionIntentPreflight(intentID: string): Promise<PreflightReview> {
+  return requestJSON('core', `/v1/run/intents/${intentID}/preflight`);
+}
+
+export async function issueExecutionLease(intentID: string): Promise<ExecutionLeaseItem> {
+  return requestJSON('core', `/v1/run/intents/${intentID}/lease`, { method: 'POST' });
+}
+
+export async function executeExecutionIntent(intentID: string, leaseID: string): Promise<Record<string, unknown>> {
+  return requestJSON('core', `/v1/run/intents/${intentID}/execute`, {
+    method: 'POST',
+    body: JSON.stringify({ lease_id: leaseID }),
   });
 }
 

@@ -1,3 +1,4 @@
+// Package coreproxy exposes selected nexus-core endpoints through nexus-saas.
 package coreproxy
 
 import (
@@ -38,6 +39,11 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.GET("/approvals/:id", h.proxy)
 	rg.POST("/approvals/:id/approve", h.proxy)
 	rg.POST("/approvals/:id/reject", h.proxy)
+	rg.GET("/run/intents", h.proxy)
+	rg.GET("/run/intents/:id", h.proxy)
+	rg.GET("/run/intents/:id/preflight", h.proxy)
+	rg.POST("/run/intents/:id/lease", h.proxy)
+	rg.POST("/run/intents/:id/execute", h.proxy)
 }
 
 func (h *Handler) proxy(c *gin.Context) {

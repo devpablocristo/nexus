@@ -1,3 +1,4 @@
+// Package mitigation auto-applies low-risk recommended actions.
 package mitigation
 
 import (
@@ -50,6 +51,7 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 			TTLSeconds:   worker.AsInt(actionMap["ttl_seconds"], 600),
 			Params:       worker.ToMap(actionMap["params"]),
 			EvidenceRefs: worker.ToStringSlice(actionMap["evidence_refs"]),
+			LeaseHeaders: worker.ToStringMap(actionMap["lease_headers"]),
 		}
 
 		w.log.Info().
@@ -74,7 +76,8 @@ func (w *Worker) Handle(ctx context.Context, event opsdomain.StoredEvent) error 
 			Msg("applying action")
 
 		if _, err := w.engine.Apply(ctx, event.Envelope.OrgID, worker.Ptr("agents.mitigation"), opsaction.EngineRequest{
-			ProposalID: &proposalID,
+			ProposalID:   &proposalID,
+			LeaseHeaders: req.LeaseHeaders,
 		}); err != nil {
 			w.log.Error().Err(err).Str("proposal_id", proposalID.String()).Msg("apply failed")
 			return err

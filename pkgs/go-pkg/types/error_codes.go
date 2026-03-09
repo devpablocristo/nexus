@@ -1,3 +1,4 @@
+// Package types defines shared API and runtime error codes.
 package types
 
 const (
@@ -23,6 +24,10 @@ const (
 	ErrCodeIdempotencyProgress = "IDEMPOTENCY_IN_PROGRESS"
 	ErrCodeIdempotencyStore    = "IDEMPOTENCY_STORE_ERROR"
 	ErrCodeApprovalRequired    = "APPROVAL_REQUIRED"
+	ErrCodePreflightFailed     = "PREFLIGHT_FAILED"
+	ErrCodeLeaseRequired       = "EXECUTION_LEASE_REQUIRED"
+	ErrCodeLeaseInvalid        = "EXECUTION_LEASE_INVALID"
+	ErrCodeLeaseExpired        = "EXECUTION_LEASE_EXPIRED"
 	ErrCodeTimeoutBudget       = "TIMEOUT_BUDGET_EXCEEDED"
 	ErrCodeExportFormatInvalid = "EXPORT_FORMAT_INVALID"
 	ErrCodeExportRangeInvalid  = "EXPORT_RANGE_INVALID"

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Nexus Core API
-  version: "1.1.0"
+  version: "1.2.0"
   description: |
     Multi-tenant Agent Tool Gateway for controlled tool execution.
 
@@ -383,6 +383,203 @@ paths:
                     idempotency:
                       present: true
                       outcome: REPLAY
+
+  /v1/run/intents:
+    get:
+      tags: [Run]
+      operationId: listExecutionIntents
+      summary: List recent execution intents
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Recent intents for the tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListIntentsResponse"
+        "403":
+          description: Admin console read scope required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/run/intents/{id}:
+    get:
+      tags: [Run]
+      operationId: getExecutionIntent
+      summary: Get execution intent by ID
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Intent detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntentItem"
+        "403":
+          description: Admin console read scope required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Intent not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/run/intents/{id}/preflight:
+    get:
+      tags: [Run]
+      operationId: getExecutionIntentPreflight
+      summary: Get preflight review for an execution intent
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Preflight review detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreflightReviewResponse"
+        "403":
+          description: Admin console read scope required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Intent not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/run/intents/{id}/lease:
+    post:
+      tags: [Run]
+      operationId: issueExecutionLease
+      summary: Issue a short-lived execution lease for an approved intent
+      description: |
+        Creates a time-bound lease tied to an approved `execution_intent`.
+        The returned lease must be supplied to the execute endpoint and is
+        the enforcement hook for ephemeral credentials and lease-bound execution.
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Execution lease issued successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionLeaseItem"
+        "403":
+          description: Intent is not approved, preflight failed, or intent already expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Intent not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/run/intents/{id}/execute:
+    post:
+      tags: [Run]
+      operationId: executeApprovedIntent
+      summary: Execute a previously approved intent
+      description: |
+        Executes a persisted `execution_intent` that already passed human approval.
+        This is the explicit second step of the initial control-plane workflow:
+        `run -> approval -> execute`.
+      security:
+        - NexusApiKey: []
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XNexusActor"
+        - $ref: "#/components/parameters/XNexusRole"
+        - $ref: "#/components/parameters/XNexusScopes"
+        - $ref: "#/components/parameters/TimeoutMs"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteIntentRequest"
+      responses:
+        "200":
+          description: Intent executed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSuccessResponse"
+        "403":
+          description: Intent is not approved or already expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunBlockedResponse"
+        "404":
+          description: Intent not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream/network/output schema execution errors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunErrorResponse"
 
   /v1/run/simulate:
     post:
@@ -1586,6 +1783,18 @@ components:
           type: integer
         idempotency:
           $ref: "#/components/schemas/IdempotencyMeta"
+        intent_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_id:
+          type: string
+          format: uuid
+          nullable: true
+        risk_class:
+          type: string
+          enum: [read, plan, mutate_nonprod, mutate_prod, destructive_prod, break_glass]
+          nullable: true
       required: [request_id, decision, tool_name, status, latency_ms]
 
     RunBlockedResponse:
@@ -1607,6 +1816,18 @@ components:
           type: integer
         idempotency:
           $ref: "#/components/schemas/IdempotencyMeta"
+        intent_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_id:
+          type: string
+          format: uuid
+          nullable: true
+        risk_class:
+          type: string
+          enum: [read, plan, mutate_nonprod, mutate_prod, destructive_prod, break_glass]
+          nullable: true
       required: [request_id, decision, status, reason, error, latency_ms]
 
     RunErrorResponse:
@@ -1626,7 +1847,179 @@ components:
           type: integer
         idempotency:
           $ref: "#/components/schemas/IdempotencyMeta"
+        intent_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_id:
+          type: string
+          format: uuid
+          nullable: true
+        risk_class:
+          type: string
+          enum: [read, plan, mutate_nonprod, mutate_prod, destructive_prod, break_glass]
+          nullable: true
       required: [request_id, decision, status, error, latency_ms]
+
+    ListIntentsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntentItem"
+      required: [items]
+
+    IntentItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+        tool_name:
+          type: string
+        actor:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        scopes:
+          type: array
+          items:
+            type: string
+        input:
+          type: object
+          additionalProperties: true
+        context:
+          type: object
+          additionalProperties: true
+        policy_id:
+          type: string
+          format: uuid
+          nullable: true
+        risk_class:
+          type: string
+          enum: [read, plan, mutate_nonprod, mutate_prod, destructive_prod, break_glass]
+        reason:
+          type: string
+        approval_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [pending_approval, approved, rejected, executed, expired]
+        preflight_status:
+          type: string
+          enum: [not_required, passed, failed]
+        preflight_summary:
+          type: object
+          additionalProperties: true
+        preflight_artifact_sha256:
+          type: string
+          nullable: true
+        preflight_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, request_id, tool_name, scopes, input, context, risk_class, reason, status, preflight_status, preflight_summary, expires_at, created_at, updated_at]
+
+    PreflightReviewResponse:
+      type: object
+      properties:
+        intent_id:
+          type: string
+          format: uuid
+        tool_name:
+          type: string
+        risk_class:
+          type: string
+          enum: [read, plan, mutate_nonprod, mutate_prod, destructive_prod, break_glass]
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [not_required, passed, failed]
+        summary:
+          type: object
+          additionalProperties: true
+        artifact_sha256:
+          type: string
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        approval_id:
+          type: string
+          format: uuid
+          nullable: true
+        intent_status:
+          type: string
+          enum: [pending_approval, approved, rejected, executed, expired]
+      required: [intent_id, tool_name, risk_class, reason, status, summary, intent_status]
+
+    ExecuteIntentRequest:
+      type: object
+      properties:
+        lease_id:
+          type: string
+          format: uuid
+      required: [lease_id]
+
+    ExecutionLeaseItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        intent_id:
+          type: string
+          format: uuid
+        tool_name:
+          type: string
+        risk_class:
+          type: string
+          enum: [read, plan, mutate_nonprod, mutate_prod, destructive_prod, break_glass]
+        status:
+          type: string
+          enum: [active, used, expired, revoked]
+        credential_mode:
+          type: string
+        credential_hints:
+          type: object
+          additionalProperties: true
+        expires_at:
+          type: string
+          format: date-time
+        used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, intent_id, tool_name, risk_class, status, credential_mode, credential_hints, expires_at, created_at]
 
     SimulateRequest:
       allOf:
@@ -2407,6 +2800,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
+        intent_id: { type: string, format: uuid, nullable: true }
         request_id: { type: string }
         tool_name: { type: string }
         actor: { type: string, nullable: true }

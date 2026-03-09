@@ -1,3 +1,4 @@
+// Package config loads runtime configuration from the environment.
 package config
 
 import (
@@ -107,6 +108,8 @@ func loadGateway(cfg *Config) error {
 	cfg.Service.CORSAllowedOrigins = mustStrDefault("NEXUS_CORS_ALLOWED_ORIGINS", "")
 	cfg.Service.CORSAllowedMethods = mustStrDefault("NEXUS_CORS_ALLOWED_METHODS", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 	cfg.Service.CORSAllowedHeaders = mustStrDefault("NEXUS_CORS_ALLOWED_HEADERS", "Authorization,Content-Type,X-NEXUS-CORE-KEY,X-NEXUS-SCOPES,X-NEXUS-ACTOR,Idempotency-Key,X-Timeout-Ms")
+	cfg.Service.ExecutionLeaseTokenIssuer = mustStrDefault("NEXUS_EXECUTION_LEASE_TOKEN_ISSUER", "nexus-core")
+	cfg.Service.ExecutionLeaseSigningKey = mustStrDefault("NEXUS_EXECUTION_LEASE_SIGNING_KEY", cfg.Service.MasterKey)
 
 	cbFail, err := mustIntDefault("NEXUS_CB_FAILURE_THRESHOLD", 5)
 	if err != nil {
