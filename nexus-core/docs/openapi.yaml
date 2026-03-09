@@ -2801,6 +2801,10 @@ components:
       properties:
         id: { type: string, format: uuid }
         intent_id: { type: string, format: uuid, nullable: true }
+        approval_mode: { type: string, enum: [standard, break_glass] }
+        approval_group_id: { type: string, format: uuid, nullable: true }
+        approval_step: { type: integer }
+        approval_steps_total: { type: integer }
         request_id: { type: string }
         tool_name: { type: string }
         actor: { type: string, nullable: true }
@@ -2813,7 +2817,7 @@ components:
         decided_at: { type: string, format: date-time, nullable: true }
         expires_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
-      required: [id, request_id, tool_name, status, expires_at, created_at]
+      required: [id, approval_mode, approval_step, approval_steps_total, request_id, tool_name, status, expires_at, created_at]
 
     AlertRuleItem:
       type: object

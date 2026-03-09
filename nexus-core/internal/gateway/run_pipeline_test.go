@@ -63,9 +63,19 @@ func (f fakeTenantCaps) GetRunRPM(context.Context, uuid.UUID) (int, error) {
 	return f.rpm, nil
 }
 
-type fakeApproval struct{ id string }
+type fakeApproval struct {
+	id    string
+	ids   []string
+	calls []ApprovalRequest
+}
 
-func (f fakeApproval) RequestApproval(_ context.Context, _ ApprovalRequest) (string, error) {
+func (f *fakeApproval) RequestApproval(_ context.Context, req ApprovalRequest) (string, error) {
+	f.calls = append(f.calls, req)
+	if len(f.ids) > 0 {
+		id := f.ids[0]
+		f.ids = f.ids[1:]
+		return id, nil
+	}
 	return f.id, nil
 }
 
@@ -458,7 +468,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: approvalID},
+			&fakeApproval{id: approvalID},
 			defaultConfig(),
 		)
 		svc.WithIntentRepo(intentRepo)
@@ -484,6 +494,67 @@ func TestRunPipeline(t *testing.T) {
 		}
 	})
 
+	t.Run("break_glass_requires_dual_approval_and_short_ttl", func(t *testing.T) {
+		approvalPolicy := policydomain.Policy{
+			ID:       uuid.New(),
+			OrgID:    orgID,
+			ToolID:   tool.ID,
+			Effect:   policydomain.EffectAllow,
+			Priority: 1,
+			Enabled:  true,
+			ConditionsJSON: mustJSON(map[string]any{
+				"all": []any{
+					map[string]any{"path": "input.hello", "op": "exists"},
+				},
+			}),
+			LimitsJSON:     mustJSON(map[string]any{"require_approval": true, "approval_ttl_seconds": 3600}),
+			ReasonTemplate: "break glass requested",
+		}
+		intentRepo := &fakeIntentRepo{}
+		approval := &fakeApproval{ids: []string{uuid.NewString(), uuid.NewString()}}
+		svc := buildSvc(
+			fakeToolRepo{tool: tool},
+			fakePolicyRepoWithPolicies{policies: []policydomain.Policy{approvalPolicy}},
+			fakeLimiter{},
+			fakeEgress{},
+			&fakeExecutor{},
+			nil, nil,
+			approval,
+			defaultConfig(),
+		)
+		svc.WithIntentRepo(intentRepo)
+		req := defaultReq()
+		req.Context = map[string]any{
+			"target_env":    "production",
+			"approval_mode": "break_glass",
+		}
+		resp, err := svc.Run(context.Background(), orgID, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertBlocked(t, resp, http.StatusAccepted, types.ErrCodeApprovalRequired)
+		if resp.RiskClass == nil || *resp.RiskClass != string(gwdomain.RiskClassBreakGlass) {
+			t.Fatalf("expected break_glass risk class, got %s", ptrVal(resp.RiskClass))
+		}
+		if len(approval.calls) != 2 {
+			t.Fatalf("expected two approval requests, got %d", len(approval.calls))
+		}
+		for idx, call := range approval.calls {
+			if call.ApprovalMode != "break_glass" {
+				t.Fatalf("expected break_glass mode at step %d, got %s", idx+1, call.ApprovalMode)
+			}
+			if call.TTLSeconds != 900 {
+				t.Fatalf("expected short ttl 900, got %d", call.TTLSeconds)
+			}
+			if call.ApprovalStepsTotal != 2 {
+				t.Fatalf("expected dual approval total, got %d", call.ApprovalStepsTotal)
+			}
+		}
+		if approval.calls[0].ApprovalGroupID == nil || approval.calls[1].ApprovalGroupID == nil || *approval.calls[0].ApprovalGroupID != *approval.calls[1].ApprovalGroupID {
+			t.Fatal("expected both approvals to share the same group id")
+		}
+	})
+
 	t.Run("terraform_preflight_requires_plan_artifact", func(t *testing.T) {
 		tfTool := terraformTool(orgID)
 		approvalPolicy := policydomain.Policy{
@@ -505,7 +576,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		svc.WithIntentRepo(intentRepo)
@@ -544,7 +615,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		).WithRestoreEvidence(fakeRestoreEvidence{
 			items: []RestoreEvidence{{
@@ -600,7 +671,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		req := defaultReq()
@@ -639,7 +710,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		req := defaultReq()
@@ -681,7 +752,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		).WithProtectedResources(fakeProtectedResources{
 			items: []ProtectedResource{
@@ -736,7 +807,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		req := defaultReq()
@@ -770,7 +841,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		req := defaultReq()
@@ -809,7 +880,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		req := defaultReq()
@@ -843,7 +914,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		req := defaultReq()
@@ -881,7 +952,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		).WithProtectedResources(fakeProtectedResources{
 			items: []ProtectedResource{
@@ -1049,6 +1120,56 @@ func TestRunPipeline(t *testing.T) {
 		}
 	})
 
+	t.Run("execute_break_glass_intent_allows_failed_preflight_after_quorum", func(t *testing.T) {
+		intentID := uuid.New()
+		leaseID := uuid.New()
+		intentRepo := &fakeIntentRepo{
+			getByID: gwdomain.ExecutionIntent{
+				ID:              intentID,
+				OrgID:           orgID,
+				ToolID:          tool.ID,
+				ToolName:        tool.Name,
+				RequestID:       "intent-break-glass",
+				Scopes:          []string{"gateway:run"},
+				Input:           map[string]any{"hello": "world"},
+				Context:         map[string]any{"approval_mode": "break_glass"},
+				RiskClass:       gwdomain.RiskClassBreakGlass,
+				Reason:          "break glass",
+				Status:          gwdomain.IntentStatusApproved,
+				PreflightStatus: gwdomain.PreflightStatusFailed,
+				ExpiresAt:       time.Now().Add(time.Hour),
+				ApprovalID:      uuidPtr(uuid.New()),
+			},
+		}
+		leaseRepo := &fakeLeaseRepo{
+			getByID: gwdomain.ExecutionLease{
+				ID:             leaseID,
+				IntentID:       intentID,
+				ToolName:       tool.Name,
+				RiskClass:      gwdomain.RiskClassBreakGlass,
+				Status:         gwdomain.ExecutionLeaseStatusActive,
+				CredentialMode: "lease_only",
+				ExpiresAt:      time.Now().Add(5 * time.Minute),
+			},
+		}
+		svc := buildSvc(
+			fakeToolRepo{tool: tool},
+			fakePolicyRepo{},
+			fakeLimiter{},
+			fakeEgress{},
+			&fakeExecutor{},
+			nil, nil, nil,
+			defaultConfig(),
+		)
+		svc.WithIntentRepo(intentRepo)
+		svc.WithLeaseRepo(leaseRepo)
+		resp, err := svc.ExecuteIntentWithLease(context.Background(), orgID, intentID, leaseID, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		assertSuccess(t, resp)
+	})
+
 	t.Run("issue_execution_lease_for_approved_intent", func(t *testing.T) {
 		intentID := uuid.New()
 		intentRepo := &fakeIntentRepo{
@@ -1093,6 +1214,45 @@ func TestRunPipeline(t *testing.T) {
 		}
 	})
 
+	t.Run("issue_execution_lease_allows_break_glass_failed_preflight", func(t *testing.T) {
+		intentID := uuid.New()
+		intentRepo := &fakeIntentRepo{
+			getByID: gwdomain.ExecutionIntent{
+				ID:              intentID,
+				OrgID:           orgID,
+				ToolID:          tool.ID,
+				ToolName:        tool.Name,
+				RequestID:       "intent-break-glass-lease",
+				Input:           map[string]any{"hello": "world"},
+				Context:         map[string]any{"approval_mode": "break_glass"},
+				RiskClass:       gwdomain.RiskClassBreakGlass,
+				Status:          gwdomain.IntentStatusApproved,
+				PreflightStatus: gwdomain.PreflightStatusFailed,
+				ExpiresAt:       time.Now().Add(time.Hour),
+				ApprovalID:      uuidPtr(uuid.New()),
+			},
+		}
+		leaseRepo := &fakeLeaseRepo{}
+		svc := buildSvc(
+			fakeToolRepo{tool: tool},
+			fakePolicyRepo{},
+			fakeLimiter{},
+			fakeEgress{},
+			&fakeExecutor{},
+			nil, nil, nil,
+			defaultConfig(),
+		)
+		svc.WithIntentRepo(intentRepo)
+		svc.WithLeaseRepo(leaseRepo)
+		lease, err := svc.IssueExecutionLease(context.Background(), orgID, intentID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if lease.ID == uuid.Nil {
+			t.Fatal("expected lease id")
+		}
+	})
+
 	t.Run("risk_class_uses_prod_signals", func(t *testing.T) {
 		writeTool := tool
 		writeTool.ActionType = tooldomain.ActionWrite
@@ -1122,7 +1282,7 @@ func TestRunPipeline(t *testing.T) {
 			fakeEgress{},
 			&fakeExecutor{},
 			nil, nil,
-			fakeApproval{id: uuid.NewString()},
+			&fakeApproval{id: uuid.NewString()},
 			defaultConfig(),
 		)
 		svc.WithIntentRepo(intentRepo)

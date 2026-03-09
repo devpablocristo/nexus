@@ -539,6 +539,69 @@ textarea {
   gap: 14px;
 }
 
+.execution-approvals-list {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.execution-approval-card {
+  border: 1px solid rgba(127, 163, 214, 0.14);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(127, 163, 214, 0.06), transparent 44%),
+    rgba(7, 12, 22, 0.86);
+  padding: 14px;
+}
+
+.execution-approval-topline,
+.execution-approval-meta,
+.execution-approval-footer,
+.execution-approval-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.execution-approval-meta {
+  margin-top: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.execution-approval-reason {
+  margin: 6px 0 0;
+}
+
+.execution-approval-footer {
+  margin-top: 12px;
+}
+
+.execution-approval-footer code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: #dce8ff;
+}
+
+.execution-approval-actions {
+  justify-content: flex-end;
+}
+
+.execution-approval-btn {
+  padding: 9px 14px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.execution-approval-btn-danger {
+  background: linear-gradient(135deg, rgba(196, 92, 74, 0.95), rgba(122, 36, 36, 0.95));
+}
+
 .execution-execute-panel {
   display: flex;
   justify-content: space-between;

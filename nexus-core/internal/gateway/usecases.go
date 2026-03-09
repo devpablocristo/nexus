@@ -146,18 +146,22 @@ type ApprovalPort interface {
 }
 
 type ApprovalRequest struct {
-	OrgID           uuid.UUID
-	ToolID          uuid.UUID
-	RequestID       string
-	ToolName        string
-	Actor           *string
-	Role            *string
-	InputRedacted   map[string]any
-	ContextRedacted map[string]any
-	Reason          string
-	PolicyID        *uuid.UUID
-	IntentID        *uuid.UUID
-	TTLSeconds      int
+	OrgID              uuid.UUID
+	ToolID             uuid.UUID
+	ApprovalMode       string
+	ApprovalGroupID    *uuid.UUID
+	ApprovalStep       int
+	ApprovalStepsTotal int
+	RequestID          string
+	ToolName           string
+	Actor              *string
+	Role               *string
+	InputRedacted      map[string]any
+	ContextRedacted    map[string]any
+	Reason             string
+	PolicyID           *uuid.UUID
+	IntentID           *uuid.UUID
+	TTLSeconds         int
 }
 
 type Config struct {
@@ -588,6 +592,9 @@ func (u *Usecases) runPoliciesAndDecision(ctx context.Context, orgID uuid.UUID, 
 	if st.limits.requireApproval() && u.approval != nil {
 		ttlSeconds := st.limits.approvalTTLSeconds()
 		riskClass := classifyRiskClass(st.tool, st.input, st.contextMap, ttlSeconds > 0)
+		if riskClass == gwdomain.RiskClassBreakGlass && (ttlSeconds <= 0 || ttlSeconds > 900) {
+			ttlSeconds = 900
+		}
 		protectedResources, err := u.listProtectedResources(ctx, orgID)
 		if err != nil {
 			return nil, err
@@ -597,7 +604,7 @@ func (u *Usecases) runPoliciesAndDecision(ctx context.Context, orgID uuid.UUID, 
 			return nil, err
 		}
 		preflight := evaluateDeterministicPreflight(st.tool, st.input, st.contextMap, protectedResources, restoreEvidence)
-		if preflight.required && preflight.status == gwdomain.PreflightStatusFailed {
+		if preflight.required && preflight.status == gwdomain.PreflightStatusFailed && riskClass != gwdomain.RiskClassBreakGlass {
 			resp := u.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, preflight.failureReason, preflight.failureCode, preflight.failureHTTP, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
 			u.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
 			return &resp, nil
@@ -630,36 +637,58 @@ func (u *Usecases) runPoliciesAndDecision(ctx context.Context, orgID uuid.UUID, 
 			}
 			intent = &created
 		}
-		approvalID, err := u.approval.RequestApproval(ctx, ApprovalRequest{
-			OrgID:           orgID,
-			ToolID:          st.tool.ID,
-			RequestID:       st.requestID,
-			ToolName:        st.tool.Name,
-			Actor:           req.Actor,
-			Role:            req.Role,
-			InputRedacted:   redactToMap(st.input),
-			ContextRedacted: redactToMap(st.contextMap),
-			Reason:          st.matchReason,
-			PolicyID:        st.policyID,
-			IntentID:        intentIDPtr(intent),
-			TTLSeconds:      ttlSeconds,
-		})
-		if err != nil {
-			u.log.Error().Err(err).Str("request_id", st.requestID).Msg("approval_request_failed")
-			return nil, err
+		approvalMode := "standard"
+		approvalCount := 1
+		reasonText := st.matchReason
+		var approvalGroupID *uuid.UUID
+		if riskClass == gwdomain.RiskClassBreakGlass {
+			approvalMode = "break_glass"
+			approvalCount = 2
+			groupID := uuid.New()
+			approvalGroupID = &groupID
+			reasonText = "break-glass requested: dual approval required before execution override"
 		}
-		if intent != nil {
-			if parsedApprovalID, parseErr := uuid.Parse(approvalID); parseErr == nil {
+		approvalIDs := make([]string, 0, approvalCount)
+		for step := 1; step <= approvalCount; step++ {
+			approvalID, err := u.approval.RequestApproval(ctx, ApprovalRequest{
+				OrgID:              orgID,
+				ToolID:             st.tool.ID,
+				ApprovalMode:       approvalMode,
+				ApprovalGroupID:    approvalGroupID,
+				ApprovalStep:       step,
+				ApprovalStepsTotal: approvalCount,
+				RequestID:          st.requestID,
+				ToolName:           st.tool.Name,
+				Actor:              req.Actor,
+				Role:               req.Role,
+				InputRedacted:      redactToMap(st.input),
+				ContextRedacted:    redactToMap(st.contextMap),
+				Reason:             reasonText,
+				PolicyID:           st.policyID,
+				IntentID:           intentIDPtr(intent),
+				TTLSeconds:         ttlSeconds,
+			})
+			if err != nil {
+				u.log.Error().Err(err).Str("request_id", st.requestID).Msg("approval_request_failed")
+				return nil, err
+			}
+			approvalIDs = append(approvalIDs, approvalID)
+		}
+		if intent != nil && len(approvalIDs) > 0 {
+			if parsedApprovalID, parseErr := uuid.Parse(approvalIDs[0]); parseErr == nil {
 				_ = u.intentRepo.LinkApproval(ctx, orgID, intent.ID, parsedApprovalID)
 			}
 		}
-		reason := "pending human approval (id: " + approvalID + ")"
+		reason := "pending human approval (id: " + approvalIDs[0] + ")"
+		if len(approvalIDs) > 1 {
+			reason = "pending break-glass approval quorum (" + strings.Join(approvalIDs, ", ") + ")"
+		}
 		resp := u.blocked(ctx, orgID, req.Actor, req.Role, req.Scopes, st.requestID, st.tool.Name, st.tool.ID, st.policyID, reason, types.ErrCodeApprovalRequired, http.StatusAccepted, st.start, st.input, st.contextMap, st.idemMeta, req.TimeoutMS, intPtr(st.budget.RemainingMS()), st.budget.StageDurationsMS())
 		if intent != nil {
 			resp.IntentID = strPtr(intent.ID.String())
 			resp.RiskClass = strPtr(string(intent.RiskClass))
 		}
-		resp.ApprovalID = strPtr(approvalID)
+		resp.ApprovalID = strPtr(approvalIDs[0])
 		u.failIdempotencyIfNeeded(ctx, st.createdIdempotencyRow, orgID, st.tool.Name, st.idempotencyKey, &resp)
 		return &resp, nil
 	}

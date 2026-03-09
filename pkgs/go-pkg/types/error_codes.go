@@ -24,6 +24,8 @@ const (
 	ErrCodeIdempotencyProgress = "IDEMPOTENCY_IN_PROGRESS"
 	ErrCodeIdempotencyStore    = "IDEMPOTENCY_STORE_ERROR"
 	ErrCodeApprovalRequired    = "APPROVAL_REQUIRED"
+	ErrCodeBreakGlassApproval  = "BREAK_GLASS_DUAL_APPROVAL_REQUIRED"
+	ErrCodeBreakGlassApprover  = "BREAK_GLASS_DISTINCT_APPROVER_REQUIRED"
 	ErrCodePreflightFailed     = "PREFLIGHT_FAILED"
 	ErrCodeLeaseRequired       = "EXECUTION_LEASE_REQUIRED"
 	ErrCodeLeaseInvalid        = "EXECUTION_LEASE_INVALID"

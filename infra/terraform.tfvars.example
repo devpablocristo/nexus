@@ -10,6 +10,9 @@ saas_desired_count     = 1
 control_desired_count  = 1
 ai_desired_count       = 1
 
+# Safety guard: production plans reject tower_force_destroy = true.
+tower_force_destroy    = false
+
 # Keep these false in real AWS deployments.
 aws_skip_credentials_validation = false
 aws_skip_requesting_account_id  = false

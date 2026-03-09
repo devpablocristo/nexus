@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -72,6 +73,7 @@ func (e *CoreActionEngine) Apply(ctx context.Context, orgID uuid.UUID, actor *st
 	} else {
 		actionReq = req
 	}
+	actionReq.LeaseHeaders = mergeLeaseHeaders(actionReq.LeaseHeaders, req.LeaseHeaders)
 
 	body := map[string]any{
 		"action_type": actionReq.ActionType,
@@ -112,6 +114,27 @@ func (e *CoreActionEngine) Apply(ctx context.Context, orgID uuid.UUID, actor *st
 		Proposal:       proposal,
 		IdempotencyKey: proposal.ID.String(),
 	}, nil
+}
+
+func mergeLeaseHeaders(base, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for k, v := range base {
+		if strings.TrimSpace(v) != "" {
+			out[k] = v
+		}
+	}
+	for k, v := range overlay {
+		if strings.TrimSpace(v) != "" {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (e *CoreActionEngine) Rollback(ctx context.Context, orgID uuid.UUID, actor *string, req opsaction.EngineRequest) (opsaction.EngineResult, error) {

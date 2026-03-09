@@ -9,6 +9,10 @@ resource "aws_s3_bucket" "tower" {
   tags = {
     Name = "${var.environment}-nexus-tower"
   }
+
+  lifecycle {
+    prevent_destroy = var.environment == "production"
+  }
 }
 
 resource "aws_s3_bucket_versioning" "tower" {

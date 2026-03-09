@@ -17,18 +17,22 @@ func NewGatewayAdapter(uc *Usecases) *GatewayAdapter {
 
 func (a *GatewayAdapter) RequestApproval(ctx context.Context, req gateway.ApprovalRequest) (string, error) {
 	pa, err := a.uc.RequestApproval(ctx, domain.CreateRequest{
-		OrgID:           req.OrgID,
-		ToolID:          req.ToolID,
-		IntentID:        req.IntentID,
-		RequestID:       req.RequestID,
-		ToolName:        req.ToolName,
-		Actor:           req.Actor,
-		Role:            req.Role,
-		InputRedacted:   req.InputRedacted,
-		ContextRedacted: req.ContextRedacted,
-		Reason:          req.Reason,
-		PolicyID:        req.PolicyID,
-		TTLSeconds:      req.TTLSeconds,
+		OrgID:              req.OrgID,
+		ToolID:             req.ToolID,
+		IntentID:           req.IntentID,
+		ApprovalMode:       domain.ApprovalMode(req.ApprovalMode),
+		ApprovalGroupID:    req.ApprovalGroupID,
+		ApprovalStep:       req.ApprovalStep,
+		ApprovalStepsTotal: req.ApprovalStepsTotal,
+		RequestID:          req.RequestID,
+		ToolName:           req.ToolName,
+		Actor:              req.Actor,
+		Role:               req.Role,
+		InputRedacted:      req.InputRedacted,
+		ContextRedacted:    req.ContextRedacted,
+		Reason:             req.Reason,
+		PolicyID:           req.PolicyID,
+		TTLSeconds:         req.TTLSeconds,
 	})
 	if err != nil {
 		return "", err

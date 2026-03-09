@@ -307,3 +307,24 @@ export type ExecutionLeaseItem = {
   used_at?: string;
   created_at: string;
 };
+
+export type ApprovalItem = {
+  id: string;
+  intent_id?: string;
+  approval_mode: 'standard' | 'break_glass' | string;
+  approval_group_id?: string;
+  approval_step: number;
+  approval_steps_total: number;
+  request_id: string;
+  tool_name: string;
+  actor?: string;
+  role?: string;
+  input_redacted: Record<string, unknown>;
+  context_redacted: Record<string, unknown>;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | string;
+  decided_by?: string;
+  decided_at?: string;
+  expires_at: string;
+  created_at: string;
+};

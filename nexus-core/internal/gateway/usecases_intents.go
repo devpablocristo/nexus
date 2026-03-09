@@ -16,6 +16,9 @@ import (
 
 func classifyRiskClass(tool tooldomain.Tool, input, contextMap map[string]any, approvalRequired bool) gwdomain.RiskClass {
 	method := strings.ToUpper(strings.TrimSpace(tool.Method))
+	if explicitBreakGlassIntent(input, contextMap) {
+		return gwdomain.RiskClassBreakGlass
+	}
 	if explicitPlanIntent(input, contextMap, tool.Name) {
 		return gwdomain.RiskClassPlan
 	}
@@ -47,6 +50,23 @@ func explicitPlanIntent(input, contextMap map[string]any, toolName string) bool 
 		}
 		for _, key := range []string{"mode", "intent", "operation"} {
 			if looksLikePlan(asStringLower(m[key])) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func explicitBreakGlassIntent(input, contextMap map[string]any) bool {
+	for _, m := range []map[string]any{input, contextMap} {
+		if m == nil {
+			continue
+		}
+		if boolLike(m["break_glass"]) || boolLike(m["emergency_access"]) {
+			return true
+		}
+		for _, key := range []string{"mode", "intent", "operation", "approval_mode"} {
+			if looksLikeBreakGlass(asStringLower(m[key])) {
 				return true
 			}
 		}
@@ -96,6 +116,10 @@ func looksLikeProd(s string) bool {
 
 func looksLikePlan(s string) bool {
 	return s == "plan" || s == "preview" || s == "dry-run" || s == "dry_run"
+}
+
+func looksLikeBreakGlass(s string) bool {
+	return s == "break_glass" || s == "break-glass" || s == "emergency" || s == "emergency_override"
 }
 
 func cloneMap(in map[string]any) map[string]any {
@@ -168,7 +192,7 @@ func (u *Usecases) ExecuteIntentWithLease(ctx context.Context, orgID, intentID, 
 			LeaseID:    uuidStringPtrOrNil(leaseID),
 		}, nil
 	}
-	if intent.PreflightStatus == gwdomain.PreflightStatusFailed {
+	if intent.PreflightStatus == gwdomain.PreflightStatusFailed && intent.RiskClass != gwdomain.RiskClassBreakGlass {
 		reason := "intent preflight failed and cannot be executed"
 		code := types.ErrCodePreflightFailed
 		return gwdomain.RunResponse{
@@ -311,7 +335,7 @@ func (u *Usecases) IssueExecutionLease(ctx context.Context, orgID, intentID uuid
 	if !intent.ExpiresAt.IsZero() && time.Now().UTC().After(intent.ExpiresAt) {
 		return gwdomain.ExecutionLease{}, types.NewHTTPError(http.StatusForbidden, types.ErrCodeLeaseExpired, "intent expired before lease issuance")
 	}
-	if intent.PreflightStatus == gwdomain.PreflightStatusFailed {
+	if intent.PreflightStatus == gwdomain.PreflightStatusFailed && intent.RiskClass != gwdomain.RiskClassBreakGlass {
 		return gwdomain.ExecutionLease{}, types.NewHTTPError(http.StatusForbidden, types.ErrCodePreflightFailed, "intent preflight failed and cannot receive a lease")
 	}
 	ttlSeconds := executionLeaseTTLSeconds(intent.RiskClass)

@@ -4,6 +4,7 @@ import (
 	"github.com/google/wire"
 
 	"nexus-core/internal/approval"
+	"nexus-core/internal/audit"
 	"nexus-core/internal/gateway"
 )
 
@@ -15,8 +16,8 @@ func ProvideApprovalIntentStatusPort(r *gateway.IntentRepository) approval.Inten
 	return r
 }
 
-func ProvideApprovalUsecases(repo *approval.Repository, intentPort approval.IntentStatusPort) *approval.Usecases {
-	return approval.NewUsecases(repo).WithIntentPort(intentPort)
+func ProvideApprovalUsecases(repo *approval.Repository, intentPort approval.IntentStatusPort, auditRepo *audit.Repository) *approval.Usecases {
+	return approval.NewUsecases(repo).WithIntentPort(intentPort).WithAuditPort(auditRepo)
 }
 
 var ApprovalSet = wire.NewSet(

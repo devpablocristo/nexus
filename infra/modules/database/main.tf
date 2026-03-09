@@ -40,6 +40,10 @@ resource "aws_db_instance" "nexus_core" {
   tags = {
     Name = "${var.environment}-nexus-core"
   }
+
+  lifecycle {
+    prevent_destroy = var.environment == "production"
+  }
 }
 
 resource "aws_db_instance" "nexus_saas" {
@@ -74,5 +78,9 @@ resource "aws_db_instance" "nexus_saas" {
 
   tags = {
     Name = "${var.environment}-nexus-saas"
+  }
+
+  lifecycle {
+    prevent_destroy = var.environment == "production"
   }
 }

@@ -1,5 +1,6 @@
 import { requestJSON } from '../api/client';
 import type {
+  ApprovalItem,
   APIKeyItem,
   AdminActivityItem,
   AdminBootstrap,
@@ -274,6 +275,29 @@ export async function runTool(toolName: string, input: Record<string, unknown>):
 export async function getExecutionIntents(limit = 50): Promise<{ items: ExecutionIntentItem[] }> {
   const qs = new URLSearchParams({ limit: String(limit) }).toString();
   return requestJSON('core', `/v1/run/intents?${qs}`);
+}
+
+export async function getPendingApprovals(limit = 100): Promise<{ items: ApprovalItem[] }> {
+  const qs = new URLSearchParams({ limit: String(limit) }).toString();
+  return requestJSON('core', `/v1/approvals?${qs}`);
+}
+
+export async function getApproval(id: string): Promise<ApprovalItem> {
+  return requestJSON('core', `/v1/approvals/${id}`);
+}
+
+export async function approveApproval(id: string, decidedBy: string): Promise<void> {
+  await requestJSON<void>('core', `/v1/approvals/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ decided_by: decidedBy }),
+  });
+}
+
+export async function rejectApproval(id: string, decidedBy: string): Promise<void> {
+  await requestJSON<void>('core', `/v1/approvals/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ decided_by: decidedBy }),
+  });
 }
 
 export async function getExecutionIntentPreflight(intentID: string): Promise<PreflightReview> {

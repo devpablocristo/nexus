@@ -12,32 +12,45 @@ import (
 )
 
 type stubRepo struct {
-	created   domain.PendingApproval
-	decided   bool
-	decidedID uuid.UUID
-	expired   int64
-	intentID  *uuid.UUID
+	created        domain.PendingApproval
+	decided        bool
+	decidedID      uuid.UUID
+	expired        int64
+	intentID       *uuid.UUID
+	byIntent       []domain.PendingApproval
+	rejectedIntent uuid.UUID
+	getItem        *domain.PendingApproval
 }
 
 func (r *stubRepo) Create(_ context.Context, req domain.CreateRequest) (domain.PendingApproval, error) {
 	pa := domain.PendingApproval{
-		ID:        uuid.New(),
-		OrgID:     req.OrgID,
-		ToolID:    req.ToolID,
-		IntentID:  req.IntentID,
-		RequestID: req.RequestID,
-		ToolName:  req.ToolName,
-		Actor:     req.Actor,
-		Reason:    req.Reason,
-		Status:    domain.StatusPending,
-		ExpiresAt: time.Now().Add(time.Duration(req.TTLSeconds) * time.Second),
-		CreatedAt: time.Now(),
+		ID:                 uuid.New(),
+		OrgID:              req.OrgID,
+		ToolID:             req.ToolID,
+		IntentID:           req.IntentID,
+		ApprovalMode:       req.ApprovalMode,
+		ApprovalGroupID:    req.ApprovalGroupID,
+		ApprovalStep:       req.ApprovalStep,
+		ApprovalStepsTotal: req.ApprovalStepsTotal,
+		RequestID:          req.RequestID,
+		ToolName:           req.ToolName,
+		Actor:              req.Actor,
+		Reason:             req.Reason,
+		Status:             domain.StatusPending,
+		ExpiresAt:          time.Now().Add(time.Duration(req.TTLSeconds) * time.Second),
+		CreatedAt:          time.Now(),
 	}
 	r.created = pa
 	return pa, nil
 }
 
 func (r *stubRepo) GetByID(_ context.Context, orgID, id uuid.UUID) (domain.PendingApproval, error) {
+	if r.getItem != nil {
+		item := *r.getItem
+		item.ID = id
+		item.OrgID = orgID
+		return item, nil
+	}
 	return domain.PendingApproval{ID: id, OrgID: orgID, Status: domain.StatusPending, IntentID: r.intentID}, nil
 }
 
@@ -48,6 +61,10 @@ func (r *stubRepo) ListPending(_ context.Context, _ uuid.UUID, _ int) ([]domain.
 	return nil, nil
 }
 
+func (r *stubRepo) ListByIntent(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]domain.PendingApproval, error) {
+	return append([]domain.PendingApproval{}, r.byIntent...), nil
+}
+
 func (r *stubRepo) Decide(_ context.Context, _ uuid.UUID, id uuid.UUID, _ domain.Status, _ string) error {
 	r.decided = true
 	r.decidedID = id
@@ -56,6 +73,11 @@ func (r *stubRepo) Decide(_ context.Context, _ uuid.UUID, id uuid.UUID, _ domain
 
 func (r *stubRepo) ExpireOld(_ context.Context) (int64, error) {
 	return r.expired, nil
+}
+
+func (r *stubRepo) RejectPendingByIntent(_ context.Context, _ uuid.UUID, intentID uuid.UUID, _ string) error {
+	r.rejectedIntent = intentID
+	return nil
 }
 
 type stubIntentPort struct {
@@ -89,6 +111,12 @@ func TestRequestApproval_DefaultTTL(t *testing.T) {
 	}
 	if pa.ToolName != "danger-tool" {
 		t.Errorf("expected danger-tool, got %s", pa.ToolName)
+	}
+	if pa.ApprovalMode != domain.ApprovalModeStandard {
+		t.Errorf("expected default approval mode standard, got %s", pa.ApprovalMode)
+	}
+	if pa.ApprovalStepsTotal != 1 {
+		t.Errorf("expected single approval by default, got %d", pa.ApprovalStepsTotal)
 	}
 }
 
@@ -131,6 +159,136 @@ func TestApproveRejectSyncsIntentStatus(t *testing.T) {
 	}
 
 	if err := svc.Reject(context.Background(), orgID, approvalID, "admin@co"); err != nil {
+		t.Fatal(err)
+	}
+	if intentPort.rejected != intentID {
+		t.Fatalf("expected rejected intent %s, got %s", intentID, intentPort.rejected)
+	}
+}
+
+func TestBreakGlassApproveRequiresDistinctApprovers(t *testing.T) {
+	intentID := uuid.New()
+	groupID := uuid.New()
+	repo := &stubRepo{
+		intentID: &intentID,
+		getItem: &domain.PendingApproval{
+			IntentID:           &intentID,
+			ApprovalMode:       domain.ApprovalModeBreakGlass,
+			ApprovalGroupID:    &groupID,
+			ApprovalStep:       2,
+			ApprovalStepsTotal: 2,
+			Status:             domain.StatusPending,
+		},
+		byIntent: []domain.PendingApproval{
+			{
+				ID:                 uuid.New(),
+				IntentID:           &intentID,
+				ApprovalMode:       domain.ApprovalModeBreakGlass,
+				ApprovalGroupID:    &groupID,
+				ApprovalStep:       1,
+				ApprovalStepsTotal: 2,
+				Status:             domain.StatusApproved,
+				DecidedBy:          strPtr("admin-1"),
+			},
+		},
+	}
+	svc := NewUsecases(repo).WithIntentPort(&stubIntentPort{})
+
+	err := svc.Approve(context.Background(), uuid.New(), uuid.New(), "admin-1")
+	if err == nil {
+		t.Fatal("expected duplicate approver rejection")
+	}
+}
+
+func TestBreakGlassApproveNeedsQuorumBeforeIntentApproved(t *testing.T) {
+	intentID := uuid.New()
+	groupID := uuid.New()
+	repo := &stubRepo{
+		intentID: &intentID,
+		getItem: &domain.PendingApproval{
+			IntentID:           &intentID,
+			ApprovalMode:       domain.ApprovalModeBreakGlass,
+			ApprovalGroupID:    &groupID,
+			ApprovalStep:       1,
+			ApprovalStepsTotal: 2,
+			Status:             domain.StatusPending,
+		},
+		byIntent: []domain.PendingApproval{
+			{
+				ID:                 uuid.New(),
+				IntentID:           &intentID,
+				ApprovalMode:       domain.ApprovalModeBreakGlass,
+				ApprovalGroupID:    &groupID,
+				ApprovalStep:       1,
+				ApprovalStepsTotal: 2,
+				Status:             domain.StatusPending,
+			},
+		},
+	}
+	intentPort := &stubIntentPort{}
+	svc := NewUsecases(repo).WithIntentPort(intentPort)
+
+	if err := svc.Approve(context.Background(), uuid.New(), uuid.New(), "admin-2"); err != nil {
+		t.Fatal(err)
+	}
+	if intentPort.approved != uuid.Nil {
+		t.Fatal("did not expect intent approved before quorum")
+	}
+}
+
+func TestBreakGlassApproveMarksIntentApprovedAtQuorum(t *testing.T) {
+	intentID := uuid.New()
+	groupID := uuid.New()
+	repo := &stubRepo{
+		intentID: &intentID,
+		getItem: &domain.PendingApproval{
+			IntentID:           &intentID,
+			ApprovalMode:       domain.ApprovalModeBreakGlass,
+			ApprovalGroupID:    &groupID,
+			ApprovalStep:       2,
+			ApprovalStepsTotal: 2,
+			Status:             domain.StatusPending,
+		},
+		byIntent: []domain.PendingApproval{
+			{
+				ID:                 uuid.New(),
+				IntentID:           &intentID,
+				ApprovalMode:       domain.ApprovalModeBreakGlass,
+				ApprovalGroupID:    &groupID,
+				ApprovalStep:       1,
+				ApprovalStepsTotal: 2,
+				Status:             domain.StatusApproved,
+				DecidedBy:          strPtr("admin-1"),
+			},
+		},
+	}
+	intentPort := &stubIntentPort{}
+	svc := NewUsecases(repo).WithIntentPort(intentPort)
+
+	if err := svc.Approve(context.Background(), uuid.New(), uuid.New(), "admin-2"); err != nil {
+		t.Fatal(err)
+	}
+	if intentPort.approved != intentID {
+		t.Fatalf("expected approved intent %s, got %s", intentID, intentPort.approved)
+	}
+}
+
+func TestBreakGlassRejectRejectsWholeIntent(t *testing.T) {
+	intentID := uuid.New()
+	repo := &stubRepo{
+		intentID: &intentID,
+		getItem: &domain.PendingApproval{
+			IntentID:           &intentID,
+			ApprovalMode:       domain.ApprovalModeBreakGlass,
+			ApprovalStep:       1,
+			ApprovalStepsTotal: 2,
+			Status:             domain.StatusPending,
+		},
+	}
+	intentPort := &stubIntentPort{}
+	svc := NewUsecases(repo).WithIntentPort(intentPort)
+
+	if err := svc.Reject(context.Background(), uuid.New(), uuid.New(), "admin-1"); err != nil {
 		t.Fatal(err)
 	}
 	if intentPort.rejected != intentID {

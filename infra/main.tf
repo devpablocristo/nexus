@@ -34,6 +34,8 @@ provider "aws" {
 }
 
 locals {
+  is_production = var.environment == "production"
+
   container_services = [
     "nexus-core",
     "nexus-saas",
@@ -84,6 +86,13 @@ locals {
     "stripe-webhook-secret",
     "anthropic-api-key",
   ]
+}
+
+check "tower_force_destroy_not_allowed_in_production" {
+  assert {
+    condition     = !(local.is_production && var.tower_force_destroy)
+    error_message = "tower_force_destroy must remain false when environment is production."
+  }
 }
 
 module "networking" {

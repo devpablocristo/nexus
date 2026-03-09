@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  approveApproval,
   executeExecutionIntent,
+  getApproval,
   getExecutionIntentPreflight,
   getExecutionIntents,
+  getPendingApprovals,
+  getUserMe,
   issueExecutionLease,
+  rejectApproval,
 } from '../lib/api';
-import type { ExecutionIntentItem } from '../lib/types';
+import type { ApprovalItem, ExecutionIntentItem } from '../lib/types';
 
 function riskClassLabel(value: ExecutionIntentItem['risk_class']) {
   return value.split('_').join(' ');
@@ -17,6 +22,10 @@ function statusClass(value: string) {
   if (value === 'approved' || value === 'passed' || value === 'executed') return 'run-pill run-pill-allow';
   if (value === 'failed' || value === 'rejected' || value === 'destructive_prod') return 'run-pill run-pill-error';
   return 'run-pill run-pill-blocked';
+}
+
+function formatApprovalMode(value: ApprovalItem['approval_mode']) {
+  return value.split('_').join(' ');
 }
 
 function formatDateTime(value?: string) {
@@ -56,6 +65,64 @@ export default function ExecutionControlPage() {
     queryFn: () => getExecutionIntentPreflight(selectedIntentID),
     enabled: Boolean(selectedIntentID),
   });
+
+  const meQuery = useQuery({
+    queryKey: ['user-me'],
+    queryFn: () => getUserMe(),
+  });
+
+  const pendingApprovalsQuery = useQuery({
+    queryKey: ['pending-approvals', 100],
+    queryFn: () => getPendingApprovals(100),
+    refetchInterval: 5000,
+    refetchOnWindowFocus: false,
+  });
+
+  const linkedApprovalQuery = useQuery({
+    queryKey: ['approval', selectedIntent?.approval_id],
+    queryFn: () => getApproval(selectedIntent!.approval_id!),
+    enabled: Boolean(selectedIntent?.approval_id),
+  });
+
+  const decidedBy =
+    meQuery.data?.user?.email ??
+    meQuery.data?.user?.name ??
+    meQuery.data?.external_id ??
+    'tower-user';
+
+  const approvalMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: 'approve' | 'reject' }) => {
+      if (action === 'approve') {
+        await approveApproval(id, decidedBy);
+        return;
+      }
+      await rejectApproval(id, decidedBy);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['execution-intents'] });
+      await queryClient.invalidateQueries({ queryKey: ['execution-intent-preflight', selectedIntentID] });
+      await queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
+      await queryClient.invalidateQueries({ queryKey: ['approval', selectedIntent?.approval_id] });
+    },
+  });
+
+  const selectedIntentApprovals = useMemo(() => {
+    if (!selectedIntent) return [];
+    const itemsByID = new Map<string, ApprovalItem>();
+    const maybeLinked = linkedApprovalQuery.data;
+    if (maybeLinked && maybeLinked.intent_id === selectedIntent.id) {
+      itemsByID.set(maybeLinked.id, maybeLinked);
+    }
+    for (const item of pendingApprovalsQuery.data?.items ?? []) {
+      if (item.intent_id === selectedIntent.id) {
+        itemsByID.set(item.id, item);
+      }
+    }
+    return Array.from(itemsByID.values()).sort((a, b) => {
+      if (a.approval_step !== b.approval_step) return a.approval_step - b.approval_step;
+      return a.created_at.localeCompare(b.created_at);
+    });
+  }, [linkedApprovalQuery.data, pendingApprovalsQuery.data?.items, selectedIntent]);
 
   const executeMutation = useMutation({
     mutationFn: async (intentID: string) => {
@@ -176,6 +243,73 @@ export default function ExecutionControlPage() {
                     </details>
                   </>
                 )}
+              </section>
+
+              <section className="execution-review-panel">
+                <div className="execution-panel-header">
+                  <h4>Approval Chain</h4>
+                  <span className="muted">
+                    {selectedIntentApprovals.length > 0
+                      ? `${selectedIntentApprovals.length} step${selectedIntentApprovals.length === 1 ? '' : 's'}`
+                      : 'No approval records loaded'}
+                  </span>
+                </div>
+                {(pendingApprovalsQuery.isLoading || linkedApprovalQuery.isLoading) && (
+                  <p className="muted">Loading approval state...</p>
+                )}
+                {(pendingApprovalsQuery.error || linkedApprovalQuery.error) && (
+                  <p className="field-error">
+                    {((pendingApprovalsQuery.error ?? linkedApprovalQuery.error) as Error).message}
+                  </p>
+                )}
+                {!pendingApprovalsQuery.isLoading && !linkedApprovalQuery.isLoading && selectedIntentApprovals.length === 0 && (
+                  <p className="muted">This intent has no linked approval records yet.</p>
+                )}
+                <div className="execution-approvals-list">
+                  {selectedIntentApprovals.map((approval) => (
+                    <article key={approval.id} className="execution-approval-card">
+                      <div className="execution-approval-topline">
+                        <div>
+                          <strong>
+                            Step {approval.approval_step} / {approval.approval_steps_total}
+                          </strong>
+                          <p className="muted execution-approval-reason">{approval.reason}</p>
+                        </div>
+                        <span className={statusClass(approval.status)}>{approval.status}</span>
+                      </div>
+                      <div className="execution-approval-meta">
+                        <span>{formatApprovalMode(approval.approval_mode)}</span>
+                        <span>{approval.tool_name}</span>
+                        <span>expires {formatDateTime(approval.expires_at)}</span>
+                        {approval.decided_by ? <span>by {approval.decided_by}</span> : <span>awaiting reviewer</span>}
+                      </div>
+                      <div className="execution-approval-footer">
+                        <code>{approval.id}</code>
+                        {approval.status === 'pending' && (
+                          <div className="execution-approval-actions">
+                            <button
+                              type="button"
+                              className="execution-approval-btn"
+                              disabled={approvalMutation.isPending}
+                              onClick={() => approvalMutation.mutate({ id: approval.id, action: 'approve' })}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="execution-approval-btn execution-approval-btn-danger"
+                              disabled={approvalMutation.isPending}
+                              onClick={() => approvalMutation.mutate({ id: approval.id, action: 'reject' })}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                {approvalMutation.error && <p className="field-error">{(approvalMutation.error as Error).message}</p>}
               </section>
 
               <section className="execution-review-panel">

@@ -95,7 +95,7 @@ func InitializeAPI(cfg config.Config) (*App, func(), error) {
 	leaseCredentialBrokerPort := ProvideGatewayLeaseCredentialBroker(leaseMetadataBroker)
 	approvalRepository := approval.NewRepository(db)
 	intentStatusPort := ProvideApprovalIntentStatusPort(intentRepository)
-	approvalUsecases := ProvideApprovalUsecases(approvalRepository, intentStatusPort)
+	approvalUsecases := ProvideApprovalUsecases(approvalRepository, intentStatusPort, auditRepository)
 	gatewayAdapter := approval.NewGatewayAdapter(approvalUsecases)
 	approvalPort := ProvideGatewayApprovalPort(gatewayAdapter)
 	runMetrics := telemetry.NewRunMetrics()

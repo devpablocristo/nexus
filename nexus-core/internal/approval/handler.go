@@ -121,20 +121,24 @@ func (h *Handler) reject(c *gin.Context) {
 
 func toDTO(a domain.PendingApproval) approvaldto.ApprovalItem {
 	return approvaldto.ApprovalItem{
-		ID:              a.ID.String(),
-		IntentID:        uuidToStringPtr(a.IntentID),
-		RequestID:       a.RequestID,
-		ToolName:        a.ToolName,
-		Actor:           a.Actor,
-		Role:            a.Role,
-		InputRedacted:   a.InputRedacted,
-		ContextRedacted: a.ContextRedacted,
-		Reason:          a.Reason,
-		Status:          string(a.Status),
-		DecidedBy:       a.DecidedBy,
-		DecidedAt:       a.DecidedAt,
-		ExpiresAt:       a.ExpiresAt,
-		CreatedAt:       a.CreatedAt,
+		ID:                 a.ID.String(),
+		IntentID:           uuidToStringPtr(a.IntentID),
+		ApprovalMode:       string(a.ApprovalMode),
+		ApprovalGroupID:    uuidToStringPtr(a.ApprovalGroupID),
+		ApprovalStep:       a.ApprovalStep,
+		ApprovalStepsTotal: a.ApprovalStepsTotal,
+		RequestID:          a.RequestID,
+		ToolName:           a.ToolName,
+		Actor:              a.Actor,
+		Role:               a.Role,
+		InputRedacted:      a.InputRedacted,
+		ContextRedacted:    a.ContextRedacted,
+		Reason:             a.Reason,
+		Status:             string(a.Status),
+		DecidedBy:          a.DecidedBy,
+		DecidedAt:          a.DecidedAt,
+		ExpiresAt:          a.ExpiresAt,
+		CreatedAt:          a.CreatedAt,
 	}
 }
 
