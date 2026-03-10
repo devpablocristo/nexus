@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine
+FROM golang:1.26-alpine
 RUN apk add --no-cache git wget
 RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
 WORKDIR /src
