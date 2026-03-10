@@ -24,7 +24,7 @@ require (
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/wire v0.6.0
+	github.com/google/wire v0.7.0
 	github.com/zsais/go-gin-prometheus v1.0.2
 	gorm.io/driver/sqlite v1.4.3 // test-only: in-memory DB for repository integration tests
 )
