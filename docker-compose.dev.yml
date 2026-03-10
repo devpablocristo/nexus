@@ -2,12 +2,12 @@ services:
   nexus-core:
     build:
       context: .
-      dockerfile: nexus-core/Dockerfile.dev
+      dockerfile: data-plane/Dockerfile.dev
     volumes:
-      - ./nexus-core:/src
-      - ./pkgs/go-pkg:/pkgs/go-pkg
+      - ./data-plane:/src/data-plane
+      - ./pkgs/go-pkg:/src/pkgs/go-pkg
     environment:
-      NEXUS_MIGRATIONS_DIR: /src/migrations
+      NEXUS_MIGRATIONS_DIR: /src/data-plane/migrations
     command: ["sh", "-c", "go run ./cmd/migrate -cmd up && air -c .air.toml"]
     healthcheck:
       interval: 5s
@@ -17,26 +17,26 @@ services:
   mock-tools:
     build:
       context: .
-      dockerfile: nexus-core/Dockerfile.dev
+      dockerfile: data-plane/Dockerfile.dev
     volumes:
-      - ./nexus-core:/src
-      - ./pkgs/go-pkg:/pkgs/go-pkg
+      - ./data-plane:/src/data-plane
+      - ./pkgs/go-pkg:/src/pkgs/go-pkg
     command: ["air", "-c", ".air-mock-tools.toml"]
 
   nexus-control-operators:
     build:
       context: .
-      dockerfile: nexus-control-operators/Dockerfile.dev
+      dockerfile: control-workers/Dockerfile.dev
     volumes:
-      - ./nexus-control-operators:/src/nexus-control-operators
+      - ./control-workers:/src/control-workers
       - ./pkgs/go-pkg:/src/pkgs/go-pkg
 
   nexus-saas:
     build:
       context: .
-      dockerfile: nexus-saas/Dockerfile.dev
+      dockerfile: control-plane/Dockerfile.dev
     volumes:
-      - ./nexus-saas:/src/nexus-saas
+      - ./control-plane:/src/control-plane
       - ./pkgs/go-pkg:/src/pkgs/go-pkg
     environment:
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
@@ -60,16 +60,16 @@ services:
   nexus-ai-operators:
     build:
       context: .
-      dockerfile: nexus-ai-operators/Dockerfile.dev
+      dockerfile: ai-runtime/Dockerfile.dev
     volumes:
-      - ./nexus-ai-operators:/workspace/nexus-ai-operators
+      - ./ai-runtime:/workspace/ai-runtime
 
   nexus-tower:
     build:
       context: .
-      dockerfile: nexus-tower/Dockerfile.dev
+      dockerfile: tower/Dockerfile.dev
     volumes:
-      - ./nexus-tower:/workspace
+      - ./tower:/workspace
     environment:
       VITE_NEXUS_SAAS_URL: "${VITE_NEXUS_SAAS_URL:-http://localhost:8082}"
       VITE_NEXUS_CORE_URL: "${VITE_NEXUS_CORE_URL:-http://localhost:8080}"

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "source": "nexus-core/pkg/types/error_codes.go",
+  "source": "data-plane/pkg/types/error_codes.go",
   "codes": [
     "UNAUTHORIZED",
     "NOT_FOUND",

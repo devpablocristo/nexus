@@ -32,7 +32,7 @@ Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este pro
 
 ## Lo que YA existe (hooks de eventos para conectar)
 
-### Clerk webhooks (nexus-saas/internal/clerkwebhook/)
+### Clerk webhooks (control-plane/internal/clerkwebhook/)
 
 | Evento | Handler actual |
 |--------|---------------|
@@ -41,7 +41,7 @@ Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este pro
 | `organization.created` | `onOrganizationCreated` — sincroniza org |
 | `organizationMembership.created` | `onOrganizationMembershipCreated` — agrega miembro |
 
-### Stripe webhooks (nexus-saas/internal/billing/)
+### Stripe webhooks (control-plane/internal/billing/)
 
 | Evento | Handler actual |
 |--------|---------------|
@@ -50,7 +50,7 @@ Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este pro
 | `invoice.payment_succeeded` | billing_status = active |
 | `invoice.payment_failed` | billing_status = past_due |
 
-### Event store (nexus-saas/internal/events/)
+### Event store (control-plane/internal/events/)
 
 Eventos existentes en la tabla `events`:
 
@@ -62,7 +62,7 @@ Eventos existentes en la tabla `events`:
 | `action.rolled_back` | Actions usecase |
 | `action.expired` | Actions usecase |
 
-### Alerts (nexus-saas/internal/alerts/)
+### Alerts (control-plane/internal/alerts/)
 
 - Alert rules con `webhook_url` que disparan cuando se supera un umbral
 - Métricas: `deny_rate`, `error_rate`, `rate_limited_count`
@@ -79,7 +79,7 @@ Tabla `org_members` con `org_id`, `user_id`, `role`.
 
 ### Fase 1 — Módulo de notificaciones (nexus-saas)
 
-#### 1.1 Nuevo módulo `nexus-saas/internal/notifications/`
+#### 1.1 Nuevo módulo `control-plane/internal/notifications/`
 
 ```
 internal/notifications/
@@ -98,7 +98,7 @@ internal/notifications/
 
 #### 1.2 Migración SQL
 
-`nexus-saas/migrations/0005_notification_preferences.up.sql`:
+`control-plane/migrations/0005_notification_preferences.up.sql`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS notification_preferences (
@@ -379,7 +379,7 @@ SMTP_USERNAME=
 SMTP_PASSWORD=
 ```
 
-#### 4.2 Config (nexus-saas/cmd/config/service.go)
+#### 4.2 Config (control-plane/cmd/config/service.go)
 
 ```go
 // Notifications

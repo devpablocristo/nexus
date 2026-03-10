@@ -5,12 +5,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 pairs=(
-  "pkgs/contracts/openapi.nexus-core.snapshot.yaml|nexus-core/docs/openapi.yaml"
-  "pkgs/contracts/openapi.nexus-saas.snapshot.yaml|nexus-saas/docs/openapi.yaml"
-  "pkgs/contracts/openapi.nexus-core.snapshot.yaml|nexus-tower/public/downloads/nexus-core.openapi.yaml"
-  "pkgs/contracts/openapi.nexus-saas.snapshot.yaml|nexus-tower/public/downloads/nexus-saas.openapi.yaml"
-  "docs/postman/nexus-core.postman_collection.json|nexus-tower/public/downloads/nexus-core.postman_collection.json"
-  "docs/postman/nexus-saas.postman_collection.json|nexus-tower/public/downloads/nexus-saas.postman_collection.json"
+  "pkgs/contracts/openapi.nexus-core.snapshot.yaml|data-plane/docs/openapi.yaml"
+  "pkgs/contracts/openapi.nexus-saas.snapshot.yaml|control-plane/docs/openapi.yaml"
+  "pkgs/contracts/openapi.nexus-core.snapshot.yaml|tower/public/downloads/nexus-core.openapi.yaml"
+  "pkgs/contracts/openapi.nexus-saas.snapshot.yaml|tower/public/downloads/nexus-saas.openapi.yaml"
+  "docs/postman/nexus-core.postman_collection.json|tower/public/downloads/nexus-core.postman_collection.json"
+  "docs/postman/nexus-saas.postman_collection.json|tower/public/downloads/nexus-saas.postman_collection.json"
 )
 
 status=0

@@ -22,8 +22,8 @@ Todo lo definido en este prompt es parte del alcance requerido del subsistema AI
 
 ## Lo que YA existe (no duplicar)
 
-- `nexus-ai-operators/app/api/routes.py` expone `/v1/assistant/query`.
-- `nexus-ai-operators/app/services/llm_client.py` soporta `anthropic`, `ollama` y `fallback`.
+- `ai-runtime/app/api/routes.py` expone `/v1/assistant/query`.
+- `ai-runtime/app/services/llm_client.py` soporta `anthropic`, `ollama` y `fallback`.
 - Existe rate limiting de assistant y fallback determinista.
 - Existen métricas, logging y dead-letter básicos en el servicio AI.
 - Tower consume assistant vía `nexus-saas`, no habla directo con el LLM.
@@ -37,7 +37,7 @@ Todo lo definido en este prompt es parte del alcance requerido del subsistema AI
 Crear un registry explícito de prompts runtime:
 
 ```text
-nexus-ai-operators/app/prompts/
+ai-runtime/app/prompts/
 ├── assistant_system_v1.md
 ├── diagnosis_system_v1.md
 ├── comms_system_v1.md
@@ -82,7 +82,7 @@ Debe quedar documentado qué se pierde y qué se preserva cuando entra el fallba
 Agregar carpeta de evals:
 
 ```text
-nexus-ai-operators/tests/evals/
+ai-runtime/tests/evals/
 ├── assistant_cases.yaml
 ├── diagnosis_cases.yaml
 └── test_prompt_evals.py
@@ -137,17 +137,17 @@ Agregar env/config para:
 ## Archivos a crear o modificar
 
 ### Crear
-- `nexus-ai-operators/app/prompts/*`
-- `nexus-ai-operators/app/services/prompt_registry.py`
-- `nexus-ai-operators/app/services/prompt_context_builder.py`
-- `nexus-ai-operators/tests/evals/*`
+- `ai-runtime/app/prompts/*`
+- `ai-runtime/app/services/prompt_registry.py`
+- `ai-runtime/app/services/prompt_context_builder.py`
+- `ai-runtime/tests/evals/*`
 
 ### Modificar
-- `nexus-ai-operators/app/api/routes.py`
-- `nexus-ai-operators/app/services/llm_client.py`
-- `nexus-ai-operators/app/core/config.py`
-- `nexus-ai-operators/app/core/metrics.py`
-- `nexus-ai-operators/README.md`
+- `ai-runtime/app/api/routes.py`
+- `ai-runtime/app/services/llm_client.py`
+- `ai-runtime/app/core/config.py`
+- `ai-runtime/app/core/metrics.py`
+- `ai-runtime/README.md`
 
 ---
 

@@ -97,7 +97,7 @@ Guardar las keys:
 
 Instalar:
 ```bash
-cd nexus-tower
+cd tower
 npm install @clerk/clerk-react
 ```
 
@@ -188,7 +188,7 @@ API key auth sigue funcionando para M2M (scripts, operators, etc.).
 
 ### 2.1 Migración en nexus-saas
 
-Crear `nexus-saas/migrations/0003_users_and_members.up.sql`:
+Crear `control-plane/migrations/0003_users_and_members.up.sql`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (
@@ -223,7 +223,7 @@ DROP TABLE IF EXISTS users;
 
 ### 2.2 Webhook endpoint en nexus-saas
 
-Crear `nexus-saas/internal/clerkwebhook/handler.go`:
+Crear `control-plane/internal/clerkwebhook/handler.go`:
 
 Clerk envía webhooks cuando:
 - `user.created` → crear user en DB
@@ -305,7 +305,7 @@ NEXUS_JWT_ISSUER=https://xxx.clerk.accounts.dev
 ## Estructura de archivos esperada
 
 ```
-nexus-saas/
+control-plane/
   migrations/0003_users_and_members.up.sql
   migrations/0003_users_and_members.down.sql
   internal/clerkwebhook/
@@ -324,7 +324,7 @@ nexus-saas/
     repository/models/models.go
     usecases.go
 
-nexus-tower/
+tower/
   src/pages/LoginPage.tsx
   src/pages/SignupPage.tsx
   src/pages/SettingsPage.tsx

@@ -75,7 +75,7 @@ Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este pro
 
 ### 1. Security headers — Nginx (nexus-tower)
 
-**Archivo:** `nexus-tower/nginx.conf`
+**Archivo:** `tower/nginx.conf`
 
 Estado actual — solo tiene `Cache-Control` en `/assets/`. Agregar en el bloque `server`:
 
@@ -118,17 +118,17 @@ Registrar en ambos servicios (en `bootstrap_routes.go`), después de Recovery y 
 
 ### 3. Body limit faltante en nexus-saas
 
-**Bug actual:** `nexus-saas/wire/bootstrap_routes.go` recibe `httpCfg` pero NO aplica `ginmw.BodyLimit`. Línea 56 tiene `_ = httpCfg`.
+**Bug actual:** `control-plane/wire/bootstrap_routes.go` recibe `httpCfg` pero NO aplica `ginmw.BodyLimit`. Línea 56 tiene `_ = httpCfg`.
 
 **Fix:** Agregar `ginmw.BodyLimit(httpCfg.MaxBodyBytes)` al middleware chain, igual que nexus-core.
 
 ### 4. nexus-ai-operators — Hardening
 
-**Archivo:** `nexus-ai-operators/app/main.py` y nuevos middlewares.
+**Archivo:** `ai-runtime/app/main.py` y nuevos middlewares.
 
 #### 4a. Non-root Docker user
 
-Editar `nexus-ai-operators/Dockerfile` para agregar:
+Editar `ai-runtime/Dockerfile` para agregar:
 
 ```dockerfile
 RUN adduser -D -u 1000 app
@@ -190,11 +190,11 @@ Agregar un job nuevo en `.github/workflows/ci.yml`:
       - name: Go vulnerability check (nexus-core)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          cd nexus-core && govulncheck ./...
+          cd data-plane && govulncheck ./...
       - name: Go vulnerability check (nexus-saas)
-        run: cd nexus-saas && govulncheck ./...
+        run: cd control-plane && govulncheck ./...
       - name: Go vulnerability check (nexus-control-operators)
-        run: cd nexus-control-operators && govulncheck ./...
+        run: cd control-workers && govulncheck ./...
 
       # Python audit
       - uses: actions/setup-python@v5
@@ -203,14 +203,14 @@ Agregar un job nuevo en `.github/workflows/ci.yml`:
       - name: Python dependency audit
         run: |
           pip install pip-audit
-          cd nexus-ai-operators && pip-audit .
+          cd ai-runtime && pip-audit .
 
       # Node audit
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Node dependency audit
-        run: cd nexus-tower && npm audit --audit-level=high
+        run: cd tower && npm audit --audit-level=high
 ```
 
 ### 7. Dependabot
@@ -285,7 +285,7 @@ updates:
 
 ### 8. Gin DTO validation tags
 
-Agregar `binding:"required"` a campos obligatorios en los DTOs. Ejemplo en `nexus-core/internal/gateway/handler/dto/dto.go`:
+Agregar `binding:"required"` a campos obligatorios en los DTOs. Ejemplo en `data-plane/internal/gateway/handler/dto/dto.go`:
 
 ```go
 // Antes (actual):
@@ -308,8 +308,8 @@ type RunRequest struct {
 ```
 
 Revisar TODOS los DTOs en:
-- `nexus-core/internal/*/handler/dto/dto.go`
-- `nexus-saas/internal/*/handler/dto/` o directamente en `handler.go`
+- `data-plane/internal/*/handler/dto/dto.go`
+- `control-plane/internal/*/handler/dto/` o directamente en `handler.go`
 
 Y agregar tags `binding:"required"` donde el campo es obligatorio. No romper backward-compat: si un campo era opcional antes, dejarlo así.
 
@@ -365,15 +365,15 @@ En nexus-core y nexus-saas `/metrics` también está sin auth, pero en producci�
 
 | Archivo | Cambio |
 |---------|--------|
-| `nexus-tower/nginx.conf` | Agregar security headers y CSP |
-| `nexus-core/wire/bootstrap_routes.go` | Registrar `SecurityHeaders()` middleware |
-| `nexus-saas/wire/bootstrap_routes.go` | Registrar `SecurityHeaders()` + `BodyLimit` middleware |
-| `nexus-ai-operators/Dockerfile` | Agregar `USER app` (non-root) |
-| `nexus-ai-operators/app/main.py` | CORS middleware, body limit |
+| `tower/nginx.conf` | Agregar security headers y CSP |
+| `data-plane/wire/bootstrap_routes.go` | Registrar `SecurityHeaders()` middleware |
+| `control-plane/wire/bootstrap_routes.go` | Registrar `SecurityHeaders()` + `BodyLimit` middleware |
+| `ai-runtime/Dockerfile` | Agregar `USER app` (non-root) |
+| `ai-runtime/app/main.py` | CORS middleware, body limit |
 | `docker-compose.yml` | Cambiar CORS default de `*` a orígenes locales |
 | `.github/workflows/ci.yml` | Agregar job `security-scan` |
-| `nexus-core/internal/*/handler/dto/dto.go` | Agregar `binding:"required"` tags |
-| `nexus-saas/internal/*/handler/dto/*.go` | Agregar `binding:"required"` tags |
+| `data-plane/internal/*/handler/dto/dto.go` | Agregar `binding:"required"` tags |
+| `control-plane/internal/*/handler/dto/*.go` | Agregar `binding:"required"` tags |
 
 ---
 
@@ -411,10 +411,10 @@ En nexus-core y nexus-saas `/metrics` también está sin auth, pero en producci�
    - [ ] `docs/runbooks/SECRET_ROTATION.md` documenta el procedimiento para cada secret
 
 9. **Compilación y tests:**
-   - [ ] `cd nexus-core && go build ./...` ✓
-   - [ ] `cd nexus-saas && go build ./...` ✓
-   - [ ] `cd nexus-tower && npm run build` ✓
-   - [ ] `cd nexus-ai-operators && pytest -q` ✓
+   - [ ] `cd data-plane && go build ./...` ✓
+   - [ ] `cd control-plane && go build ./...` ✓
+   - [ ] `cd tower && npm run build` ✓
+   - [ ] `cd ai-runtime && pytest -q` ✓
    - [ ] `make e2e` pasa (los e2e existentes no se rompen)
 
 ---

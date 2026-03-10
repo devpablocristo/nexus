@@ -141,13 +141,13 @@ En nexus-core, al consultar entitlements de nexus-saas, si `status != 'active'`,
 
 #### 3a. Página 404
 
-Crear `nexus-tower/src/pages/NotFoundPage.tsx`:
+Crear `tower/src/pages/NotFoundPage.tsx`:
 - Diseño limpio con "404 — Page not found"
 - Botón "Go to Dashboard" que navega a `/tools`
 
 #### 3b. Página para tenant suspendido
 
-Crear `nexus-tower/src/pages/SuspendedPage.tsx`:
+Crear `tower/src/pages/SuspendedPage.tsx`:
 - Mensaje "Your account has been suspended"
 - Enlace a soporte o billing
 
@@ -248,7 +248,7 @@ Con `go.mod`, README, y ejemplo de uso.
 
 ### 6. Onboarding first-time experience
 
-Crear `nexus-tower/src/pages/OnboardingPage.tsx`:
+Crear `tower/src/pages/OnboardingPage.tsx`:
 
 Un wizard de 3 pasos para nuevos tenants:
 1. **Welcome** — nombre de org, confirmar plan
@@ -353,11 +353,11 @@ Crear `docs/runbooks/LAUNCH_CHECKLIST.md`:
 | `scripts/smoke/smoke_prod.sh` | Smoke test post-deploy |
 | `scripts/loadtest/k6_gateway.js` | Load test con k6 |
 | `scripts/loadtest/README.md` | Instrucciones de load testing |
-| `nexus-saas/migrations/0006_tenant_lifecycle.up.sql` | Migration para status + deleted_at |
-| `nexus-saas/migrations/0006_tenant_lifecycle.down.sql` | Rollback |
-| `nexus-tower/src/pages/NotFoundPage.tsx` | Página 404 |
-| `nexus-tower/src/pages/SuspendedPage.tsx` | Página tenant suspendido |
-| `nexus-tower/src/pages/OnboardingPage.tsx` | Wizard de onboarding |
+| `control-plane/migrations/0006_tenant_lifecycle.up.sql` | Migration para status + deleted_at |
+| `control-plane/migrations/0006_tenant_lifecycle.down.sql` | Rollback |
+| `tower/src/pages/NotFoundPage.tsx` | Página 404 |
+| `tower/src/pages/SuspendedPage.tsx` | Página tenant suspendido |
+| `tower/src/pages/OnboardingPage.tsx` | Wizard de onboarding |
 | `sdks/go-sdk/` | Go SDK para consumidores (client.go, go.mod, README) |
 | `sdks/typescript-sdk/README.md` | README del TypeScript SDK |
 | `CHANGELOG.md` | Changelog del proyecto |
@@ -367,13 +367,13 @@ Crear `docs/runbooks/LAUNCH_CHECKLIST.md`:
 
 | Archivo | Cambio |
 |---------|--------|
-| `nexus-saas/internal/admin/handler.go` | Agregar suspend/reactivate/delete endpoints |
-| `nexus-saas/internal/admin/usecases.go` | Lógica de tenant lifecycle |
-| `nexus-saas/internal/admin/repository.go` | Queries para suspend/delete |
-| `nexus-saas/wire/bootstrap_routes.go` | Registrar nuevas rutas admin |
-| `nexus-tower/src/app/App.tsx` | Ruta 404, onboarding, suspended |
-| `nexus-tower/src/components/ErrorBoundary.tsx` | Mejorar con report/support |
-| `nexus-tower/src/pages/AdminPage.tsx` | Botones suspend/reactivate/delete tenant |
+| `control-plane/internal/admin/handler.go` | Agregar suspend/reactivate/delete endpoints |
+| `control-plane/internal/admin/usecases.go` | Lógica de tenant lifecycle |
+| `control-plane/internal/admin/repository.go` | Queries para suspend/delete |
+| `control-plane/wire/bootstrap_routes.go` | Registrar nuevas rutas admin |
+| `tower/src/app/App.tsx` | Ruta 404, onboarding, suspended |
+| `tower/src/components/ErrorBoundary.tsx` | Mejorar con report/support |
+| `tower/src/pages/AdminPage.tsx` | Botones suspend/reactivate/delete tenant |
 
 ---
 
@@ -409,9 +409,9 @@ Crear `docs/runbooks/LAUNCH_CHECKLIST.md`:
 17. [ ] `docs/runbooks/LAUNCH_CHECKLIST.md` tiene checklist completo
 
 ### Build & tests
-18. [ ] `cd nexus-core && go build ./...` ✓
-19. [ ] `cd nexus-saas && go build ./...` ✓
-20. [ ] `cd nexus-tower && npm run build` ✓
+18. [ ] `cd data-plane && go build ./...` ✓
+19. [ ] `cd control-plane && go build ./...` ✓
+20. [ ] `cd tower && npm run build` ✓
 21. [ ] `make e2e` pasa sin regresiones
 
 ---

@@ -13,7 +13,7 @@ Antes de devolver **cualquier** resultado al usuario:
    - Endpoint nuevo: `curl` y verificar código HTTP + body esperado
    - Flujo completo (stack, seed, UI): ejecutar cada paso y confirmar output
    - Script nuevo: ejecutarlo y verificar que termina sin error
-   - **CRÍTICO – nexus-tower**: el frontend corre como imagen Docker compilada (nginx, puerto 5174→4173). Cualquier cambio a `nexus-tower/src/**` REQUIERE `docker compose build nexus-tower && docker compose up -d --force-recreate nexus-tower` antes de probar en el browser. El hot-reload de Vite NO aplica.
+   - **CRÍTICO – tower**: el frontend corre como imagen Docker compilada (nginx, puerto 5174→4173). Cualquier cambio a `tower/src/**` REQUIERE `docker compose build nexus-tower && docker compose up -d --force-recreate nexus-tower` antes de probar en el browser. El hot-reload de Vite NO aplica.
 
 2. **Si falla: corregir y volver al paso 1.** No devolver el resultado hasta que pase.
 

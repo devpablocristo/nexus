@@ -1,10 +1,10 @@
 SHELL := /bin/bash
 
-CORE_DIR := nexus-core
-SAAS_DIR := nexus-saas
-AI_OPERATORS_DIR := nexus-ai-operators
-CONTROL_OPERATORS_DIR := nexus-control-operators
-TOWER_DIR := nexus-tower
+CORE_DIR := data-plane
+SAAS_DIR := control-plane
+AI_OPERATORS_DIR := ai-runtime
+CONTROL_OPERATORS_DIR := control-workers
+TOWER_DIR := tower
 CORE_SERVICE := nexus-core
 COMPOSE := docker compose
 
@@ -121,6 +121,9 @@ e2e-stack:
 	$(MAKE) up-ready
 	$(MAKE) migrate-up
 	$(MAKE) seed
+	# Reinicia los servicios que dependen de API keys seedadas para evitar
+	# falsos 401/429 durante el bootstrap local de e2e.
+	$(COMPOSE) up -d --force-recreate --wait nexus-saas nexus-control-operators nexus-ai-operators
 
 e2e-first:
 	bash scripts/e2e/01_run_echo.sh

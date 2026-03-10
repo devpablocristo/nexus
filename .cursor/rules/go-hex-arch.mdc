@@ -1,6 +1,6 @@
 ---
 description: Arquitectura hexagonal Go - accept interfaces return structs
-globs: nexus-core/**/*.go,nexus-control-operators/**/*.go
+globs: data-plane/**/*.go,control-workers/**/*.go
 alwaysApply: true
 ---
 

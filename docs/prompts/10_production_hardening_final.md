@@ -94,12 +94,12 @@ Así el build falla si Go o npm tienen vulnerabilidades críticas.
 
 ### 1.3 Rate limit por tenant en nexus-saas
 
-Archivo: `nexus-saas/wire/bootstrap_routes.go`
+Archivo: `control-plane/wire/bootstrap_routes.go`
 
 Agregar un middleware de rate limiting por `org_id` a los endpoints de la API SaaS (`/v1/...`).
 
-Usar el mismo patrón que `nexus-core/internal/gateway/executor/ratelimit/`:
-- Implementar en `nexus-saas/internal/shared/ratelimit/middleware.go`
+Usar el mismo patrón que `data-plane/internal/gateway/executor/ratelimit/`:
+- Implementar en `control-plane/internal/shared/ratelimit/middleware.go`
 - Leer `org_id` del context (ya lo pone el auth middleware)
 - Límite configurable via env: `NEXUS_SAAS_RATE_LIMIT_RPS` (default: 100)
 - En-memory con `sync.Map` + token bucket o sliding window
@@ -181,10 +181,10 @@ Agregar a config: `NEXUS_SAAS_RATE_LIMIT_RPS` (default 100), `NEXUS_SAAS_RATE_LI
 
 ## 2. Auth: protección brute-force en login attempts
 
-Archivo: `nexus-saas/internal/shared/handlers/auth_middleware.go`
+Archivo: `control-plane/internal/shared/handlers/auth_middleware.go`
 
 Agregar un contador de intentos fallidos por IP:
-- Implementar en `nexus-saas/internal/shared/ratelimit/auth_limiter.go`
+- Implementar en `control-plane/internal/shared/ratelimit/auth_limiter.go`
 - Tras 10 auth failures en 5 minutos desde la misma IP → bloquear 15 minutos
 - Retornar `429 Too Many Requests` con mensaje claro
 - In-memory con TTL (no necesita Redis en esta fase)
@@ -275,7 +275,7 @@ func (al *AuthLimiter) cleanup() {
 
 Integrar en el auth middleware: al inicio, check `IsBlocked(c.ClientIP())`. Si auth falla, `RecordFailure`. Si OK, `RecordSuccess`.
 
-Test unitario en `nexus-saas/internal/shared/ratelimit/auth_limiter_test.go`.
+Test unitario en `control-plane/internal/shared/ratelimit/auth_limiter_test.go`.
 
 ---
 
@@ -283,11 +283,11 @@ Test unitario en `nexus-saas/internal/shared/ratelimit/auth_limiter_test.go`.
 
 ### 3.1 Control operators: DLQ file
 
-Archivo: `nexus-control-operators/internal/ops/eventstore/consumer.go`
+Archivo: `control-workers/internal/ops/eventstore/consumer.go`
 
 Actualmente, cuando un evento falla 3 veces se loguea y se salta. Agregar persistencia de eventos fallidos:
 
-Crear `nexus-control-operators/internal/ops/eventstore/deadletter.go`:
+Crear `control-workers/internal/ops/eventstore/deadletter.go`:
 
 ```go
 package eventstore
@@ -350,9 +350,9 @@ Ruta del archivo DLQ configurable: `NEXUS_DLQ_PATH` (default: `data/dead_letters
 
 ### 3.2 AI operators: DLQ equivalente
 
-Archivo: `nexus-ai-operators/app/engine/`
+Archivo: `ai-runtime/app/engine/`
 
-Crear `nexus-ai-operators/app/engine/dead_letter.py`:
+Crear `ai-runtime/app/engine/dead_letter.py`:
 
 ```python
 import json
@@ -426,7 +426,7 @@ No custom retry logic needed on Nexus side.
 
 ### 4.2 Implementar dunning worker
 
-Archivo: `nexus-saas/internal/billing/dunning_worker.go`
+Archivo: `control-plane/internal/billing/dunning_worker.go`
 
 ```go
 package billing
@@ -479,7 +479,7 @@ Agregar al repo: `FindPastDueBefore(ctx, cutoff time.Time) ([]TenantBilling, err
 
 ## 5. Usage metering: notificación approaching-limit
 
-Archivo: `nexus-saas/internal/billing/usage_check.go`
+Archivo: `control-plane/internal/billing/usage_check.go`
 
 Cuando se ingiere un evento de uso (`POST /internal/usage/events`), verificar:
 - Si el uso alcanza **80%** del hard limit → enviar notificación `usage_warning_80`
@@ -513,7 +513,7 @@ func (h *Handler) checkUsageThresholds(ctx context.Context, orgID uuid.UUID, met
 
 Deduplicar: no enviar la misma alerta más de una vez por período de facturación. Usar el mecanismo existente de `reference_id` en notifications.
 
-Agregar templates de email para `usage_warning_80`, `usage_warning_95`, `usage_limit_reached` en `nexus-saas/internal/notifications/templates.go`.
+Agregar templates de email para `usage_warning_80`, `usage_warning_95`, `usage_limit_reached` en `control-plane/internal/notifications/templates.go`.
 
 ---
 
@@ -675,7 +675,7 @@ Test unitario en `pkgs/go-pkg/http/middlewares/gin/trace_context_test.go`.
 
 ### 9.1 Backend: endpoint de notificaciones no leídas
 
-Archivo: `nexus-saas/internal/notifications/handler.go`
+Archivo: `control-plane/internal/notifications/handler.go`
 
 Agregar endpoints:
 - `GET /v1/notifications` — lista notificaciones del usuario (paginadas, más recientes primero)
@@ -697,7 +697,7 @@ type InAppNotification struct {
 }
 ```
 
-Migration `nexus-saas/migrations/0007_in_app_notifications.up.sql`:
+Migration `control-plane/migrations/0007_in_app_notifications.up.sql`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS in_app_notifications (
@@ -718,7 +718,7 @@ Down migration: `DROP TABLE IF EXISTS in_app_notifications;`
 
 ### 9.2 Frontend: notification bell
 
-Archivo: `nexus-tower/src/components/NotificationBell.tsx`
+Archivo: `tower/src/components/NotificationBell.tsx`
 
 - Ícono de campana en el header/navbar
 - Badge con unread count (polling cada 30s o via TanStack Query refetchInterval)
@@ -728,7 +728,7 @@ Archivo: `nexus-tower/src/components/NotificationBell.tsx`
 
 ### 9.3 Dual delivery
 
-Cuando se envía una notificación por email, **también** crear el registro en `in_app_notifications`. Modificar `nexus-saas/internal/notifications/usecases.go` para insertar en ambos canales.
+Cuando se envía una notificación por email, **también** crear el registro en `in_app_notifications`. Modificar `control-plane/internal/notifications/usecases.go` para insertar en ambos canales.
 
 ---
 

@@ -11,7 +11,7 @@ resource "aws_s3_bucket" "tower" {
   }
 
   lifecycle {
-    prevent_destroy = var.environment == "production"
+    prevent_destroy = true
   }
 }
 

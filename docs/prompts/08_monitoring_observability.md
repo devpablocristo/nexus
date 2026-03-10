@@ -59,7 +59,7 @@ Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este pro
 
 ### Prometheus config actual
 
-Archivo: `nexus-core/monitoring/prometheus/prometheus.yml`
+Archivo: `data-plane/monitoring/prometheus/prometheus.yml`
 
 ```yaml
 scrape_configs:
@@ -79,7 +79,7 @@ Un solo dashboard `nexus-gateway-overview` con 14 paneles, todos basados en mét
 
 ### Sistema de alertas
 
-`nexus-saas/internal/alerts/` tiene:
+`control-plane/internal/alerts/` tiene:
 - `EvaluateAll()` — evalúa reglas vs métricas (deny_rate, error_rate, rate_limited_count)
 - `MetricsSource` basado en audit_events
 - Modelo de reglas con cooldown, umbrales, webhooks
@@ -108,7 +108,7 @@ Página `/monitoring` embebe paneles de Grafana con KPIs y gráficos, filtro por
 
 ### 1. Prometheus — Agregar scrape targets faltantes
 
-**Archivo:** `nexus-core/monitoring/prometheus/prometheus.yml`
+**Archivo:** `data-plane/monitoring/prometheus/prometheus.yml`
 
 Agregar nexus-saas y nexus-ai-operators:
 
@@ -122,7 +122,7 @@ Agregar nexus-saas y nexus-ai-operators:
     metrics_path: /metrics
     static_configs:
       - targets: ["nexus-ai-operators:8000"]
-    # nexus-ai-operators requiere X-Operator-Key para /metrics
+    # ai-runtime requiere X-Operator-Key para /metrics
     # Opciones: (a) quitar auth de /metrics, (b) usar bearer_token en Prometheus
     # Recomendación: quitar auth de /metrics (endpoint de diagnóstico, no sensible)
 ```
@@ -136,7 +136,7 @@ Agregar nexus-saas y nexus-ai-operators:
 Agregar métricas Prometheus custom en nexus-saas para visibilidad de negocio:
 
 ```go
-// nexus-saas/internal/shared/metrics/metrics.go (crear)
+// control-plane/internal/shared/metrics/metrics.go (crear)
 var (
     WebhooksReceived = promauto.NewCounterVec(
         prometheus.CounterOpts{Name: "nexus_saas_webhooks_received_total", Help: "Webhooks received"},
@@ -177,7 +177,7 @@ Crear un goroutine/ticker en nexus-saas que ejecute `EvaluateAll()` periódicame
 
 **Opción A — Ticker en el servicio (recomendada para simplicidad):**
 
-Agregar en `nexus-saas/cmd/api/main.go` o en wire:
+Agregar en `control-plane/cmd/api/main.go` o en wire:
 
 ```go
 // Después de iniciar el HTTP server, lanzar el alert evaluator
@@ -211,7 +211,7 @@ Crear dashboards para los servicios que no tienen:
 
 #### Dashboard 2: `nexus-saas-overview`
 
-**Archivo:** `nexus-core/monitoring/grafana/dashboards/nexus-saas-overview.json`
+**Archivo:** `data-plane/monitoring/grafana/dashboards/nexus-saas-overview.json`
 
 Paneles:
 | # | Título | Tipo | Query |
@@ -227,7 +227,7 @@ Paneles:
 
 #### Dashboard 3: `nexus-operators-overview`
 
-**Archivo:** `nexus-core/monitoring/grafana/dashboards/nexus-operators-overview.json`
+**Archivo:** `data-plane/monitoring/grafana/dashboards/nexus-operators-overview.json`
 
 Paneles:
 | # | Título | Tipo | Query |
@@ -242,11 +242,11 @@ Paneles:
 | 8 | Proposals Created (AI) | stat | `sum(increase(nexus_operator_proposals_created_total[1h]))` |
 | 9 | AI Last Cursor | gauge | `nexus_operator_last_cursor` |
 
-Registrar los nuevos dashboards en el provisioning de Grafana. El archivo `nexus-core/monitoring/grafana/provisioning/dashboards/dashboard.yml` ya apunta al directorio de dashboards, así que basta con poner los JSON ahí.
+Registrar los nuevos dashboards en el provisioning de Grafana. El archivo `data-plane/monitoring/grafana/provisioning/dashboards/dashboard.yml` ya apunta al directorio de dashboards, así que basta con poner los JSON ahí.
 
 ### 5. Monitoring UI — Selector de dashboard en Tower
 
-Actualizar `nexus-tower/src/features/monitoring/MonitoringPage.tsx` para permitir cambiar entre los 3 dashboards:
+Actualizar `tower/src/features/monitoring/MonitoringPage.tsx` para permitir cambiar entre los 3 dashboards:
 
 - Agregar un selector/tabs: "Gateway" | "SaaS" | "Operators"
 - Cambiar el `DASHBOARD_UID` según la selección
@@ -292,7 +292,7 @@ Crear `docs/runbooks/SLO_SLI.md`:
 
 ### 7. Prometheus alerting rules
 
-Crear `nexus-core/monitoring/prometheus/alerts.yml`:
+Crear `data-plane/monitoring/prometheus/alerts.yml`:
 
 ```yaml
 groups:
@@ -367,7 +367,7 @@ Si las llamadas al core fallan, implementar retry con exponential backoff:
 // Retry hasta 3 veces con backoff: 1s, 2s, 4s
 ```
 
-Verificar en `nexus-control-operators/internal/shared/coreclient/` o similar.
+Verificar en `control-workers/internal/shared/coreclient/` o similar.
 
 #### 8b. Circuit breaker (opcional, nice-to-have)
 
@@ -380,7 +380,7 @@ Si el core está caído, el operator no debería seguir intentando. Un circuit b
 
 Para que Prometheus pueda scrapearlo sin auth:
 
-**Archivo:** `nexus-ai-operators/app/api/routes.py`
+**Archivo:** `ai-runtime/app/api/routes.py`
 
 El endpoint `/metrics` y `/healthz` deben ser accesibles sin `X-Operator-Key`. Verificar que no pasan por `verify_operator_key`. Actualmente `/healthz` y `/readyz` no tienen `Depends(verify_operator_key)`, pero `/metrics` puede tenerlo — verificar y corregir si es necesario.
 
@@ -390,26 +390,26 @@ El endpoint `/metrics` y `/healthz` deben ser accesibles sin `X-Operator-Key`. V
 
 | Archivo | Descripción |
 |---------|-------------|
-| `nexus-saas/internal/shared/metrics/metrics.go` | Métricas Prometheus custom de nexus-saas |
-| `nexus-core/monitoring/grafana/dashboards/nexus-saas-overview.json` | Dashboard Grafana para nexus-saas |
-| `nexus-core/monitoring/grafana/dashboards/nexus-operators-overview.json` | Dashboard Grafana para operators |
-| `nexus-core/monitoring/prometheus/alerts.yml` | Reglas de alerting Prometheus |
+| `control-plane/internal/shared/metrics/metrics.go` | Métricas Prometheus custom de nexus-saas |
+| `data-plane/monitoring/grafana/dashboards/nexus-saas-overview.json` | Dashboard Grafana para nexus-saas |
+| `data-plane/monitoring/grafana/dashboards/nexus-operators-overview.json` | Dashboard Grafana para operators |
+| `data-plane/monitoring/prometheus/alerts.yml` | Reglas de alerting Prometheus |
 | `docs/runbooks/SLO_SLI.md` | Definiciones de SLO/SLI |
 
 ## Archivos a modificar
 
 | Archivo | Cambio |
 |---------|--------|
-| `nexus-core/monitoring/prometheus/prometheus.yml` | Agregar scrape targets para saas y ai-operators + rule_files |
-| `nexus-saas/cmd/api/main.go` o wire | Agregar alert evaluation ticker goroutine |
-| `nexus-saas/cmd/config/` | Agregar `NEXUS_ALERT_EVAL_INTERVAL` |
-| `nexus-saas/internal/clerkwebhook/handler.go` | Instrumentar WebhooksReceived |
-| `nexus-saas/internal/billing/webhook_handler.go` | Instrumentar WebhooksReceived |
-| `nexus-saas/internal/billing/usecases.go` | Instrumentar BillingCheckouts |
-| `nexus-saas/internal/notifications/usecases.go` | Instrumentar NotificationsSent |
-| `nexus-saas/internal/alerts/usecases.go` | Instrumentar AlertsEvaluated, AlertsFired |
-| `nexus-ai-operators/app/api/routes.py` | Quitar auth de /metrics si la tiene |
-| `nexus-tower/src/features/monitoring/MonitoringPage.tsx` | Selector de dashboard (Gateway/SaaS/Operators) |
+| `data-plane/monitoring/prometheus/prometheus.yml` | Agregar scrape targets para saas y ai-operators + rule_files |
+| `control-plane/cmd/api/main.go` o wire | Agregar alert evaluation ticker goroutine |
+| `control-plane/cmd/config/` | Agregar `NEXUS_ALERT_EVAL_INTERVAL` |
+| `control-plane/internal/clerkwebhook/handler.go` | Instrumentar WebhooksReceived |
+| `control-plane/internal/billing/webhook_handler.go` | Instrumentar WebhooksReceived |
+| `control-plane/internal/billing/usecases.go` | Instrumentar BillingCheckouts |
+| `control-plane/internal/notifications/usecases.go` | Instrumentar NotificationsSent |
+| `control-plane/internal/alerts/usecases.go` | Instrumentar AlertsEvaluated, AlertsFired |
+| `ai-runtime/app/api/routes.py` | Quitar auth de /metrics si la tiene |
+| `tower/src/features/monitoring/MonitoringPage.tsx` | Selector de dashboard (Gateway/SaaS/Operators) |
 | `docker-compose.yml` | Montar alerts.yml en Prometheus |
 
 ---
@@ -449,10 +449,10 @@ El endpoint `/metrics` y `/healthz` deben ser accesibles sin `X-Operator-Key`. V
 16. [ ] nexus-control-operators tiene retry con backoff en llamadas al core
 
 ### Build & tests
-17. [ ] `cd nexus-core && go build ./...` ✓
-18. [ ] `cd nexus-saas && go build ./...` ✓
-19. [ ] `cd nexus-control-operators && go build ./...` ✓
-20. [ ] `cd nexus-tower && npm run build` ✓
+17. [ ] `cd data-plane && go build ./...` ✓
+18. [ ] `cd control-plane && go build ./...` ✓
+19. [ ] `cd control-workers && go build ./...` ✓
+20. [ ] `cd tower && npm run build` ✓
 21. [ ] `make e2e` pasa sin regresiones
 
 ---

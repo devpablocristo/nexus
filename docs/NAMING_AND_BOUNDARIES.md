@@ -4,11 +4,11 @@
 
 | Name | What | Path |
 |------|------|------|
-| `nexus-core` | Gateway / data plane (Go) | `nexus-core/` |
-| `nexus-saas` | Business plane (Go) | `nexus-saas/` |
-| `nexus-control-operators` | Deterministic control plane (Go) | `nexus-control-operators/` |
-| `nexus-ai-operators` | AI operators (Python) | `nexus-ai-operators/` |
-| `nexus-tower` | Supervision UI (React/TS) | `nexus-tower/` |
+| `nexus-core` | Gateway / data plane (Go) | `data-plane/` |
+| `nexus-saas` | Business plane (Go) | `control-plane/` |
+| `nexus-control-operators` | Deterministic control plane (Go) | `control-workers/` |
+| `nexus-ai-operators` | AI operators (Python) | `ai-runtime/` |
+| `nexus-tower` | Supervision UI (React/TS) | `tower/` |
 | `nexus-sdk` (Python) | Python SDK | `sdks/python-sdk/` |
 | `nexus-sdk` (TypeScript) | TypeScript SDK | `sdks/typescript-sdk/` |
 | `pkgs/go-pkg` | Shared Go packages | `pkgs/go-pkg/` |
@@ -36,9 +36,9 @@
 go 1.24.0
 
 use (
-    ./nexus-control-operators
-    ./nexus-core
-    ./nexus-saas
+    ./control-workers
+    ./data-plane
+    ./control-plane
     ./pkgs/go-pkg
 )
 ```

@@ -23,15 +23,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: Vet
         run: go vet ./...
-        working-directory: nexus-core
+        working-directory: data-plane
       - name: Test
         run: go test ./...
-        working-directory: nexus-core
+        working-directory: data-plane
       - name: Docker build (verify only)
-        run: docker build -f nexus-core/Dockerfile -t nexus-core:ci .
+        run: docker build -f data-plane/Dockerfile -t nexus-core:ci .
 
   nexus-saas:
     runs-on: ubuntu-latest
@@ -39,15 +39,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: Vet
         run: go vet ./...
-        working-directory: nexus-saas
+        working-directory: control-plane
       - name: Test
         run: go test ./...
-        working-directory: nexus-saas
+        working-directory: control-plane
       - name: Docker build (verify only)
-        run: docker build -f nexus-saas/Dockerfile -t nexus-saas:ci .
+        run: docker build -f control-plane/Dockerfile -t nexus-saas:ci .
 
   nexus-control-operators:
     runs-on: ubuntu-latest
@@ -55,21 +55,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: Vet
         run: go vet ./...
-        working-directory: nexus-control-operators
+        working-directory: control-workers
       - name: Test
         run: go test ./...
-        working-directory: nexus-control-operators
+        working-directory: control-workers
       - name: Docker build (verify only)
-        run: docker build -f nexus-control-operators/Dockerfile -t nexus-control-operators:ci .
+        run: docker build -f control-workers/Dockerfile -t nexus-control-operators:ci .
 
   nexus-ai-operators:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: nexus-ai-operators
+        working-directory: ai-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: nexus-tower
+        working-directory: tower
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -109,7 +109,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -134,15 +134,15 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Go vulnerability check (nexus-core)
-        run: cd nexus-core && govulncheck ./...
+        run: cd data-plane && govulncheck ./...
       - name: Go vulnerability check (nexus-saas)
-        run: cd nexus-saas && govulncheck ./...
+        run: cd control-plane && govulncheck ./...
       - name: Go vulnerability check (nexus-control-operators)
-        run: cd nexus-control-operators && govulncheck ./...
+        run: cd control-workers && govulncheck ./...
 
       - uses: actions/setup-python@v5
         with:
@@ -151,13 +151,13 @@ jobs:
         continue-on-error: true
         run: |
           pip install pip-audit
-          cd nexus-ai-operators && pip-audit .
+          cd ai-runtime && pip-audit .
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
       - name: Node dependency audit
-        run: cd nexus-tower && npm audit --audit-level=critical
+        run: cd tower && npm audit --audit-level=critical
 
   docker-build:
     runs-on: ubuntu-latest
@@ -176,7 +176,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: Create .env from example
         run: cp .env.example .env
       - name: Run e2e tests

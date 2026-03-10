@@ -1,7 +1,0 @@
-FROM node:20-alpine
-WORKDIR /workspace
-COPY nexus-tower/package.json nexus-tower/package-lock.json* /workspace/
-RUN npm install
-COPY nexus-tower /workspace
-EXPOSE 5173
-CMD ["npm", "run", "dev"]

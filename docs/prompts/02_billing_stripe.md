@@ -37,7 +37,7 @@ Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este pro
 ### 1. Planes en DB
 
 ```sql
--- nexus-saas/migrations/0001_saas_core_tables.up.sql
+-- control-plane/migrations/0001_saas_core_tables.up.sql
 CREATE TABLE tenant_settings (
     org_id uuid PRIMARY KEY REFERENCES orgs(id),
     plan_code text NOT NULL,              -- 'starter' | 'growth' | 'enterprise'
@@ -48,7 +48,7 @@ CREATE TABLE tenant_settings (
 );
 ```
 
-### 2. Hard limits por plan (nexus-saas/internal/admin/usecases.go)
+### 2. Hard limits por plan (control-plane/internal/admin/usecases.go)
 
 | Plan | tools_max | run_rpm | audit_retention_days |
 |------|-----------|---------|---------------------|
@@ -99,7 +99,7 @@ nexus-core consume esto para aplicar `run_rpm` rate-limit por tenant.
 
 #### 1.1 Nuevas columnas en `tenant_settings`
 
-Migración `nexus-saas/migrations/0004_stripe_billing.up.sql`:
+Migración `control-plane/migrations/0004_stripe_billing.up.sql`:
 
 ```sql
 ALTER TABLE tenant_settings
@@ -112,7 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_tenant_settings_stripe_customer
   ON tenant_settings(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
 ```
 
-#### 1.2 Nuevo módulo `nexus-saas/internal/billing/`
+#### 1.2 Nuevo módulo `control-plane/internal/billing/`
 
 Estructura hexagonal (igual que los otros módulos):
 
@@ -272,7 +272,7 @@ func (c *StripeClient) ConstructWebhookEvent(payload []byte, sigHeader, secret s
 └─────────────────────────────────────────────────┘
 ```
 
-#### 2.3 API client (nexus-tower/src/lib/api.ts)
+#### 2.3 API client (tower/src/lib/api.ts)
 
 ```typescript
 export async function getBillingStatus(): Promise<BillingStatus>
@@ -281,7 +281,7 @@ export async function createPortalSession(): Promise<{ url: string }>
 export async function getUsageSummary(): Promise<UsageSummary>
 ```
 
-#### 2.4 Tipos (nexus-tower/src/lib/types.ts)
+#### 2.4 Tipos (tower/src/lib/types.ts)
 
 ```typescript
 interface BillingStatus {
@@ -332,7 +332,7 @@ STRIPE_PRICE_ENTERPRISE=price_xxx_enterprise
 TOWER_BASE_URL=http://localhost:5173
 ```
 
-#### 3.2 Config (nexus-saas/cmd/config/service.go)
+#### 3.2 Config (control-plane/cmd/config/service.go)
 
 Agregar campos:
 
@@ -345,7 +345,7 @@ StripePriceEnterprise string
 TowerBaseURL        string
 ```
 
-#### 3.3 Wire (nexus-saas/wire/)
+#### 3.3 Wire (control-plane/wire/)
 
 - Crear `billing_providers.go` con `BillingSet`
 - Registrar ruta en `bootstrap_routes.go`:

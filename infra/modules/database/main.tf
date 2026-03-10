@@ -42,7 +42,7 @@ resource "aws_db_instance" "nexus_core" {
   }
 
   lifecycle {
-    prevent_destroy = var.environment == "production"
+    prevent_destroy = true
   }
 }
 
@@ -81,6 +81,6 @@ resource "aws_db_instance" "nexus_saas" {
   }
 
   lifecycle {
-    prevent_destroy = var.environment == "production"
+    prevent_destroy = true
   }
 }

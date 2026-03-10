@@ -125,7 +125,7 @@ Autorización: rol `admin` o scope `admin:console:write`.
 | Tools | `GET /v1/tools` | core | lista de tools registradas |
 | API keys | `GET /v1/orgs/:org_id/api-keys` | saas | lista de API keys activas |
 
-**Todas estas funciones ya existen en `nexus-tower/src/lib/api.ts`**. No crear duplicados.
+**Todas estas funciones ya existen en `tower/src/lib/api.ts`**. No crear duplicados.
 
 ### Hard limits por plan (referencia, no hardcodear en frontend)
 

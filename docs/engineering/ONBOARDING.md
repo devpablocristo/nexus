@@ -33,7 +33,7 @@ make seed
 - runbooks: `docs/runbooks/`
 - ADRs: `docs/adr/`
 - SDKs: `sdks/`
-- downloads públicos del portal: `nexus-tower/public/downloads/`
+- downloads públicos del portal: `tower/public/downloads/`
 
 ## Variables de entorno
 

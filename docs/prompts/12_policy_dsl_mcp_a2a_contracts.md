@@ -14,7 +14,7 @@ Este prompt formaliza la capa de contratos y protocolos más sensible del sistem
 
 ## Lo que YA existe
 
-- Policy evaluation en `nexus-core/internal/policy/`
+- Policy evaluation en `data-plane/internal/policy/`
 - Endpoints `POST /mcp` y `POST /a2a/call`
 - Catálogo de errores en `pkgs/contracts/error-codes.json`
 - Schema de eventos en `pkgs/contracts/events.schema.json`
@@ -103,7 +103,7 @@ Todo cambio contractual debe:
 - `docs/DOC.md`
 - `README.md`
 - `pkgs/contracts/error-codes.json` si faltan códigos contractuales
-- tests de `nexus-core/internal/policy/`, `nexus-core/internal/mcp/`, `nexus-core/internal/a2a/`
+- tests de `data-plane/internal/policy/`, `data-plane/internal/mcp/`, `data-plane/internal/a2a/`
 
 ---
 

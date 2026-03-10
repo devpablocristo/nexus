@@ -1,0 +1,7 @@
+FROM node:20-alpine
+WORKDIR /workspace
+COPY tower/package.json tower/package-lock.json* /workspace/
+RUN npm install
+COPY tower /workspace
+EXPOSE 5173
+CMD ["npm", "run", "dev"]

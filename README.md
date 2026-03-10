@@ -2,21 +2,25 @@
 
 Nexus es un plano de control para ejecución gobernada de herramientas por agentes y operadores.
 
+Convención del monorepo:
+- nombres internos de directorio sin prefijo `nexus`
+- nombres públicos/deploy conservan el branding `nexus-*`
+
 ## Servicios
 
-| Servicio | Rol |
-|----------|-----|
-| `nexus-core` | data plane determinista: `/v1/run`, `/mcp`, `/a2a`, policies, DLP, egress, approvals, audit |
-| `nexus-saas` | business plane multi-tenant: billing, users, incidents, actions, events, notifications, assistant proxy |
-| `nexus-control-operators` | workers deterministas del control plane |
-| `nexus-ai-operators` | runtime AI asistido: assistant, prompting versionado, fallback, evals |
-| `nexus-tower` | UI de supervisión |
+| Directorio interno | Servicio desplegado | Rol |
+|--------------------|--------------------|-----|
+| `data-plane` | `nexus-core` | data plane determinista: `/v1/run`, `/mcp`, `/a2a`, policies, DLP, egress, approvals, audit |
+| `control-plane` | `nexus-saas` | control plane multi-tenant: billing, users, incidents, actions, events, notifications, assistant proxy |
+| `control-workers` | `nexus-control-operators` | workers deterministas del control plane |
+| `ai-runtime` | `nexus-ai-operators` | runtime AI asistido: assistant, prompting versionado, fallback, evals |
+| `tower` | `nexus-tower` | UI de supervisión |
 
 ## Invariantes
 
 - No LLM en el pipeline de enforcement.
 - Operators sin writes directos a DB.
-- `nexus-core` y `nexus-saas` mantienen ownership separado.
+- `data-plane` y `control-plane` mantienen ownership separado.
 - Contracts, docs, SDKs y observabilidad forman parte del producto.
 
 ## Quickstart
@@ -57,7 +61,7 @@ Antes de cerrar cambios que tocan contratos, OpenAPI, Postman o docs servidas:
 make contracts-check
 ```
 
-El developer portal de Tower publica esos snapshots también como assets estáticos en `nexus-tower/public/downloads/`.
+El developer portal de Tower publica esos snapshots también como assets estáticos en `tower/public/downloads/`.
 
 ## SDKs
 

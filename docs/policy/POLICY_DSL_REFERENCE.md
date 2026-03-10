@@ -4,7 +4,7 @@ Referencia canónica del lenguaje de policies que evalúa `nexus-core` en el pip
 
 ## Modelo de evaluación
 
-- Owner: `nexus-core/internal/policy` y `nexus-core/internal/gateway`.
+- Owner: `data-plane/internal/policy` y `data-plane/internal/gateway`.
 - Semántica: first-match por `priority asc, created_at asc`.
 - Effect soportado: `allow` o `deny`.
 - Default del runtime:

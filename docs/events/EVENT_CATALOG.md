@@ -42,5 +42,5 @@ Catálogo narrativo de eventos operativos usados hoy por el repo.
 ## Consistency assumptions
 
 - Los catálogos `events` de `nexus-saas` son append-only y se consumen por cursor.
-- Los events del control plane usan schemas propios bajo `nexus-control-operators/internal/ops/schemas/events`.
+- Los events del control plane usan schemas propios bajo `control-workers/internal/ops/schemas/events`.
 - Eventual consistency entre `core`, `saas` y operators es explícita: el UI observa estado derivado, no sincronía estricta.

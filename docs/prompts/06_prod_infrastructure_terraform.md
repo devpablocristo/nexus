@@ -574,7 +574,7 @@ jobs:
         with:
           node-version: "20"
       - name: Install and build
-        working-directory: nexus-tower
+        working-directory: tower
         env:
           VITE_NEXUS_CORE_URL: ${{ vars.VITE_NEXUS_CORE_URL }}
           VITE_NEXUS_SAAS_URL: ${{ vars.VITE_NEXUS_SAAS_URL }}
@@ -591,7 +591,7 @@ jobs:
 
       - name: Sync to S3
         run: |
-          aws s3 sync nexus-tower/dist/ \
+          aws s3 sync tower/dist/ \
             s3://${{ vars.TOWER_S3_BUCKET }}/ \
             --delete
 

@@ -70,7 +70,7 @@ Leer y respetar `docs/prompts/00_base_transversal.md` antes de ejecutar este pro
 
 Crear `pkgs/contracts/openapi.nexus-saas.snapshot.yaml` (OpenAPI 3.0.3).
 
-**Cómo obtener las rutas**: leer el método `Register()` de cada handler en `nexus-saas/internal/*/handler.go` y los DTOs en `handler/dto/dto.go`.
+**Cómo obtener las rutas**: leer el método `Register()` de cada handler en `control-plane/internal/*/handler.go` y los DTOs en `handler/dto/dto.go`.
 
 #### Endpoints de nexus-saas a documentar
 
@@ -168,7 +168,7 @@ securityDefinitions:
 
 #### Servir el spec en nexus-saas
 
-1. En `nexus-saas/wire/bootstrap_routes.go`, agregar antes del return:
+1. En `control-plane/wire/bootstrap_routes.go`, agregar antes del return:
 
 ```go
 r.GET("/openapi.yaml", func(c *gin.Context) {
@@ -179,7 +179,7 @@ r.GET("/docs", func(c *gin.Context) {
 })
 ```
 
-2. Copiar el spec snapshot a `nexus-saas/docs/openapi.yaml` durante el Docker build.
+2. Copiar el spec snapshot a `control-plane/docs/openapi.yaml` durante el Docker build.
 
 3. Agregar Swagger UI HTML (mismo patrón que nexus-core).
 
@@ -208,7 +208,7 @@ En `.github/workflows/ci.yml`, agregar:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: nexus-saas
+        working-directory: control-plane
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -276,7 +276,7 @@ e2e-all:
 
 #### 4.1 Nueva página `/developer`
 
-Crear `nexus-tower/src/pages/DeveloperPage.tsx`:
+Crear `tower/src/pages/DeveloperPage.tsx`:
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -385,17 +385,17 @@ En `Shell.tsx`, agregar al array `navItems`:
 
 #### 5.1 Copiar OpenAPI spec en Docker build de nexus-saas
 
-En `nexus-saas/Dockerfile`, agregar step para copiar el spec:
+En `control-plane/Dockerfile`, agregar step para copiar el spec:
 
 ```dockerfile
 COPY docs/openapi.yaml /app/docs/openapi.yaml
 ```
 
-Crear el archivo `nexus-saas/docs/openapi.yaml` como symlink o copia de `pkgs/contracts/openapi.nexus-saas.snapshot.yaml`.
+Crear el archivo `control-plane/docs/openapi.yaml` como symlink o copia de `pkgs/contracts/openapi.nexus-saas.snapshot.yaml`.
 
 #### 5.2 Verificar que nexus-core copia su spec en Docker
 
-En `nexus-core/Dockerfile`, verificar que `docs/openapi.yaml` se copia al contenedor. Si no existe, crearlo como copia de `pkgs/contracts/openapi.nexus-core.snapshot.yaml`.
+En `data-plane/Dockerfile`, verificar que `docs/openapi.yaml` se copia al contenedor. Si no existe, crearlo como copia de `pkgs/contracts/openapi.nexus-core.snapshot.yaml`.
 
 #### 5.3 Actualizar .env.example
 
@@ -443,7 +443,7 @@ Si hay nuevas variables (no debería haberlas para este prompt), agregarlas.
 
 1. Leer TODOS los DTOs de nexus-saas (`handler/dto/dto.go` de cada módulo)
 2. Crear `pkgs/contracts/openapi.nexus-saas.snapshot.yaml`
-3. Copiar a `nexus-saas/docs/openapi.yaml`
+3. Copiar a `control-plane/docs/openapi.yaml`
 4. Agregar Swagger UI + spec serving en nexus-saas `bootstrap_routes.go`
 5. Actualizar Dockerfile de nexus-saas para copiar spec
 6. Verificar Dockerfile de nexus-core
