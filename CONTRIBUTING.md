@@ -2,18 +2,20 @@
 
 ## Mapa del monorepo
 
-- `nexus-core`: data plane determinista
-- `nexus-saas`: business plane multi-tenant
-- `nexus-control-operators`: workers deterministas
-- `nexus-ai-operators`: runtime AI asistido
-- `nexus-tower`: UI de supervisión
-- `pkgs/contracts`: contratos compartidos
+Nombres de directorio (repo) → servicio desplegado:
+
+- `data-plane/` → `nexus-core`: data plane determinista
+- `control-plane/` → `nexus-saas`: business plane multi-tenant
+- `control-workers/` → `nexus-control-operators`: workers deterministas
+- `ai-runtime/` → `nexus-ai-operators`: runtime AI asistido
+- `tower/` → `nexus-tower`: UI de supervisión
+- `pkgs/contracts/`: contratos compartidos
 - `docs/`: docs canónicas, prompts, runbooks y ADRs
 
 ## Reglas de boundaries
 
-- No meter billing, users o tenant lifecycle en `nexus-core`.
-- No meter enforcement, audit write ni policy engine en `nexus-saas`.
+- No meter billing, users o tenant lifecycle en `data-plane` (nexus-core).
+- No meter enforcement, audit write ni policy engine en `control-plane` (nexus-saas).
 - Operators nunca escriben directo a DB.
 - Tower no replica lógica crítica del backend.
 
@@ -26,9 +28,9 @@
 
 ## Verificación mínima antes de merge
 
-- Go: `go test ./...` en el servicio afectado.
-- Python: `pytest` en `nexus-ai-operators`.
-- Frontend: `npm test` y `npm run build` en `nexus-tower`.
+- Go: `go test ./...` en el directorio del servicio afectado (`data-plane`, `control-plane`, `control-workers`).
+- Python: `pytest` en `ai-runtime/`.
+- Frontend: `npm test` y `npm run build` en `tower/`.
 - Si cambian contracts: revisar `pkgs/contracts`, SDKs y docs.
 
 ## Breaking changes

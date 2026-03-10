@@ -20,10 +20,11 @@ make seed
 
 ## Cómo correr por servicio
 
-- `nexus-core`: revisar `Makefile` y `docker-compose.yml`
-- `nexus-saas`: mismo patrón que core
-- `nexus-ai-operators`: `.venv/bin/pytest` / `uvicorn app.main:app`
-- `nexus-tower`: Node 20.19+ , `npm install`, `npm run dev`
+- `nexus-core` (directorio `data-plane/`): revisar `Makefile` y `docker-compose.yml`
+- `nexus-saas` (directorio `control-plane/`): mismo patrón que core
+- `nexus-control-operators` (directorio `control-workers/`): Go, `go run ./cmd/ops-workers`
+- `nexus-ai-operators` (directorio `ai-runtime/`): `.venv/bin/pytest` / `uvicorn app.main:app`
+- `nexus-tower` (directorio `tower/`): Node 20.19+ , `npm install`, `npm run dev`
 - `sdks/typescript-sdk`: Node 20+ para tests/build del SDK
 
 ## Dónde vive cada cosa

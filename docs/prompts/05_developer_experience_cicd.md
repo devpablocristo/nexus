@@ -213,7 +213,7 @@ En `.github/workflows/ci.yml`, agregar:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: Vet
         run: go vet ./...
       - name: Test

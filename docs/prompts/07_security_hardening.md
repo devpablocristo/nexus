@@ -186,7 +186,7 @@ Agregar un job nuevo en `.github/workflows/ci.yml`:
       # Go vulnerability check
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: Go vulnerability check (nexus-core)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -221,19 +221,19 @@ Crear `.github/dependabot.yml`:
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: /nexus-core
+    directory: /data-plane
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
-    directory: /nexus-saas
+    directory: /control-plane
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
 
   - package-ecosystem: gomod
-    directory: /nexus-control-operators
+    directory: /control-workers
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -245,34 +245,34 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: pip
-    directory: /nexus-ai-operators
+    directory: /ai-runtime
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
 
   - package-ecosystem: npm
-    directory: /nexus-tower
+    directory: /tower
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
 
   - package-ecosystem: docker
-    directory: /nexus-core
+    directory: /data-plane
     schedule:
       interval: monthly
 
   - package-ecosystem: docker
-    directory: /nexus-saas
+    directory: /control-plane
     schedule:
       interval: monthly
 
   - package-ecosystem: docker
-    directory: /nexus-tower
+    directory: /tower
     schedule:
       interval: monthly
 
   - package-ecosystem: docker
-    directory: /nexus-ai-operators
+    directory: /ai-runtime
     schedule:
       interval: monthly
 
