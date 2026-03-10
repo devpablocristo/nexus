@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:25-alpine AS builder
 
 ARG VITE_NEXUS_SAAS_URL=http://localhost:8082
 ARG VITE_NEXUS_CORE_URL=http://localhost:8080
