@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 ARG VITE_NEXUS_SAAS_URL=http://localhost:8082
 ARG VITE_NEXUS_CORE_URL=http://localhost:8080
 ARG VITE_NEXUS_API_KEY=
-ARG VITE_NEXUS_SCOPES=admin:console:read,admin:console:write,audit:read
+ARG VITE_NEXUS_SCOPES=tools:read,tools:write,policy:read,policy:write,gateway:run,gateway:simulate,admin:console:read,admin:console:write,audit:read,audit:export,mcp:read,mcp:call,a2a:call,admin:secrets
 ARG VITE_CLERK_PUBLISHABLE_KEY=
 ARG VITE_NEXUS_GRAFANA_URL=http://localhost:3001
 
@@ -19,7 +19,12 @@ COPY tower/package.json tower/package-lock.json* /workspace/
 RUN npm install
 
 COPY tower /workspace
-RUN npm run build
+RUN rm -rf node_modules/.vite \
+    && printf 'VITE_NEXUS_SCOPES=%s\nVITE_NEXUS_API_KEY=%s\nVITE_NEXUS_CORE_URL=%s\nVITE_NEXUS_SAAS_URL=%s\nVITE_NEXUS_GRAFANA_URL=%s\nVITE_CLERK_PUBLISHABLE_KEY=%s\n' \
+       "$VITE_NEXUS_SCOPES" "$VITE_NEXUS_API_KEY" "$VITE_NEXUS_CORE_URL" "$VITE_NEXUS_SAAS_URL" "$VITE_NEXUS_GRAFANA_URL" "$VITE_CLERK_PUBLISHABLE_KEY" \
+       | tee .env .env.production .env.local \
+    && cat .env \
+    && npm run build
 
 FROM nginx:1.27-alpine
 ARG VITE_NEXUS_SAAS_URL=http://localhost:8082
