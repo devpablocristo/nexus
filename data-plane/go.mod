@@ -16,7 +16,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 	gorm.io/datatypes v1.2.1
 	gorm.io/driver/postgres v1.5.7
-	gorm.io/gorm v1.25.12
+	gorm.io/gorm v1.31.1
 )
 
 require (
