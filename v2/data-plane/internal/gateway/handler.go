@@ -17,6 +17,7 @@ type runUsecase interface {
 	Run(ctx context.Context, req gwdomain.RunRequest) (gwdomain.RunResponse, error)
 	GetIntent(ctx context.Context, intentID uuid.UUID) (gwdomain.ExecutionIntent, error)
 	ListIntents(ctx context.Context, limit int) ([]gwdomain.ExecutionIntent, error)
+	ExecuteIntent(ctx context.Context, intentID uuid.UUID, timeoutMS int) (gwdomain.RunResponse, error)
 }
 
 type Handler struct {
@@ -31,6 +32,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/run", h.runTool)
 	mux.HandleFunc("GET /v1/run/intents", h.listIntents)
 	mux.HandleFunc("GET /v1/run/intents/{id}", h.getIntent)
+	mux.HandleFunc("POST /v1/run/intents/{id}/execute", h.executeIntent)
 }
 
 func (h *Handler) runTool(w http.ResponseWriter, r *http.Request) {
@@ -74,24 +76,7 @@ func (h *Handler) runTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeIdempotencyHeader(w, resp.Idempotency.Outcome)
-	status := resp.HTTPStatus
-	if status == 0 {
-		status = http.StatusOK
-	}
-
-	writeJSON(w, status, gwdto.RunResponse{
-		RequestID:   resp.RequestID,
-		Decision:    resp.Decision,
-		ToolName:    resp.ToolName,
-		Status:      resp.Status,
-		Reason:      resp.Reason,
-		Result:      resp.Result,
-		LatencyMS:   resp.LatencyMS,
-		IntentID:    resp.IntentID,
-		ApprovalID:  resp.ApprovalID,
-		Idempotency: toIdempotencyDTO(resp.Idempotency),
-	})
+	writeRunResponse(w, resp)
 }
 
 func writeError(w http.ResponseWriter, status int, requestID, code, message string, idem *gwdomain.IdempotencyMeta) {
@@ -151,6 +136,23 @@ func (h *Handler) getIntent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toIntentDTO(item))
 }
 
+func (h *Handler) executeIntent(w http.ResponseWriter, r *http.Request) {
+	reqID := newRequestID()
+
+	intentID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, reqID, "VALIDATION", "invalid id", nil)
+		return
+	}
+
+	resp, err := h.run.ExecuteIntent(r.Context(), intentID, parseTimeoutMS(r.Header.Get("X-Timeout-Ms")))
+	if err != nil {
+		h.writeGatewayError(w, reqID, err)
+		return
+	}
+	writeRunResponse(w, resp)
+}
+
 func (h *Handler) writeGatewayError(w http.ResponseWriter, requestID string, err error) {
 	err = toRunHTTPError(err, nil)
 	var httpErr runHTTPError
@@ -170,6 +172,7 @@ func toIntentDTO(item gwdomain.ExecutionIntent) gwdto.IntentItem {
 		Status:     string(item.Status),
 		ApprovalID: uuidStringPtr(item.ApprovalID),
 		ExpiresAt:  item.ExpiresAt,
+		ExecutedAt: item.ExecutedAt,
 		CreatedAt:  item.CreatedAt,
 		UpdatedAt:  item.UpdatedAt,
 	}
@@ -181,6 +184,45 @@ func uuidStringPtr(id *uuid.UUID) *string {
 	}
 	value := id.String()
 	return &value
+}
+
+func uuidStringValue(id *uuid.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
+func parseTimeoutMS(raw string) int {
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+func writeRunResponse(w http.ResponseWriter, resp gwdomain.RunResponse) {
+	writeIdempotencyHeader(w, resp.Idempotency.Outcome)
+	status := resp.HTTPStatus
+	if status == 0 {
+		status = http.StatusOK
+	}
+
+	writeJSON(w, status, gwdto.RunResponse{
+		RequestID:   resp.RequestID,
+		Decision:    resp.Decision,
+		ToolName:    resp.ToolName,
+		Status:      resp.Status,
+		Reason:      resp.Reason,
+		Result:      resp.Result,
+		LatencyMS:   resp.LatencyMS,
+		IntentID:    resp.IntentID,
+		ApprovalID:  resp.ApprovalID,
+		Idempotency: toIdempotencyDTO(resp.Idempotency),
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

@@ -12,6 +12,7 @@ const (
 	IntentStatusPendingApproval IntentStatus = "pending_approval"
 	IntentStatusApproved        IntentStatus = "approved"
 	IntentStatusRejected        IntentStatus = "rejected"
+	IntentStatusExecuted        IntentStatus = "executed"
 )
 
 type ExecutionIntent struct {
@@ -26,6 +27,7 @@ type ExecutionIntent struct {
 	Status     IntentStatus
 	ApprovalID *uuid.UUID
 	ExpiresAt  time.Time
+	ExecutedAt *time.Time
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }

@@ -98,3 +98,33 @@ func TestInMemoryIntentRepositoryListRecent(t *testing.T) {
 		t.Fatalf("unexpected intent in recent list: %#v", items[0])
 	}
 }
+
+func TestInMemoryIntentRepositoryMarkExecuted(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryIntentRepository()
+	intent, err := repo.Create(context.Background(), gwdomain.ExecutionIntent{
+		ToolID:    "tool_echo",
+		ToolName:  "echo",
+		RequestID: "req-123",
+		Status:    gwdomain.IntentStatusApproved,
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	if err := repo.MarkExecuted(context.Background(), intent.ID); err != nil {
+		t.Fatalf("MarkExecuted returned error: %v", err)
+	}
+
+	stored, err := repo.GetByID(context.Background(), intent.ID)
+	if err != nil {
+		t.Fatalf("GetByID returned error: %v", err)
+	}
+	if stored.Status != gwdomain.IntentStatusExecuted {
+		t.Fatalf("unexpected executed status: %s", stored.Status)
+	}
+	if stored.ExecutedAt == nil {
+		t.Fatalf("expected executed_at to be set: %#v", stored)
+	}
+}

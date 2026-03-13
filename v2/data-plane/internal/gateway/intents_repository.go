@@ -94,6 +94,10 @@ func (r *InMemoryIntentRepository) MarkRejected(_ context.Context, intentID uuid
 	return r.updateStatus(intentID, gwdomain.IntentStatusRejected)
 }
 
+func (r *InMemoryIntentRepository) MarkExecuted(_ context.Context, intentID uuid.UUID) error {
+	return r.updateStatus(intentID, gwdomain.IntentStatusExecuted)
+}
+
 func (r *InMemoryIntentRepository) updateStatus(intentID uuid.UUID, status gwdomain.IntentStatus) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -103,7 +107,11 @@ func (r *InMemoryIntentRepository) updateStatus(intentID uuid.UUID, status gwdom
 		return ErrIntentNotFound
 	}
 	item.Status = status
-	item.UpdatedAt = time.Now().UTC()
+	now := time.Now().UTC()
+	item.UpdatedAt = now
+	if status == gwdomain.IntentStatusExecuted {
+		item.ExecutedAt = &now
+	}
 	r.items[intentID] = item
 	return nil
 }

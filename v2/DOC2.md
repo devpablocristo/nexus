@@ -27,6 +27,7 @@
 - `markCompletedIdempotency`
 - `markFailedIdempotency`
 - `Executor.Execute`
+- `writeRunResponse`
 - `writeIdempotencyHeader`
 - `writeJSON`
 - `writeError`
@@ -154,7 +155,7 @@
 - `Usecases.ListIntents`
 - `InMemoryIntentRepository.ListRecent`
 - `toIntentDTO`
-- `writeError`
+- `writeGatewayError`
 - `writeJSON`
 
 ### `GET /v1/run/intents/{id}`
@@ -164,8 +165,36 @@
 - `Usecases.GetIntent`
 - `InMemoryIntentRepository.GetByID`
 - `toIntentDTO`
-- `writeError`
+- `writeGatewayError`
 - `writeJSON`
+
+### `POST /v1/run/intents/{id}/execute`
+
+- `Handler.Register`
+- `Handler.executeIntent`
+- `parseTimeoutMS`
+- `Usecases.ExecuteIntent`
+- `InMemoryIntentRepository.GetByID`
+- `Run`
+- `clampTimeoutMS`
+- `resolveTool`
+- `resolveIdempotency`
+- `buildRequestFingerprint`
+- `mapRunError`
+- `toRunHTTPError`
+- `validateAndPrepare`
+- `decide`
+- `prepareExecution`
+- `executeAndFinish`
+- `markCompletedIdempotency`
+- `markFailedIdempotency`
+- `Executor.Execute`
+- `InMemoryIntentRepository.MarkExecuted`
+- `writeGatewayError`
+- `writeRunResponse`
+- `writeIdempotencyHeader`
+- `writeJSON`
+- `writeError`
 
 ### `POST /v1/approvals/{id}/approve`
 

@@ -66,6 +66,7 @@ type IntentRepository interface {
 	LinkApproval(ctx context.Context, intentID, approvalID uuid.UUID) error
 	GetByID(ctx context.Context, intentID uuid.UUID) (gwdomain.ExecutionIntent, error)
 	ListRecent(ctx context.Context, limit int) ([]gwdomain.ExecutionIntent, error)
+	MarkExecuted(ctx context.Context, intentID uuid.UUID) error
 }
 
 type Executor interface {
@@ -96,6 +97,7 @@ type Usecases struct {
 type runState struct {
 	start                 time.Time
 	requestID             string
+	intentID              string
 	input                 map[string]any
 	context               map[string]any
 	tool                  tool.Definition
@@ -154,10 +156,73 @@ func (u *Usecases) ListIntents(ctx context.Context, limit int) ([]gwdomain.Execu
 	return u.intents.ListRecent(ctx, limit)
 }
 
+func (u *Usecases) ExecuteIntent(ctx context.Context, intentID uuid.UUID, timeoutMS int) (gwdomain.RunResponse, error) {
+	if u.intents == nil {
+		return gwdomain.RunResponse{}, newRunHTTPError(http.StatusInternalServerError, "INTENTS_NOT_CONFIGURED", "intents are not configured", nil)
+	}
+
+	intent, err := u.intents.GetByID(ctx, intentID)
+	if err != nil {
+		if errors.Is(err, ErrIntentNotFound) {
+			return gwdomain.RunResponse{}, newRunHTTPError(http.StatusNotFound, "NOT_FOUND", "intent not found", nil)
+		}
+		return gwdomain.RunResponse{}, err
+	}
+
+	if intent.Status != gwdomain.IntentStatusApproved {
+		return gwdomain.RunResponse{
+			RequestID:  newRequestID(),
+			Decision:   gwdomain.DecisionDeny,
+			ToolName:   intent.ToolName,
+			Status:     gwdomain.RunStatusBlocked,
+			Reason:     "intent is not approved for execution",
+			HTTPStatus: http.StatusForbidden,
+			IntentID:   intent.ID.String(),
+			ApprovalID: uuidStringValue(intent.ApprovalID),
+		}, nil
+	}
+	if !intent.ExpiresAt.IsZero() && time.Now().UTC().After(intent.ExpiresAt) {
+		return gwdomain.RunResponse{
+			RequestID:  newRequestID(),
+			Decision:   gwdomain.DecisionDeny,
+			ToolName:   intent.ToolName,
+			Status:     gwdomain.RunStatusBlocked,
+			Reason:     "intent expired before execution",
+			HTTPStatus: http.StatusForbidden,
+			IntentID:   intent.ID.String(),
+			ApprovalID: uuidStringValue(intent.ApprovalID),
+		}, nil
+	}
+
+	contextMap := cloneMap(intent.Context)
+	contextMap["intent_id"] = intent.ID.String()
+
+	resp, err := u.Run(ctx, gwdomain.RunRequest{
+		RequestID: newRequestID(),
+		ToolName:  intent.ToolName,
+		ToolID:    intent.ToolID,
+		IntentID:  intent.ID.String(),
+		TimeoutMS: timeoutMS,
+		Input:     cloneMap(intent.Input),
+		Context:   contextMap,
+	})
+	if err != nil {
+		return resp, err
+	}
+
+	resp.IntentID = intent.ID.String()
+	resp.ApprovalID = uuidStringValue(intent.ApprovalID)
+	if resp.Status == gwdomain.RunStatusSuccess {
+		_ = u.intents.MarkExecuted(ctx, intent.ID)
+	}
+	return resp, nil
+}
+
 func (u *Usecases) Run(ctx context.Context, req gwdomain.RunRequest) (gwdomain.RunResponse, error) {
 	st := runState{
 		start:     time.Now(),
 		requestID: req.RequestID,
+		intentID:  req.IntentID,
 		input:     req.Input,
 		context:   req.Context,
 	}
@@ -319,6 +384,9 @@ func (u *Usecases) decide(ctx context.Context, st runState) (*gwdomain.RunRespon
 			return &resp, nil
 		}
 		if !current.RequireApproval {
+			return nil, nil
+		}
+		if st.intentID != "" {
 			return nil, nil
 		}
 		if u.approval == nil || u.intents == nil {

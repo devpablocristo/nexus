@@ -4,6 +4,7 @@ type RunRequest struct {
 	RequestID      string
 	ToolName       string
 	ToolID         string
+	IntentID       string
 	IdempotencyKey *string
 	TimeoutMS      int
 	Input          map[string]any

@@ -41,17 +41,18 @@ type IdempotencyDTO struct {
 }
 
 type IntentItem struct {
-	ID         string    `json:"id"`
-	RequestID  string    `json:"request_id"`
-	ToolID     string    `json:"tool_id"`
-	ToolName   string    `json:"tool_name"`
-	PolicyID   *string   `json:"policy_id,omitempty"`
-	Reason     string    `json:"reason"`
-	Status     string    `json:"status"`
-	ApprovalID *string   `json:"approval_id,omitempty"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID         string     `json:"id"`
+	RequestID  string     `json:"request_id"`
+	ToolID     string     `json:"tool_id"`
+	ToolName   string     `json:"tool_name"`
+	PolicyID   *string    `json:"policy_id,omitempty"`
+	Reason     string     `json:"reason"`
+	Status     string     `json:"status"`
+	ApprovalID *string    `json:"approval_id,omitempty"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	ExecutedAt *time.Time `json:"executed_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type ListIntentsResponse struct {

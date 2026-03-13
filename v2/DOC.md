@@ -470,6 +470,7 @@ Body JSON:
 
 - `GET /v1/run/intents`
 - `GET /v1/run/intents/{id}`
+- `POST /v1/run/intents/{id}/execute`
 
 ### Modelo expuesto
 
@@ -484,6 +485,7 @@ Body JSON:
   "status": "pending_approval",
   "approval_id": "uuid",
   "expires_at": "2026-03-13T00:00:00Z",
+  "executed_at": "2026-03-13T00:05:00Z",
   "created_at": "2026-03-13T00:00:00Z",
   "updated_at": "2026-03-13T00:00:00Z"
 }
@@ -496,6 +498,13 @@ Body JSON:
 - si `limit` es invalido o `<= 0`, devuelve `400 VALIDATION`
 - `GET /v1/run/intents/{id}` devuelve un intent especifico
 - si el intent no existe, devuelve `404 NOT_FOUND`
+- `POST /v1/run/intents/{id}/execute` ejecuta el intent guardado
+- solo ejecuta si el intent esta en `approved`
+- si el intent esta `pending_approval`, `rejected` o `executed`, devuelve `403` con `reason=intent is not approved for execution`
+- si el intent vencio, devuelve `403` con `reason=intent expired before execution`
+- reutiliza `tool_id`, `tool_name`, `input` y `context` guardados en el intent
+- acepta `X-Timeout-Ms` igual que `/run`
+- si ejecuta bien, marca el intent como `executed` y completa `executed_at`
 
 ## `policy`
 
@@ -651,7 +660,8 @@ Hoy `v2` ya tiene el camino minimo de approval dentro de `/run`:
 - un solo approval step
 - sin quorum
 - con approve/reject endpoint
-- sin execute-intent endpoint todavia
+- con execute-intent endpoint
+- sin lease
 
 Comportamiento actual:
 
@@ -663,6 +673,8 @@ Comportamiento actual:
 - `POST /v1/approvals/{id}/approve|reject` permite cerrar el approval
 - `GET /v1/run/intents` permite inspeccionar intents recientes
 - `GET /v1/run/intents/{id}` permite inspeccionar un intent puntual
+- `POST /v1/run/intents/{id}/execute` permite ejecutar un intent aprobado
+- cuando ejecuta bien, el intent pasa a `executed`
 
 ### Alcance actual
 
@@ -717,11 +729,11 @@ Config actual de `cmd/api`:
 
 - auth
 - audit
-- approval
 - limits por tenant o principal
 - persistencia real de tools
 - persistencia real de egress
 - persistencia real de secrets
-- lectura/ejecucion de intents
+- persistencia real de approvals e intents
 - quorum break-glass
 - risk class y preflight
+- lease de ejecucion

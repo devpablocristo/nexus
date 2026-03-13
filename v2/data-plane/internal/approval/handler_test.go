@@ -145,6 +145,146 @@ func TestApprovalRejectAndAlreadyDecided(t *testing.T) {
 	}
 }
 
+func TestExecuteIntentAfterApproval(t *testing.T) {
+	t.Parallel()
+
+	upstreamCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"received": map[string]any{"hello": "review"}})
+	}))
+	defer upstream.Close()
+
+	server, cleanup, err := wire.NewServer(wire.Config{
+		EchoURL:     upstream.URL,
+		HTTPTimeout: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("wire.NewServer returned error: %v", err)
+	}
+	defer cleanup()
+
+	doJSON[policydto.PolicyResponse](t, server, http.MethodPost, "/v1/policies", map[string]any{
+		"tool_name":            "echo",
+		"effect":               "allow",
+		"expression":           `input.hello == "review"`,
+		"reason":               "operator approval required",
+		"require_approval":     true,
+		"approval_ttl_seconds": 300,
+	}, http.StatusCreated)
+
+	runResp := doJSON[gwdto.RunResponse](t, server, http.MethodPost, "/v1/run", map[string]any{
+		"tool_name": "echo",
+		"input": map[string]any{
+			"hello": "review",
+		},
+	}, http.StatusAccepted)
+	if runResp.IntentID == "" || runResp.ApprovalID == "" {
+		t.Fatalf("expected intent and approval ids: %#v", runResp)
+	}
+
+	doJSON[approvaldto.DecideResponse](t, server, http.MethodPost, "/v1/approvals/"+runResp.ApprovalID+"/approve", map[string]any{
+		"decided_by": "alice",
+	}, http.StatusOK)
+
+	executeResp := doJSON[gwdto.RunResponse](t, server, http.MethodPost, "/v1/run/intents/"+runResp.IntentID+"/execute", nil, http.StatusOK)
+	if executeResp.Status != "success" || executeResp.Decision != "allow" {
+		t.Fatalf("unexpected execute response: %#v", executeResp)
+	}
+	if executeResp.IntentID != runResp.IntentID || executeResp.ApprovalID != runResp.ApprovalID {
+		t.Fatalf("unexpected execute linkage: %#v", executeResp)
+	}
+	if upstreamCalls != 1 {
+		t.Fatalf("expected one upstream call after execute, got=%d", upstreamCalls)
+	}
+
+	intentResp := doJSON[gwdto.IntentItem](t, server, http.MethodGet, "/v1/run/intents/"+runResp.IntentID, nil, http.StatusOK)
+	if intentResp.Status != "executed" {
+		t.Fatalf("unexpected intent status after execute: %#v", intentResp)
+	}
+	if intentResp.ExecutedAt == nil {
+		t.Fatalf("expected executed_at after execute: %#v", intentResp)
+	}
+}
+
+func TestExecuteIntentRequiresApprovedStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		decidePath   string
+		decideBody   map[string]any
+		wantHTTPCode int
+	}{
+		{
+			name:         "pending approval blocks execute",
+			wantHTTPCode: http.StatusForbidden,
+		},
+		{
+			name:         "rejected approval blocks execute",
+			decidePath:   "/reject",
+			decideBody:   map[string]any{"decided_by": "bob"},
+			wantHTTPCode: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			upstreamCalls := 0
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				upstreamCalls++
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"received": map[string]any{"hello": "review"}})
+			}))
+			defer upstream.Close()
+
+			server, cleanup, err := wire.NewServer(wire.Config{
+				EchoURL:     upstream.URL,
+				HTTPTimeout: 2 * time.Second,
+			})
+			if err != nil {
+				t.Fatalf("wire.NewServer returned error: %v", err)
+			}
+			defer cleanup()
+
+			doJSON[policydto.PolicyResponse](t, server, http.MethodPost, "/v1/policies", map[string]any{
+				"tool_name":            "echo",
+				"effect":               "allow",
+				"expression":           `input.hello == "review"`,
+				"reason":               "operator approval required",
+				"require_approval":     true,
+				"approval_ttl_seconds": 300,
+			}, http.StatusCreated)
+
+			runResp := doJSON[gwdto.RunResponse](t, server, http.MethodPost, "/v1/run", map[string]any{
+				"tool_name": "echo",
+				"input": map[string]any{
+					"hello": "review",
+				},
+			}, http.StatusAccepted)
+
+			if tt.decidePath != "" {
+				doJSON[approvaldto.DecideResponse](t, server, http.MethodPost, "/v1/approvals/"+runResp.ApprovalID+tt.decidePath, tt.decideBody, http.StatusOK)
+			}
+
+			executeResp := doJSON[gwdto.RunResponse](t, server, http.MethodPost, "/v1/run/intents/"+runResp.IntentID+"/execute", nil, tt.wantHTTPCode)
+			if executeResp.Status != "blocked" || executeResp.Decision != "deny" {
+				t.Fatalf("unexpected blocked execute response: %#v", executeResp)
+			}
+			if executeResp.Reason != "intent is not approved for execution" {
+				t.Fatalf("unexpected blocked reason: %#v", executeResp)
+			}
+			if upstreamCalls != 0 {
+				t.Fatalf("upstream should not be called when execute is blocked, got=%d", upstreamCalls)
+			}
+		})
+	}
+}
+
 func doJSON[T any](t *testing.T, handler http.Handler, method, path string, body any, wantStatus int) T {
 	t.Helper()
 
