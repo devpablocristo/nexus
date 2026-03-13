@@ -1,5 +1,3 @@
 go 1.26.0
 
-use (
-	./data-plane
-)
+use ./data-plane
