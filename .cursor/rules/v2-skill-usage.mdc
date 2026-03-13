@@ -1,0 +1,26 @@
+---
+description: Preferred skill usage for v2 work
+globs:
+  - v2/**
+alwaysApply: true
+---
+
+# Preferred skills for v2
+
+Use these local skills by default when working on `v2`.
+
+## Primary flow
+
+- `api-designer` first for endpoint design, contracts, resource modeling, and CRUD shape
+- `golang-pro` for implementation in Go
+- `golang-testing` for tests on each slice
+- `code-review` before any major completion claim or after meaningful changes
+
+## Use when needed
+
+- `api-security-hardening` for auth, rate limits, CORS, validation hardening, and API security
+- `ddd-hexagonal-architecture` when formalizing ports/adapters and architectural boundaries
+- `monitoring-observability` when adding logs, metrics, tracing, or observability concerns
+- `event-driven-architecture` only if `v2` starts using events or async workflows
+
+Do not install external skills for these areas unless the local skills are clearly insufficient.
