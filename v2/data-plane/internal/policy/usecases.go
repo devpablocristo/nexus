@@ -111,10 +111,7 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (policydomain.
 }
 
 func (u *Usecases) List(ctx context.Context, req ListRequest) ([]policydomain.Policy, error) {
-	return u.repo.List(ctx, ListFilters{
-		ToolName:        req.ToolName,
-		IncludeArchived: req.IncludeArchived,
-	})
+	return u.repo.List(ctx, ListFilters(req))
 }
 
 func (u *Usecases) GetByID(ctx context.Context, id uuid.UUID) (policydomain.Policy, error) {

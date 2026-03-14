@@ -69,6 +69,12 @@ type IntentRepository interface {
 	MarkExecuted(ctx context.Context, intentID uuid.UUID) error
 }
 
+type LeaseRepository interface {
+	Create(ctx context.Context, lease gwdomain.ExecutionLease) (gwdomain.ExecutionLease, error)
+	GetByID(ctx context.Context, leaseID uuid.UUID) (gwdomain.ExecutionLease, error)
+	Consume(ctx context.Context, leaseID, intentID uuid.UUID) (gwdomain.ExecutionLease, error)
+}
+
 type Executor interface {
 	Execute(ctx context.Context, method, rawURL string, input map[string]any, headers map[string]string) (any, error)
 }
@@ -90,6 +96,7 @@ type Usecases struct {
 	secrets     SecretRepository
 	approval    ApprovalPort
 	intents     IntentRepository
+	leases      LeaseRepository
 	evaluator   *policy.Evaluator
 	executor    Executor
 }
@@ -132,6 +139,11 @@ func (u *Usecases) WithIntentRepository(repo IntentRepository) *Usecases {
 	return u
 }
 
+func (u *Usecases) WithLeaseRepository(repo LeaseRepository) *Usecases {
+	u.leases = repo
+	return u
+}
+
 func (u *Usecases) GetIntent(ctx context.Context, intentID uuid.UUID) (gwdomain.ExecutionIntent, error) {
 	if u.intents == nil {
 		return gwdomain.ExecutionIntent{}, newRunHTTPError(http.StatusInternalServerError, "INTENTS_NOT_CONFIGURED", "intents are not configured", nil)
@@ -146,6 +158,24 @@ func (u *Usecases) GetIntent(ctx context.Context, intentID uuid.UUID) (gwdomain.
 	return item, nil
 }
 
+func (u *Usecases) GetIntentPreflight(ctx context.Context, intentID uuid.UUID) (gwdomain.PreflightReview, error) {
+	item, err := u.GetIntent(ctx, intentID)
+	if err != nil {
+		return gwdomain.PreflightReview{}, err
+	}
+	return gwdomain.PreflightReview{
+		IntentID:     item.ID,
+		ToolName:     item.ToolName,
+		RiskClass:    item.RiskClass,
+		Reason:       item.Reason,
+		Status:       item.PreflightStatus,
+		Summary:      cloneMap(item.PreflightSummary),
+		CompletedAt:  item.PreflightCompletedAt,
+		ApprovalID:   item.ApprovalID,
+		IntentStatus: item.Status,
+	}, nil
+}
+
 func (u *Usecases) ListIntents(ctx context.Context, limit int) ([]gwdomain.ExecutionIntent, error) {
 	if u.intents == nil {
 		return nil, newRunHTTPError(http.StatusInternalServerError, "INTENTS_NOT_CONFIGURED", "intents are not configured", nil)
@@ -156,7 +186,44 @@ func (u *Usecases) ListIntents(ctx context.Context, limit int) ([]gwdomain.Execu
 	return u.intents.ListRecent(ctx, limit)
 }
 
+func (u *Usecases) IssueExecutionLease(ctx context.Context, intentID uuid.UUID) (gwdomain.ExecutionLease, error) {
+	if u.intents == nil || u.leases == nil {
+		return gwdomain.ExecutionLease{}, newRunHTTPError(http.StatusInternalServerError, "LEASES_NOT_CONFIGURED", "execution leases are not configured", nil)
+	}
+
+	intent, err := u.intents.GetByID(ctx, intentID)
+	if err != nil {
+		if errors.Is(err, ErrIntentNotFound) {
+			return gwdomain.ExecutionLease{}, newRunHTTPError(http.StatusNotFound, "NOT_FOUND", "intent not found", nil)
+		}
+		return gwdomain.ExecutionLease{}, err
+	}
+	if intent.Status != gwdomain.IntentStatusApproved {
+		return gwdomain.ExecutionLease{}, newRunHTTPError(http.StatusForbidden, "APPROVAL_REQUIRED", "intent must be approved before issuing a lease", nil)
+	}
+	if !intent.ExpiresAt.IsZero() && time.Now().UTC().After(intent.ExpiresAt) {
+		return gwdomain.ExecutionLease{}, newRunHTTPError(http.StatusForbidden, "LEASE_EXPIRED", "intent expired before lease issuance", nil)
+	}
+	if intent.PreflightStatus == gwdomain.PreflightStatusFailed {
+		return gwdomain.ExecutionLease{}, newRunHTTPError(http.StatusForbidden, "PREFLIGHT_FAILED", "intent preflight failed and cannot receive a lease", nil)
+	}
+
+	return u.leases.Create(ctx, gwdomain.ExecutionLease{
+		IntentID:        intent.ID,
+		ToolName:        intent.ToolName,
+		RiskClass:       intent.RiskClass,
+		Status:          gwdomain.ExecutionLeaseStatusActive,
+		CredentialMode:  executionLeaseCredentialMode(intent),
+		CredentialHints: executionLeaseCredentialHints(intent),
+		ExpiresAt:       time.Now().UTC().Add(time.Duration(executionLeaseTTLSeconds(intent.RiskClass)) * time.Second),
+	})
+}
+
 func (u *Usecases) ExecuteIntent(ctx context.Context, intentID uuid.UUID, timeoutMS int) (gwdomain.RunResponse, error) {
+	return u.ExecuteIntentWithLease(ctx, intentID, uuid.Nil, timeoutMS)
+}
+
+func (u *Usecases) ExecuteIntentWithLease(ctx context.Context, intentID, leaseID uuid.UUID, timeoutMS int) (gwdomain.RunResponse, error) {
 	if u.intents == nil {
 		return gwdomain.RunResponse{}, newRunHTTPError(http.StatusInternalServerError, "INTENTS_NOT_CONFIGURED", "intents are not configured", nil)
 	}
@@ -193,9 +260,92 @@ func (u *Usecases) ExecuteIntent(ctx context.Context, intentID uuid.UUID, timeou
 			ApprovalID: uuidStringValue(intent.ApprovalID),
 		}, nil
 	}
+	if intent.PreflightStatus == gwdomain.PreflightStatusFailed {
+		return gwdomain.RunResponse{
+			RequestID:  newRequestID(),
+			Decision:   gwdomain.DecisionDeny,
+			ToolName:   intent.ToolName,
+			Status:     gwdomain.RunStatusBlocked,
+			Reason:     "intent preflight failed and cannot be executed",
+			HTTPStatus: http.StatusForbidden,
+			IntentID:   intent.ID.String(),
+			ApprovalID: uuidStringValue(intent.ApprovalID),
+		}, nil
+	}
+	if u.leases == nil || leaseID == uuid.Nil {
+		return gwdomain.RunResponse{
+			RequestID:  newRequestID(),
+			Decision:   gwdomain.DecisionDeny,
+			ToolName:   intent.ToolName,
+			Status:     gwdomain.RunStatusBlocked,
+			Reason:     "execution lease required before executing intent",
+			HTTPStatus: http.StatusForbidden,
+			IntentID:   intent.ID.String(),
+			ApprovalID: uuidStringValue(intent.ApprovalID),
+		}, nil
+	}
+
+	lease, err := u.leases.Consume(ctx, leaseID, intent.ID)
+	if err != nil {
+		if errors.Is(err, ErrLeaseNotFound) {
+			return gwdomain.RunResponse{
+				RequestID:  newRequestID(),
+				Decision:   gwdomain.DecisionDeny,
+				ToolName:   intent.ToolName,
+				Status:     gwdomain.RunStatusBlocked,
+				Reason:     "execution lease not found",
+				HTTPStatus: http.StatusForbidden,
+				IntentID:   intent.ID.String(),
+				ApprovalID: uuidStringValue(intent.ApprovalID),
+			}, nil
+		}
+		if errors.Is(err, ErrLeaseIntentMismatch) || errors.Is(err, ErrLeaseNotActive) {
+			return gwdomain.RunResponse{
+				RequestID:  newRequestID(),
+				Decision:   gwdomain.DecisionDeny,
+				ToolName:   intent.ToolName,
+				Status:     gwdomain.RunStatusBlocked,
+				Reason:     "execution lease is not active for this intent",
+				HTTPStatus: http.StatusForbidden,
+				IntentID:   intent.ID.String(),
+				ApprovalID: uuidStringValue(intent.ApprovalID),
+			}, nil
+		}
+		if errors.Is(err, ErrLeaseExpired) {
+			return gwdomain.RunResponse{
+				RequestID:  newRequestID(),
+				Decision:   gwdomain.DecisionDeny,
+				ToolName:   intent.ToolName,
+				Status:     gwdomain.RunStatusBlocked,
+				Reason:     "execution lease expired before execution",
+				HTTPStatus: http.StatusForbidden,
+				IntentID:   intent.ID.String(),
+				ApprovalID: uuidStringValue(intent.ApprovalID),
+			}, nil
+		}
+		return gwdomain.RunResponse{}, err
+	}
+	if lease.IntentID != intent.ID {
+		return gwdomain.RunResponse{
+			RequestID:  newRequestID(),
+			Decision:   gwdomain.DecisionDeny,
+			ToolName:   intent.ToolName,
+			Status:     gwdomain.RunStatusBlocked,
+			Reason:     "execution lease is not active for this intent",
+			HTTPStatus: http.StatusForbidden,
+			IntentID:   intent.ID.String(),
+			ApprovalID: uuidStringValue(intent.ApprovalID),
+		}, nil
+	}
 
 	contextMap := cloneMap(intent.Context)
 	contextMap["intent_id"] = intent.ID.String()
+	contextMap["execution_lease"] = map[string]any{
+		"lease_id":         lease.ID.String(),
+		"credential_mode":  lease.CredentialMode,
+		"credential_hints": cloneMap(lease.CredentialHints),
+		"expires_at":       lease.ExpiresAt.UTC().Format(time.RFC3339),
+	}
 
 	resp, err := u.Run(ctx, gwdomain.RunRequest{
 		RequestID: newRequestID(),
@@ -212,7 +362,7 @@ func (u *Usecases) ExecuteIntent(ctx context.Context, intentID uuid.UUID, timeou
 
 	resp.IntentID = intent.ID.String()
 	resp.ApprovalID = uuidStringValue(intent.ApprovalID)
-	if resp.Status == gwdomain.RunStatusSuccess {
+	if resp.Status == gwdomain.RunStatusSuccess || resp.Status == gwdomain.RunStatusError {
 		_ = u.intents.MarkExecuted(ctx, intent.ID)
 	}
 	return resp, nil
@@ -397,17 +547,35 @@ func (u *Usecases) decide(ctx context.Context, st runState) (*gwdomain.RunRespon
 		if reason == "" {
 			reason = "approval required"
 		}
+		riskClass := classifyRiskClass(st.tool, st.input, st.context)
+		preflight := evaluateDeterministicPreflight(riskClass, st.input, st.context)
+		if preflight.required && preflight.status == gwdomain.PreflightStatusFailed {
+			resp := gwdomain.RunResponse{
+				RequestID:  st.requestID,
+				Decision:   gwdomain.DecisionDeny,
+				ToolName:   st.tool.Name,
+				Status:     gwdomain.RunStatusBlocked,
+				Reason:     preflight.failureReason,
+				LatencyMS:  time.Since(st.start).Milliseconds(),
+				HTTPStatus: preflight.failureHTTP,
+			}
+			return &resp, nil
+		}
 
 		intent, err := u.intents.Create(ctx, gwdomain.ExecutionIntent{
-			ToolID:    st.tool.ID,
-			ToolName:  st.tool.Name,
-			RequestID: st.requestID,
-			Input:     cloneMap(st.input),
-			Context:   cloneMap(st.context),
-			PolicyID:  &current.ID,
-			Reason:    reason,
-			Status:    gwdomain.IntentStatusPendingApproval,
-			ExpiresAt: time.Now().UTC().Add(time.Duration(current.ApprovalTTLSeconds) * time.Second),
+			ToolID:               st.tool.ID,
+			ToolName:             st.tool.Name,
+			RequestID:            st.requestID,
+			Input:                cloneMap(st.input),
+			Context:              cloneMap(st.context),
+			PolicyID:             &current.ID,
+			RiskClass:            riskClass,
+			Reason:               reason,
+			Status:               gwdomain.IntentStatusPendingApproval,
+			PreflightStatus:      preflight.status,
+			PreflightSummary:     cloneMap(preflight.summary),
+			PreflightCompletedAt: nowPtrIfRequired(preflight.required),
+			ExpiresAt:            time.Now().UTC().Add(time.Duration(current.ApprovalTTLSeconds) * time.Second),
 		})
 		if err != nil {
 			return nil, err

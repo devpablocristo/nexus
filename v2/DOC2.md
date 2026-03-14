@@ -16,6 +16,8 @@
 - `toRunHTTPError`
 - `validateAndPrepare`
 - `decide`
+- `classifyRiskClass`
+- `evaluateDeterministicPreflight`
 - `IntentRepository.Create`
 - `ApprovalPort.RequestApproval`
 - `IntentRepository.LinkApproval`
@@ -168,13 +170,38 @@
 - `writeGatewayError`
 - `writeJSON`
 
+### `GET /v1/run/intents/{id}/preflight`
+
+- `Handler.Register`
+- `Handler.getIntentPreflight`
+- `Usecases.GetIntentPreflight`
+- `Usecases.GetIntent`
+- `InMemoryIntentRepository.GetByID`
+- `toPreflightReviewDTO`
+- `writeGatewayError`
+- `writeJSON`
+
+### `POST /v1/run/intents/{id}/lease`
+
+- `Handler.Register`
+- `Handler.issueExecutionLease`
+- `Usecases.IssueExecutionLease`
+- `InMemoryIntentRepository.GetByID`
+- `InMemoryLeaseRepository.Create`
+- `toExecutionLeaseDTO`
+- `writeGatewayError`
+- `writeJSON`
+
 ### `POST /v1/run/intents/{id}/execute`
 
 - `Handler.Register`
 - `Handler.executeIntent`
 - `parseTimeoutMS`
-- `Usecases.ExecuteIntent`
+- `Usecases.ExecuteIntentWithLease`
 - `InMemoryIntentRepository.GetByID`
+- `InMemoryLeaseRepository.GetByID`
+- `InMemoryLeaseRepository.MarkUsed`
+- `InMemoryLeaseRepository.MarkExpired`
 - `Run`
 - `clampTimeoutMS`
 - `resolveTool`

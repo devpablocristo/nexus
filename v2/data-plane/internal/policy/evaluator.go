@@ -67,7 +67,9 @@ func (e *Evaluator) Validate(expression string) error {
 	if ast.OutputType() != cel.BoolType {
 		return fmt.Errorf("policy expression must return bool, got %s", ast.OutputType())
 	}
-	_, err = e.program(expression, ast)
+	if _, err := e.program(expression, ast); err != nil {
+		return err
+	}
 	return nil
 }
 

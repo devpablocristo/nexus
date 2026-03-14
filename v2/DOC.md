@@ -470,6 +470,8 @@ Body JSON:
 
 - `GET /v1/run/intents`
 - `GET /v1/run/intents/{id}`
+- `GET /v1/run/intents/{id}/preflight`
+- `POST /v1/run/intents/{id}/lease`
 - `POST /v1/run/intents/{id}/execute`
 
 ### Modelo expuesto
@@ -481,8 +483,14 @@ Body JSON:
   "tool_id": "tool_echo",
   "tool_name": "echo",
   "policy_id": "uuid",
+  "risk_class": "mutate_prod",
   "reason": "operator approval required",
   "status": "pending_approval",
+  "preflight_status": "passed",
+  "preflight_summary": {
+    "required": true
+  },
+  "preflight_completed_at": "2026-03-13T00:00:00Z",
   "approval_id": "uuid",
   "expires_at": "2026-03-13T00:00:00Z",
   "executed_at": "2026-03-13T00:05:00Z",
@@ -498,10 +506,32 @@ Body JSON:
 - si `limit` es invalido o `<= 0`, devuelve `400 VALIDATION`
 - `GET /v1/run/intents/{id}` devuelve un intent especifico
 - si el intent no existe, devuelve `404 NOT_FOUND`
+- `GET /v1/run/intents/{id}/preflight` devuelve la vista resumida de preflight del intent
+- incluye `risk_class`, `status`, `summary` y `intent_status`
+- `POST /v1/run/intents/{id}/lease` emite una lease de ejecucion para un intent aprobado
+- la lease expone `id`, `intent_id`, `risk_class`, `status`, `credential_mode`, `credential_hints`, `expires_at` y `used_at`
+- la lease es `single-use`: una sola ejecucion la puede consumir, y el consumo es atomico
+- si el intent no esta aprobado, devuelve `403 APPROVAL_REQUIRED`
+- si el intent vencio, devuelve `403 LEASE_EXPIRED`
+- si el preflight fallo, devuelve `403 PREFLIGHT_FAILED`
 - `POST /v1/run/intents/{id}/execute` ejecuta el intent guardado
+- ahora requiere body JSON:
+
+```json
+{
+  "lease_id": "uuid"
+}
+```
+
 - solo ejecuta si el intent esta en `approved`
+- si no viene `lease_id`, devuelve `400 VALIDATION`
+- si `lease_id` es invalido, devuelve `400 VALIDATION`
+- si no existe lease activa para ese intent, devuelve `403` con `reason=execution lease not found` o `execution lease is not active for this intent`
+- si la lease vencio, devuelve `403` con `reason=execution lease expired before execution`
+- si el intent tiene `preflight_status=failed`, devuelve `403` con `reason=intent preflight failed and cannot be executed`
 - si el intent esta `pending_approval`, `rejected` o `executed`, devuelve `403` con `reason=intent is not approved for execution`
 - si el intent vencio, devuelve `403` con `reason=intent expired before execution`
+- marca la lease como `used` antes de ejecutar
 - reutiliza `tool_id`, `tool_name`, `input` y `context` guardados en el intent
 - acepta `X-Timeout-Ms` igual que `/run`
 - si ejecuta bien, marca el intent como `executed` y completa `executed_at`
@@ -657,15 +687,20 @@ Hoy `v2` ya tiene el camino minimo de approval dentro de `/run`:
 
 - repo en memoria de intents
 - repo en memoria de approvals
+- `risk class` deterministica
+- `preflight` deterministico simple
 - un solo approval step
 - sin quorum
 - con approve/reject endpoint
+- con preflight endpoint
+- con lease endpoint
 - con execute-intent endpoint
-- sin lease
 
 Comportamiento actual:
 
 - la policy crea un `intent` con status `pending_approval`
+- antes de crear el intent, calcula `risk_class` y `preflight`
+- si el preflight falla, `/run` bloquea antes de crear intent/approval
 - despues crea un `approval` vinculado a ese intent
 - la respuesta expone `intent_id` y `approval_id`
 - si la request era idempotente, un replay conserva esos mismos IDs
@@ -673,7 +708,9 @@ Comportamiento actual:
 - `POST /v1/approvals/{id}/approve|reject` permite cerrar el approval
 - `GET /v1/run/intents` permite inspeccionar intents recientes
 - `GET /v1/run/intents/{id}` permite inspeccionar un intent puntual
-- `POST /v1/run/intents/{id}/execute` permite ejecutar un intent aprobado
+- `GET /v1/run/intents/{id}/preflight` permite inspeccionar el resumen de preflight
+- `POST /v1/run/intents/{id}/lease` emite una lease antes de la ejecucion
+- `POST /v1/run/intents/{id}/execute` ejecuta el intent aprobado usando `lease_id`
 - cuando ejecuta bien, el intent pasa a `executed`
 
 ### Alcance actual
@@ -735,5 +772,3 @@ Config actual de `cmd/api`:
 - persistencia real de secrets
 - persistencia real de approvals e intents
 - quorum break-glass
-- risk class y preflight
-- lease de ejecucion

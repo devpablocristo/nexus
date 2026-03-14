@@ -24,6 +24,10 @@ type RunResponse struct {
 	Idempotency *IdempotencyDTO `json:"idempotency,omitempty"`
 }
 
+type ExecuteIntentRequest struct {
+	LeaseID string `json:"lease_id"`
+}
+
 type ErrorResponse struct {
 	RequestID   string          `json:"request_id"`
 	Error       ErrorObject     `json:"error"`
@@ -41,20 +45,49 @@ type IdempotencyDTO struct {
 }
 
 type IntentItem struct {
-	ID         string     `json:"id"`
-	RequestID  string     `json:"request_id"`
-	ToolID     string     `json:"tool_id"`
-	ToolName   string     `json:"tool_name"`
-	PolicyID   *string    `json:"policy_id,omitempty"`
-	Reason     string     `json:"reason"`
-	Status     string     `json:"status"`
-	ApprovalID *string    `json:"approval_id,omitempty"`
-	ExpiresAt  time.Time  `json:"expires_at"`
-	ExecutedAt *time.Time `json:"executed_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID                   string         `json:"id"`
+	RequestID            string         `json:"request_id"`
+	ToolID               string         `json:"tool_id"`
+	ToolName             string         `json:"tool_name"`
+	PolicyID             *string        `json:"policy_id,omitempty"`
+	RiskClass            string         `json:"risk_class"`
+	Reason               string         `json:"reason"`
+	Status               string         `json:"status"`
+	PreflightStatus      string         `json:"preflight_status"`
+	PreflightSummary     map[string]any `json:"preflight_summary"`
+	PreflightCompletedAt *time.Time     `json:"preflight_completed_at,omitempty"`
+	ApprovalID           *string        `json:"approval_id,omitempty"`
+	ExpiresAt            time.Time      `json:"expires_at"`
+	ExecutedAt           *time.Time     `json:"executed_at,omitempty"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
 }
 
 type ListIntentsResponse struct {
 	Items []IntentItem `json:"items"`
+}
+
+type PreflightReviewResponse struct {
+	IntentID     string         `json:"intent_id"`
+	ToolName     string         `json:"tool_name"`
+	RiskClass    string         `json:"risk_class"`
+	Reason       string         `json:"reason"`
+	Status       string         `json:"status"`
+	Summary      map[string]any `json:"summary"`
+	CompletedAt  *time.Time     `json:"completed_at,omitempty"`
+	ApprovalID   *string        `json:"approval_id,omitempty"`
+	IntentStatus string         `json:"intent_status"`
+}
+
+type ExecutionLeaseItem struct {
+	ID              string         `json:"id"`
+	IntentID        string         `json:"intent_id"`
+	ToolName        string         `json:"tool_name"`
+	RiskClass       string         `json:"risk_class"`
+	Status          string         `json:"status"`
+	CredentialMode  string         `json:"credential_mode"`
+	CredentialHints map[string]any `json:"credential_hints"`
+	ExpiresAt       time.Time      `json:"expires_at"`
+	UsedAt          *time.Time     `json:"used_at,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
 }

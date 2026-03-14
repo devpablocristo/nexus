@@ -62,10 +62,11 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	evaluator := policy.NewEvaluator()
 	executor := httpexec.NewExecutor(cfg.HTTPTimeout)
 	intentRepo := gateway.NewInMemoryIntentRepository()
+	leaseRepo := gateway.NewInMemoryLeaseRepository()
 	approvalRepo := approval.NewInMemoryRepository()
 	approvalUC := approval.NewUsecases(approvalRepo).WithIntentPort(intentRepo)
 	runUsecase := gateway.NewUsecases(repo, policies, idempotency, limiter, egressUC, secretRepo, evaluator, executor)
-	runUsecase = runUsecase.WithIntentRepository(intentRepo).WithApproval(approval.NewGatewayAdapter(approvalUC))
+	runUsecase = runUsecase.WithIntentRepository(intentRepo).WithLeaseRepository(leaseRepo).WithApproval(approval.NewGatewayAdapter(approvalUC))
 	policyUsecase := policy.NewUsecases(policies, repo, evaluator)
 
 	mux := http.NewServeMux()

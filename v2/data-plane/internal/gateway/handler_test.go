@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	httpexec "nexus/v2/data-plane/internal/gateway/executor/http"
 	"nexus/v2/data-plane/internal/gateway/executor/ratelimit"
 	gwdto "nexus/v2/data-plane/internal/gateway/handler/dto"
+	gwdomain "nexus/v2/data-plane/internal/gateway/usecases/domain"
 	"nexus/v2/data-plane/internal/policy"
 	policydomain "nexus/v2/data-plane/internal/policy/usecases/domain"
 	"nexus/v2/data-plane/internal/secrets"
@@ -805,6 +807,30 @@ func TestIntentsEndpoints(t *testing.T) {
 	if item.ApprovalID == nil || *item.ApprovalID != runResp.ApprovalID {
 		t.Fatalf("unexpected approval link: %#v", item)
 	}
+	if item.RiskClass != "mutate_non_prod" {
+		t.Fatalf("unexpected risk class: %#v", item)
+	}
+	if item.PreflightStatus != "not_required" {
+		t.Fatalf("unexpected preflight status: %#v", item)
+	}
+
+	preflightReq := httptest.NewRequest(http.MethodGet, "/v1/run/intents/"+runResp.IntentID+"/preflight", nil)
+	preflightRec := httptest.NewRecorder()
+	mux.ServeHTTP(preflightRec, preflightReq)
+	if preflightRec.Code != http.StatusOK {
+		t.Fatalf("unexpected preflight status: %d body=%s", preflightRec.Code, preflightRec.Body.String())
+	}
+
+	var preflightResp gwdto.PreflightReviewResponse
+	if err := json.NewDecoder(preflightRec.Body).Decode(&preflightResp); err != nil {
+		t.Fatalf("decode preflight response: %v", err)
+	}
+	if preflightResp.IntentID != runResp.IntentID {
+		t.Fatalf("unexpected preflight item: %#v", preflightResp)
+	}
+	if preflightResp.Status != "not_required" {
+		t.Fatalf("unexpected preflight review status: %#v", preflightResp)
+	}
 }
 
 func TestIntentsEndpointsValidationAndNotFound(t *testing.T) {
@@ -819,7 +845,7 @@ func TestIntentsEndpointsValidationAndNotFound(t *testing.T) {
 		secrets.NewInMemoryRepository(nil),
 		policy.NewEvaluator(),
 		httpexec.NewExecutor(2*time.Second),
-	).WithIntentRepository(NewInMemoryIntentRepository())
+	).WithIntentRepository(NewInMemoryIntentRepository()).WithLeaseRepository(NewInMemoryLeaseRepository())
 
 	mux := http.NewServeMux()
 	NewHandler(usecase).Register(mux)
@@ -861,6 +887,65 @@ func TestIntentsEndpointsValidationAndNotFound(t *testing.T) {
 	if missingResp.Error.Code != "NOT_FOUND" {
 		t.Fatalf("unexpected missing code: %#v", missingResp)
 	}
+
+	preflightBadIDReq := httptest.NewRequest(http.MethodGet, "/v1/run/intents/not-a-uuid/preflight", nil)
+	preflightBadIDRec := httptest.NewRecorder()
+	mux.ServeHTTP(preflightBadIDRec, preflightBadIDReq)
+	if preflightBadIDRec.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected invalid preflight id status: %d body=%s", preflightBadIDRec.Code, preflightBadIDRec.Body.String())
+	}
+
+	preflightMissingReq := httptest.NewRequest(http.MethodGet, "/v1/run/intents/"+intentID+"/preflight", nil)
+	preflightMissingRec := httptest.NewRecorder()
+	mux.ServeHTTP(preflightMissingRec, preflightMissingReq)
+	if preflightMissingRec.Code != http.StatusNotFound {
+		t.Fatalf("unexpected missing preflight status: %d body=%s", preflightMissingRec.Code, preflightMissingRec.Body.String())
+	}
+
+	leaseBadIDReq := httptest.NewRequest(http.MethodPost, "/v1/run/intents/not-a-uuid/lease", nil)
+	leaseBadIDRec := httptest.NewRecorder()
+	mux.ServeHTTP(leaseBadIDRec, leaseBadIDReq)
+	if leaseBadIDRec.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected invalid lease id status: %d body=%s", leaseBadIDRec.Code, leaseBadIDRec.Body.String())
+	}
+
+	leaseMissingReq := httptest.NewRequest(http.MethodPost, "/v1/run/intents/"+intentID+"/lease", nil)
+	leaseMissingRec := httptest.NewRecorder()
+	mux.ServeHTTP(leaseMissingRec, leaseMissingReq)
+	if leaseMissingRec.Code != http.StatusNotFound {
+		t.Fatalf("unexpected missing lease status: %d body=%s", leaseMissingRec.Code, leaseMissingRec.Body.String())
+	}
+
+	executeMissingLeaseReq := httptest.NewRequest(http.MethodPost, "/v1/run/intents/"+intentID+"/execute", bytes.NewBufferString(`{}`))
+	executeMissingLeaseReq.Header.Set("Content-Type", "application/json")
+	executeMissingLeaseRec := httptest.NewRecorder()
+	mux.ServeHTTP(executeMissingLeaseRec, executeMissingLeaseReq)
+	if executeMissingLeaseRec.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected missing lease_id execute status: %d body=%s", executeMissingLeaseRec.Code, executeMissingLeaseRec.Body.String())
+	}
+}
+
+func TestListIntentsMapsUnexpectedErrorToHTTPError(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	NewHandler(handlerTestRunUsecase{listErr: errors.New("boom")}).Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/run/intents", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("unexpected status: got=%d want=%d body=%s", rec.Code, http.StatusBadGateway, rec.Body.String())
+	}
+
+	var resp gwdto.ErrorResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if resp.Error.Code != "UPSTREAM_ERROR" {
+		t.Fatalf("unexpected error code: %#v", resp)
+	}
 }
 
 func newAllowedEgress(t *testing.T, toolID, rawURL string) *egress.Usecases {
@@ -883,4 +968,32 @@ type approvalPortStub struct{}
 
 func (approvalPortStub) RequestApproval(_ context.Context, _ ApprovalRequest) (string, error) {
 	return uuid.NewString(), nil
+}
+
+type handlerTestRunUsecase struct {
+	listErr error
+}
+
+func (u handlerTestRunUsecase) Run(context.Context, gwdomain.RunRequest) (gwdomain.RunResponse, error) {
+	return gwdomain.RunResponse{}, nil
+}
+
+func (u handlerTestRunUsecase) GetIntent(context.Context, uuid.UUID) (gwdomain.ExecutionIntent, error) {
+	return gwdomain.ExecutionIntent{}, nil
+}
+
+func (u handlerTestRunUsecase) GetIntentPreflight(context.Context, uuid.UUID) (gwdomain.PreflightReview, error) {
+	return gwdomain.PreflightReview{}, nil
+}
+
+func (u handlerTestRunUsecase) IssueExecutionLease(context.Context, uuid.UUID) (gwdomain.ExecutionLease, error) {
+	return gwdomain.ExecutionLease{}, nil
+}
+
+func (u handlerTestRunUsecase) ListIntents(context.Context, int) ([]gwdomain.ExecutionIntent, error) {
+	return nil, u.listErr
+}
+
+func (u handlerTestRunUsecase) ExecuteIntentWithLease(context.Context, uuid.UUID, uuid.UUID, int) (gwdomain.RunResponse, error) {
+	return gwdomain.RunResponse{}, nil
 }
