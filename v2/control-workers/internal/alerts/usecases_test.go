@@ -4,8 +4,18 @@ import (
 	"context"
 	"testing"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	alertdomain "nexus/v2/control-workers/internal/alerts/usecases/domain"
 )
+
+type stubAlertAuditSink struct {
+	items []sharedaudit.WriteRequest
+}
+
+func (s *stubAlertAuditSink) Create(_ context.Context, req sharedaudit.WriteRequest) error {
+	s.items = append(s.items, req)
+	return nil
+}
 
 func validCreateRequest() CreateRequest {
 	return CreateRequest{
@@ -80,6 +90,24 @@ func TestUsecasesLifecycle(t *testing.T) {
 
 	if err := uc.DeleteByID(context.Background(), mustAlertID(t, created.ID)); err != nil {
 		t.Fatalf("DeleteByID returned error: %v", err)
+	}
+}
+
+func TestUsecasesCreateEmitsAudit(t *testing.T) {
+	t.Parallel()
+
+	audits := &stubAlertAuditSink{}
+	uc := NewUsecases(NewInMemoryRepository(nil)).WithAuditSink(audits)
+
+	item, err := uc.Create(context.Background(), validCreateRequest())
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if item.ID == "" {
+		t.Fatal("expected alert id")
+	}
+	if len(audits.items) != 1 || audits.items[0].EventType != "alert_created" {
+		t.Fatalf("unexpected audit payloads: %#v", audits.items)
 	}
 }
 

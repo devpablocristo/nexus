@@ -217,13 +217,13 @@ func evaluatePolicyDecision(req CreateRequest, resource actiondomain.ProtectedRe
 		"metadata": cloneMap(req.Metadata),
 	}
 	resourceAttrs := map[string]any{
-		"id":           resource.ID,
-		"type":         string(resource.Type),
-		"name":         resource.Name,
-		"environment":  resource.Environment,
-		"chain":        resource.Chain,
-		"criticality":  resource.Criticality,
-		"labels":       cloneStringMap(resource.Labels),
+		"id":          resource.ID,
+		"type":        string(resource.Type),
+		"name":        resource.Name,
+		"environment": resource.Environment,
+		"chain":       resource.Chain,
+		"criticality": resource.Criticality,
+		"labels":      cloneStringMap(resource.Labels),
 	}
 
 	for _, policy := range policies {

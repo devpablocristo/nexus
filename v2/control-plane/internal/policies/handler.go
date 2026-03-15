@@ -3,13 +3,16 @@ package policies
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/google/uuid"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
 	policydto "nexus/v2/control-plane/internal/policies/handler/dto"
 	policydomain "nexus/v2/control-plane/internal/policies/usecases/domain"
+	"nexus/v2/control-plane/internal/shared/actors"
 )
 
 type policyUsecase interface {
@@ -22,9 +25,21 @@ type policyUsecase interface {
 	RestoreByID(ctx context.Context, id uuid.UUID) (policydomain.Policy, error)
 }
 
-type Handler struct{ uc policyUsecase }
+type policyAuditSink interface {
+	Write(ctx context.Context, req sharedaudit.WriteRequest) error
+}
+
+type Handler struct {
+	uc    policyUsecase
+	audit policyAuditSink
+}
 
 func NewHandler(uc policyUsecase) *Handler { return &Handler{uc: uc} }
+
+func (h *Handler) WithAuditSink(sink policyAuditSink) *Handler {
+	h.audit = sink
+	return h
+}
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/policies", h.create)
@@ -37,6 +52,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	actor, ok := parsePolicyActor(w, r)
+	if !ok {
+		return
+	}
 	var req policydto.CreatePolicyRequest
 	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writePolicyError(w, http.StatusBadRequest, "INVALID_JSON", "invalid json")
@@ -58,6 +77,11 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Location", "/v1/policies/"+item.ID)
+	h.emitAudit(r.Context(), actor, "policy_created", item, map[string]any{
+		"effect":           string(item.Effect),
+		"require_approval": item.RequireApproval,
+		"enabled":          item.Enabled,
+	})
 	sharedhandlers.WriteJSON(w, http.StatusCreated, toPolicyResponse(item))
 }
 
@@ -101,6 +125,10 @@ func (h *Handler) patchByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parsePolicyActor(w, r)
+	if !ok {
+		return
+	}
 	var req policydto.UpdatePolicyRequest
 	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writePolicyError(w, http.StatusBadRequest, "INVALID_JSON", "invalid json")
@@ -121,6 +149,11 @@ func (h *Handler) patchByID(w http.ResponseWriter, r *http.Request) {
 		writePolicyUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "policy_updated", item, map[string]any{
+		"effect":           string(item.Effect),
+		"require_approval": item.RequireApproval,
+		"enabled":          item.Enabled,
+	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
 }
 
@@ -129,10 +162,22 @@ func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parsePolicyActor(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writePolicyUsecaseError(w, err)
+		return
+	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {
 		writePolicyUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "policy_deleted", item, map[string]any{
+		"effect": string(item.Effect),
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -141,11 +186,18 @@ func (h *Handler) archiveByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parsePolicyActor(w, r)
+	if !ok {
+		return
+	}
 	item, err := h.uc.ArchiveByID(r.Context(), id)
 	if err != nil {
 		writePolicyUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "policy_archived", item, map[string]any{
+		"archived_at": item.ArchivedAt,
+	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
 }
 
@@ -154,11 +206,18 @@ func (h *Handler) restoreByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parsePolicyActor(w, r)
+	if !ok {
+		return
+	}
 	item, err := h.uc.RestoreByID(r.Context(), id)
 	if err != nil {
 		writePolicyUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "policy_restored", item, map[string]any{
+		"effect": string(item.Effect),
+	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
 }
 
@@ -203,4 +262,63 @@ func writePolicyError(w http.ResponseWriter, status int, code, message string) {
 	sharedhandlers.WriteJSON(w, status, policydto.ErrorResponse{
 		Error: policydto.ErrorObject{Code: code, Message: message},
 	})
+}
+
+func parsePolicyActor(w http.ResponseWriter, r *http.Request) (*sharedaudit.Actor, bool) {
+	actor, err := actors.FromRequest(r)
+	if err == nil {
+		return actor, true
+	}
+	if errors.Is(err, actors.ErrIncompleteActorHeaders) {
+		writePolicyError(w, http.StatusBadRequest, "VALIDATION", "actor headers require both X-Nexus-Actor-Type and X-Nexus-Actor-Id")
+		return nil, false
+	}
+	writePolicyError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+	return nil, false
+}
+
+func (h *Handler) emitAudit(ctx context.Context, actor *sharedaudit.Actor, eventType string, item policydomain.Policy, data map[string]any) {
+	if h.audit == nil {
+		return
+	}
+	if err := h.audit.Write(ctx, sharedaudit.WriteRequest{
+		EventType:     eventType,
+		SourceService: "control-plane",
+		ResourceType:  item.ResourceType,
+		Actor:         actor,
+		Summary:       policyAuditSummary(eventType),
+		Data:          clonePolicyMap(data, item),
+		OccurredAt:    item.UpdatedAt,
+	}); err != nil {
+		log.Printf("control-plane policy audit failed: policy_id=%s event_type=%s err=%v", item.ID, eventType, err)
+	}
+}
+
+func policyAuditSummary(eventType string) string {
+	switch eventType {
+	case "policy_created":
+		return "policy created"
+	case "policy_updated":
+		return "policy updated"
+	case "policy_deleted":
+		return "policy deleted"
+	case "policy_archived":
+		return "policy archived"
+	case "policy_restored":
+		return "policy restored"
+	default:
+		return "policy changed"
+	}
+}
+
+func clonePolicyMap(data map[string]any, item policydomain.Policy) map[string]any {
+	out := make(map[string]any, len(data)+4)
+	for key, value := range data {
+		out[key] = value
+	}
+	out["policy_id"] = item.ID
+	out["action_type"] = item.ActionType
+	out["resource_type"] = item.ResourceType
+	out["priority"] = item.Priority
+	return out
 }

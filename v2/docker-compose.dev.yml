@@ -6,7 +6,11 @@ services:
     working_dir: /src/control-workers
     volumes:
       - ./control-workers:/src/control-workers
+      - ./pkgs:/src/pkgs
     command: ["air", "-c", ".air.toml"]
+    environment:
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
+      NEXUS_CONTROL_PLANE_API_KEY: "${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key}"
 
   nexus-control-plane:
     build:
@@ -15,7 +19,10 @@ services:
     working_dir: /src/control-plane
     volumes:
       - ./control-plane:/src/control-plane
+      - ./pkgs:/src/pkgs
     command: ["air", "-c", ".air.toml"]
+    environment:
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key},control-workers=${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key}"
 
   nexus-data-plane:
     build:
@@ -24,8 +31,12 @@ services:
     working_dir: /src/data-plane
     volumes:
       - ./data-plane:/src/data-plane
+      - ./pkgs:/src/pkgs
     environment:
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
       NEXUS_CONTROL_PLANE_URL: "${NEXUS_CONTROL_PLANE_URL:-http://nexus-control-plane:8081}"
+      NEXUS_CONTROL_PLANE_API_KEY: "${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
+      NEXUS_CONTROL_WORKERS_API_KEY: "${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
     depends_on:
       - nexus-control-plane
     command: ["air", "-c", ".air.toml"]

@@ -1,4 +1,72 @@
 services:
+  data-plane-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_data_plane
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${NEXUS_DATA_PLANE_POSTGRES_PORT:-15430}:5432"
+    volumes:
+      - data-plane-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_data_plane"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  control-plane-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_control_plane
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${NEXUS_CONTROL_PLANE_POSTGRES_PORT:-15431}:5432"
+    volumes:
+      - control-plane-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_control_plane"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  control-workers-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_control_workers
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${NEXUS_CONTROL_WORKERS_POSTGRES_PORT:-15433}:5432"
+    volumes:
+      - control-workers-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_control_workers"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  audit-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_audit
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${NEXUS_AUDIT_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - audit-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_audit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   nexus-control-workers:
     build:
       context: .
@@ -6,10 +74,19 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8082"
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
+      NEXUS_CONTROL_PLANE_URL: "${NEXUS_CONTROL_PLANE_URL:-http://nexus-control-plane:8081}"
+      NEXUS_CONTROL_PLANE_API_KEY: "${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key}"
+      NEXUS_CONTROL_WORKERS_DATABASE_URL: "${NEXUS_CONTROL_WORKERS_DATABASE_URL:-postgres://postgres:postgres@control-workers-postgres:5432/nexus_control_workers?sslmode=disable}"
     ports:
       - "${NEXUS_CONTROL_WORKERS_PORT:-18083}:8082"
+    depends_on:
+      control-workers-postgres:
+        condition: service_healthy
+      nexus-control-plane:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/v1/incidents >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/healthz >/dev/null 2>&1 || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -21,40 +98,21 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8081"
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key},control-workers=${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key}"
+      NEXUS_CONTROL_PLANE_DATABASE_URL: "${NEXUS_CONTROL_PLANE_DATABASE_URL:-postgres://postgres:postgres@control-plane-postgres:5432/nexus_control_plane?sslmode=disable}"
+      NEXUS_AUDIT_DATABASE_URL: "${NEXUS_AUDIT_DATABASE_URL:-postgres://postgres:postgres@audit-postgres:5432/nexus_audit?sslmode=disable}"
     ports:
       - "${NEXUS_CONTROL_PLANE_PORT:-18082}:8081"
+    depends_on:
+      control-plane-postgres:
+        condition: service_healthy
+      audit-postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/v1/resources >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/healthz >/dev/null 2>&1 || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 30
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "${NEXUS_REDIS_PORT:-6379}:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
-  echo-upstream:
-    image: python:3.12-alpine
-    restart: unless-stopped
-    working_dir: /workspace
-    command: ["python", "/workspace/scripts/dev/echo_server.py", "18081"]
-    volumes:
-      - ./scripts/dev:/workspace/scripts/dev:ro
-    ports:
-      - "${NEXUS_ECHO_UPSTREAM_PORT:-18081}:18081"
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1', 18081), 1); s.close()\""]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
   nexus-data-plane:
     build:
       context: .
@@ -62,24 +120,29 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
-      NEXUS_TOOL_ECHO_URL: "${NEXUS_TOOL_ECHO_URL:-http://echo-upstream:18081/echo}"
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
       NEXUS_CONTROL_PLANE_URL: "${NEXUS_CONTROL_PLANE_URL:-http://nexus-control-plane:8081}"
+      NEXUS_CONTROL_PLANE_API_KEY: "${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
       NEXUS_CONTROL_WORKERS_URL: "${NEXUS_CONTROL_WORKERS_URL:-http://nexus-control-workers:8082}"
-      NEXUS_RATE_LIMIT_BACKEND: "${NEXUS_RATE_LIMIT_BACKEND:-memory}"
-      NEXUS_REDIS_URL: "${NEXUS_REDIS_URL:-redis://redis:6379/0}"
+      NEXUS_CONTROL_WORKERS_API_KEY: "${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
+      NEXUS_DATA_PLANE_DATABASE_URL: "${NEXUS_DATA_PLANE_DATABASE_URL:-postgres://postgres:postgres@data-plane-postgres:5432/nexus_data_plane?sslmode=disable}"
     depends_on:
+      data-plane-postgres:
+        condition: service_healthy
       nexus-control-workers:
         condition: service_healthy
       nexus-control-plane:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      echo-upstream:
-        condition: service_healthy
     ports:
       - "${NEXUS_HTTP_PORT:-18080}:8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/v1/run/intents >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 30
+
+volumes:
+  data-plane-postgres-data:
+  control-plane-postgres-data:
+  control-workers-postgres-data:
+  audit-postgres-data:

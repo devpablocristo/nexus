@@ -58,10 +58,7 @@ check_http_handler() {
 }
 
 check_http_handler "${DATA_PLANE_DIR}/internal/action/handler.go"
-check_http_handler "${DATA_PLANE_DIR}/internal/approval/handler.go"
-check_http_handler "${DATA_PLANE_DIR}/internal/gateway/handler.go"
 check_crud_handler "${CONTROL_PLANE_DIR}/internal/resources/handler.go" "resources"
 check_crud_handler "${CONTROL_PLANE_DIR}/internal/policies/handler.go" "policies"
 check_crud_handler "${CONTROL_WORKERS_DIR}/internal/incidents/handler.go" "incidents"
 check_crud_handler "${CONTROL_WORKERS_DIR}/internal/alerts/handler.go" "alerts"
-check_crud_handler "${DATA_PLANE_DIR}/internal/policy/handler.go" "policies"

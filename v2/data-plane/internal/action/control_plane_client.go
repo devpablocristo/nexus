@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
+
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
 
@@ -37,6 +39,7 @@ type PolicySource interface {
 type ControlPlaneClient struct {
 	baseURL string
 	client  *http.Client
+	apiKey  string
 }
 
 func NewControlPlaneClient(baseURL string, timeout time.Duration) *ControlPlaneClient {
@@ -49,15 +52,24 @@ func NewControlPlaneClient(baseURL string, timeout time.Duration) *ControlPlaneC
 	}
 }
 
+func (c *ControlPlaneClient) WithAPIKey(key string) *ControlPlaneClient {
+	if c == nil {
+		return nil
+	}
+	c.apiKey = strings.TrimSpace(key)
+	return c
+}
+
 func (c *ControlPlaneClient) GetByID(ctx context.Context, resourceID string) (actiondomain.ProtectedResource, error) {
 	if c.baseURL == "" {
 		return actiondomain.ProtectedResource{}, ErrResourceNotFound
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/resources/"+resourceID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/resources/"+url.PathEscape(resourceID), nil)
 	if err != nil {
 		return actiondomain.ProtectedResource{}, fmt.Errorf("build control-plane resource request: %w", err)
 	}
+	sharedapikey.Apply(req, c.apiKey)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -114,6 +126,7 @@ func (c *ControlPlaneClient) List(ctx context.Context, actionType, resourceType 
 	if err != nil {
 		return nil, fmt.Errorf("build control-plane policy request: %w", err)
 	}
+	sharedapikey.Apply(req, c.apiKey)
 
 	resp, err := c.client.Do(req)
 	if err != nil {

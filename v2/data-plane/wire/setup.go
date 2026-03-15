@@ -1,109 +1,48 @@
 package wire
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
+	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
 	"nexus/v2/data-plane/internal/action"
-	"nexus/v2/data-plane/internal/approval"
-	"nexus/v2/data-plane/internal/egress"
-	"nexus/v2/data-plane/internal/gateway"
-	httpexec "nexus/v2/data-plane/internal/gateway/executor/http"
-	"nexus/v2/data-plane/internal/gateway/executor/ratelimit"
-	"nexus/v2/data-plane/internal/policy"
-	"nexus/v2/data-plane/internal/secrets"
-	"nexus/v2/data-plane/internal/tool"
 )
 
 type Config struct {
-	EchoURL           string
-	ControlPlaneURL   string
-	ControlWorkersURL string
-	HTTPTimeout       time.Duration
-	RateLimitBackend  string
-	RedisURL          string
+	ControlPlaneURL      string
+	ControlPlaneAPIKey   string
+	ControlWorkersURL    string
+	ControlWorkersAPIKey string
+	DataPlaneDatabaseURL string
+	HTTPTimeout          time.Duration
 }
 
 func NewServer(cfg Config) (http.Handler, func(), error) {
-	tools := make([]tool.Definition, 0, 1)
-	if cfg.EchoURL != "" {
-		tools = append(tools, tool.Definition{
-			ID:               "tool_echo",
-			Name:             "echo",
-			Kind:             tool.KindHTTP,
-			Method:           http.MethodPost,
-			URL:              cfg.EchoURL,
-			Enabled:          true,
-			InputSchemaJSON:  mustJSON(map[string]any{"type": "object", "required": []string{"hello"}, "properties": map[string]any{"hello": map[string]any{"type": "string"}}, "additionalProperties": true}),
-			OutputSchemaJSON: mustJSON(map[string]any{"type": "object", "required": []string{"received"}, "properties": map[string]any{"received": map[string]any{"type": "object"}}, "additionalProperties": true}),
-		})
-	}
-
-	repo := tool.NewInMemoryRepository(tools)
-	policies := policy.NewInMemoryRepository(nil)
-	idempotency := gateway.NewInMemoryIdempotencyRepository()
-	secretRepo := secrets.NewInMemoryRepository(nil)
-	limiter, cleanup, err := NewRateLimiter(cfg)
-	if err != nil {
-		return nil, nil, err
-	}
-	egressRules := make([]egress.Rule, 0, 1)
-	if cfg.EchoURL != "" {
-		if parsed, err := url.Parse(cfg.EchoURL); err == nil && parsed.Hostname() != "" {
-			egressRules = append(egressRules, egress.Rule{
-				ToolID:  "tool_echo",
-				Host:    parsed.Hostname(),
-				Enabled: true,
-			})
+	actionRepo := action.Repository(action.NewInMemoryRepository(nil))
+	cleanup := func() {}
+	if strings.TrimSpace(cfg.DataPlaneDatabaseURL) != "" {
+		postgresRepo, postgresCleanup, err := action.NewPostgresRepository(context.Background(), cfg.DataPlaneDatabaseURL)
+		if err != nil {
+			return nil, nil, err
 		}
+		actionRepo = postgresRepo
+		cleanup = postgresCleanup
 	}
-	egressUC := egress.NewUsecases(egress.NewInMemoryRepository(egressRules))
-	evaluator := policy.NewEvaluator()
-	executor := httpexec.NewExecutor(cfg.HTTPTimeout)
-	intentRepo := gateway.NewInMemoryIntentRepository()
-	leaseRepo := gateway.NewInMemoryLeaseRepository()
-	approvalRepo := approval.NewInMemoryRepository()
-	approvalUC := approval.NewUsecases(approvalRepo).WithIntentPort(intentRepo)
-	runUsecase := gateway.NewUsecases(repo, policies, idempotency, limiter, egressUC, secretRepo, evaluator, executor)
-	runUsecase = runUsecase.WithIntentRepository(intentRepo).WithLeaseRepository(leaseRepo).WithApproval(approval.NewGatewayAdapter(approvalUC))
-	policyUsecase := policy.NewUsecases(policies, repo, evaluator)
-	actionUsecase := action.NewUsecases(action.NewInMemoryRepository(nil))
+	actionUsecase := action.NewUsecases(actionRepo)
 	if strings.TrimSpace(cfg.ControlPlaneURL) != "" {
-		controlPlaneClient := action.NewControlPlaneClient(cfg.ControlPlaneURL, cfg.HTTPTimeout)
+		controlPlaneClient := action.NewControlPlaneClient(cfg.ControlPlaneURL, cfg.HTTPTimeout).WithAPIKey(cfg.ControlPlaneAPIKey)
 		actionUsecase = actionUsecase.WithResourceResolver(controlPlaneClient).WithPolicySource(controlPlaneClient)
+		actionUsecase = actionUsecase.WithAuditSink(sharedaudit.NewClient(cfg.ControlPlaneURL, cfg.HTTPTimeout).WithAPIKey(cfg.ControlPlaneAPIKey))
 	}
 	if strings.TrimSpace(cfg.ControlWorkersURL) != "" {
-		actionUsecase = actionUsecase.WithIncidentSink(action.NewControlWorkersClient(cfg.ControlWorkersURL, cfg.HTTPTimeout))
+		actionUsecase = actionUsecase.WithIncidentSink(action.NewControlWorkersClient(cfg.ControlWorkersURL, cfg.HTTPTimeout).WithAPIKey(cfg.ControlWorkersAPIKey))
 	}
 
 	mux := http.NewServeMux()
-	gateway.NewHandler(runUsecase).Register(mux)
-	policy.NewHandler(policyUsecase).Register(mux)
-	approval.NewHandler(approvalUC).Register(mux)
+	sharedhandlers.RegisterHealthEndpoints(mux)
 	action.NewHandler(actionUsecase).Register(mux)
 	return mux, cleanup, nil
-}
-
-func NewRateLimiter(cfg Config) (ratelimit.Adapter, func(), error) {
-	if strings.EqualFold(strings.TrimSpace(cfg.RateLimitBackend), "redis") {
-		if strings.TrimSpace(cfg.RedisURL) == "" {
-			return nil, nil, fmt.Errorf("redis url required when rate limit backend is redis")
-		}
-		return ratelimit.NewRedisLimiter(cfg.RedisURL)
-	}
-
-	limiter := ratelimit.NewInMemoryLimiter()
-	return limiter, limiter.Close, nil
-}
-
-func mustJSON(value any) []byte {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return raw
 }

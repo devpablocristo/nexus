@@ -6,21 +6,25 @@ import (
 	"net/http"
 	"strings"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	"github.com/google/uuid"
 
 	alertdomain "nexus/v2/control-workers/internal/alerts/usecases/domain"
 )
 
 type CreateRequest struct {
-	SourceKind alertdomain.SourceKind
-	SourceID   string
-	Channel    alertdomain.Channel
-	Route      string
-	Severity   alertdomain.Severity
-	Status     alertdomain.Status
-	Summary    string
-	Body       string
-	Details    map[string]any
+	SourceKind   alertdomain.SourceKind
+	SourceID     string
+	ActionID     string
+	ResourceID   string
+	ResourceType string
+	Channel      alertdomain.Channel
+	Route        string
+	Severity     alertdomain.Severity
+	Status       alertdomain.Status
+	Summary      string
+	Body         string
+	Details      map[string]any
 }
 
 type UpdateRequest struct {
@@ -54,7 +58,8 @@ func newHTTPError(status int, code, message string) error {
 }
 
 type Usecases struct {
-	repo Repository
+	repo  Repository
+	audit AuditSink
 }
 
 func NewUsecases(repo Repository) *Usecases {
@@ -66,7 +71,30 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (alertdomain.A
 	if err != nil {
 		return alertdomain.Alert{}, err
 	}
-	return u.repo.Create(ctx, normalized)
+	created, err := u.repo.Create(ctx, normalized)
+	if err != nil {
+		return alertdomain.Alert{}, err
+	}
+	u.emitAudit(ctx, sharedaudit.WriteRequest{
+		EventType:     "alert_created",
+		SourceService: "control-workers",
+		ActionID:      strings.TrimSpace(req.ActionID),
+		ResourceID:    strings.TrimSpace(req.ResourceID),
+		ResourceType:  strings.TrimSpace(req.ResourceType),
+		Actor:         &sharedaudit.Actor{Type: "system", ID: "control-workers"},
+		Summary:       "alert created",
+		Data: map[string]any{
+			"alert_id":    created.ID,
+			"source_kind": string(created.SourceKind),
+			"source_id":   created.SourceID,
+			"channel":     string(created.Channel),
+			"route":       created.Route,
+			"severity":    string(created.Severity),
+			"status":      string(created.Status),
+		},
+		OccurredAt: created.CreatedAt,
+	})
+	return created, nil
 }
 
 func (u *Usecases) List(ctx context.Context, req ListRequest) ([]alertdomain.Alert, error) {

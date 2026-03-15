@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	"github.com/google/uuid"
 
 	"nexus/v2/control-workers/internal/alerts"
@@ -60,6 +62,7 @@ func newHTTPError(status int, code, message string) error {
 type Usecases struct {
 	repo   Repository
 	alerts alerts.Sink
+	audit  AuditSink
 }
 
 func NewUsecases(repo Repository) *Usecases {
@@ -80,6 +83,23 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (incidentdomai
 	if err != nil {
 		return incidentdomain.Incident{}, err
 	}
+	u.emitAudit(ctx, sharedaudit.WriteRequest{
+		EventType:     "incident_created",
+		SourceService: "control-workers",
+		ActionID:      created.SourceID,
+		ResourceID:    created.ResourceID,
+		ResourceType:  created.ResourceType,
+		Actor:         &sharedaudit.Actor{Type: "system", ID: "control-workers"},
+		Summary:       "incident created",
+		Data: map[string]any{
+			"incident_id": created.ID,
+			"trigger":     string(created.Trigger),
+			"severity":    string(created.Severity),
+			"status":      string(created.Status),
+			"source_kind": string(created.SourceKind),
+		},
+		OccurredAt: created.CreatedAt,
+	})
 	u.emitAlert(ctx, created)
 	return created, nil
 }
@@ -287,15 +307,18 @@ func (u *Usecases) emitAlert(ctx context.Context, item incidentdomain.Incident) 
 	if !ok {
 		return
 	}
-	_, _ = u.alerts.Create(ctx, alerts.CreateRequest{
-		SourceKind: alertdomain.SourceKindIncident,
-		SourceID:   item.ID,
-		Channel:    channel,
-		Route:      route,
-		Severity:   alertdomain.Severity(item.Severity),
-		Status:     alertdomain.StatusPending,
-		Summary:    item.Summary,
-		Body:       alertBody(item),
+	if _, err := u.alerts.Create(ctx, alerts.CreateRequest{
+		SourceKind:   alertdomain.SourceKindIncident,
+		SourceID:     item.ID,
+		ActionID:     item.SourceID,
+		ResourceID:   item.ResourceID,
+		ResourceType: item.ResourceType,
+		Channel:      channel,
+		Route:        route,
+		Severity:     alertdomain.Severity(item.Severity),
+		Status:       alertdomain.StatusPending,
+		Summary:      item.Summary,
+		Body:         alertBody(item),
 		Details: map[string]any{
 			"incident_id":     item.ID,
 			"trigger":         string(item.Trigger),
@@ -304,7 +327,9 @@ func (u *Usecases) emitAlert(ctx context.Context, item incidentdomain.Incident) 
 			"risk_level":      string(item.RiskLevel),
 			"incident_status": string(item.Status),
 		},
-	})
+	}); err != nil {
+		log.Printf("control-workers alert sink failed: incident_id=%s severity=%s err=%v", item.ID, item.Severity, err)
+	}
 }
 
 func alertRouting(severity incidentdomain.Severity) (alertdomain.Channel, string, bool) {

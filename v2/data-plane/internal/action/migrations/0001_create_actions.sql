@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS actions (
+	id uuid PRIMARY KEY,
+	type text NOT NULL,
+	status text NOT NULL,
+	decision text NOT NULL,
+	resource_id text NOT NULL,
+	resource_type text NOT NULL,
+	source_system text NOT NULL,
+	justification text NOT NULL,
+	requested_by jsonb NOT NULL,
+	proposed_by jsonb NOT NULL,
+	payload jsonb NOT NULL,
+	metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+	risk jsonb NOT NULL,
+	evidence jsonb NOT NULL DEFAULT '[]'::jsonb,
+	approval jsonb NULL,
+	lease jsonb NULL,
+	execution jsonb NULL,
+	expires_at timestamptz NULL,
+	created_at timestamptz NOT NULL,
+	updated_at timestamptz NOT NULL
+);

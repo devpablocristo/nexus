@@ -5,11 +5,13 @@ WORKDIR /src
 RUN apk add --no-cache git
 
 COPY control-plane/go.mod control-plane/go.sum ./control-plane/
+COPY pkgs/go-pkg/go.mod pkgs/go-pkg/go.sum ./pkgs/go-pkg/
 WORKDIR /src/control-plane
 RUN go mod download
 
 WORKDIR /src
 COPY control-plane ./control-plane
+COPY pkgs/go-pkg ./pkgs/go-pkg
 
 WORKDIR /src/control-plane
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nexus-control-plane ./cmd/api

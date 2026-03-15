@@ -8,6 +8,10 @@ DATA_PLANE_DIR="${V2_ROOT}/data-plane"
 CONTROL_PLANE_DIR="${V2_ROOT}/control-plane"
 CONTROL_WORKERS_DIR="${V2_ROOT}/control-workers"
 
+NEXUS_ADMIN_API_KEY="${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
+NEXUS_DATA_PLANE_SERVICE_API_KEY="${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
+NEXUS_CONTROL_WORKERS_SERVICE_API_KEY="${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key}"
+
 require_cmd() {
   local cmd="$1"
   if ! command -v "${cmd}" >/dev/null 2>&1; then
@@ -78,13 +82,6 @@ else:
 ' "${path}"
 }
 
-start_echo_upstream() {
-  require_cmd python3
-
-  local port="${1:-18081}"
-  python3 -u "${V2_ROOT}/scripts/dev/echo_server.py" "${port}"
-}
-
 wait_for_http() {
   local url="$1"
   local attempts="${2:-50}"
@@ -101,4 +98,16 @@ wait_for_http() {
 
   echo "timed out waiting for ${url}" >&2
   return 1
+}
+
+admin_api_key() {
+  printf '%s' "${NEXUS_ADMIN_API_KEY}"
+}
+
+data_plane_service_api_key() {
+  printf '%s' "${NEXUS_DATA_PLANE_SERVICE_API_KEY}"
+}
+
+control_workers_service_api_key() {
+  printf '%s' "${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY}"
 }

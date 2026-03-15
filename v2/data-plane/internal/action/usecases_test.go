@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	"github.com/google/uuid"
 
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
@@ -18,6 +19,16 @@ type stubIncidentSink struct {
 }
 
 func (s *stubIncidentSink) Create(_ context.Context, req IncidentRequest) error {
+	s.items = append(s.items, req)
+	return s.err
+}
+
+type stubAuditSink struct {
+	items []sharedaudit.WriteRequest
+	err   error
+}
+
+func (s *stubAuditSink) Create(_ context.Context, req sharedaudit.WriteRequest) error {
 	s.items = append(s.items, req)
 	return s.err
 }
@@ -275,6 +286,76 @@ func TestUsecasesCreateCanAllowWithoutApproval(t *testing.T) {
 	}
 	if action.Approval != nil {
 		t.Fatalf("did not expect approval: %#v", action.Approval)
+	}
+}
+
+func TestUsecasesEmitsAuditLifecycle(t *testing.T) {
+	t.Parallel()
+
+	audits := &stubAuditSink{}
+	uc := NewUsecases(NewInMemoryRepository(nil)).
+		WithAuditSink(audits).
+		WithResourceResolver(stubResourceResolver{
+			resource: actiondomain.ProtectedResource{
+				ID:          "wallet_hot_usdc_1",
+				Type:        actiondomain.ResourceTypeWallet,
+				Environment: "prod",
+				Criticality: "medium",
+			},
+		}).
+		WithPolicySource(&stubPolicySource{
+			items: []ActionPolicy{
+				{
+					ID:                 "policy_allow_review",
+					ActionType:         "withdrawal",
+					ResourceType:       "wallet",
+					Effect:             "allow",
+					Priority:           1,
+					Expression:         `resource.environment == "prod"`,
+					Reason:             "allow with approval",
+					RequireApproval:    true,
+					ApprovalTTLSeconds: 600,
+					Enabled:            true,
+				},
+			},
+		}).
+		WithExecutor(stubExecutor{
+			result: map[string]any{
+				"execution_id": "exec_01",
+			},
+		})
+
+	created, err := uc.Create(context.Background(), validCreateRequest())
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	approved, err := uc.Approve(context.Background(), created.ID, DecideRequest{
+		DecidedBy: actiondomain.ActorRef{Type: actiondomain.ActorTypeUser, ID: "alice"},
+		Comment:   "approved",
+	})
+	if err != nil {
+		t.Fatalf("Approve returned error: %v", err)
+	}
+	leased, err := uc.IssueLease(context.Background(), approved.ID)
+	if err != nil {
+		t.Fatalf("IssueLease returned error: %v", err)
+	}
+	_, err = uc.Execute(context.Background(), leased.ID, ExecuteRequest{
+		LeaseID:    leased.Lease.ID,
+		ExecutedBy: actiondomain.ActorRef{Type: actiondomain.ActorTypeSystem, ID: "wallet-orchestrator"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	if len(audits.items) != 4 {
+		t.Fatalf("unexpected audit count: %d", len(audits.items))
+	}
+	if audits.items[0].EventType != "action_created" ||
+		audits.items[1].EventType != "action_approved" ||
+		audits.items[2].EventType != "action_leased" ||
+		audits.items[3].EventType != "action_executed" {
+		t.Fatalf("unexpected audit lifecycle: %#v", audits.items)
 	}
 }
 

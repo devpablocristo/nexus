@@ -4,10 +4,16 @@ Agrupado por servicio.
 
 Nota:
 
-- hoy existen dos superficies distintas con path `/v1/policies`
-- `control-plane /v1/policies`
-- `data-plane /v1/policies` legacy para `/run`
+- `audit` no sigue CRUD: write interno en `control-plane /internal/audit` y lectura admin en `control-plane /v1/audit`
 - los CRUD handlers comparten `v2/pkgs/go-pkg/handlers` y `qa` valida ese patron
+- el bootstrap HTTP transversal usa `v2/pkgs/go-pkg/httpserver`
+- `qa` valida tambien `v2/pkgs/go-pkg`
+- `make milestone = qa + acceptance`
+- los endpoints de negocio requieren API key; `/healthz` y `/readyz` quedan libres
+- `control-plane`, `data-plane` y `control-workers` validan auth inbound con `NEXUS_API_KEYS`
+- `data-plane` autentica salidas hacia `control-plane` y `control-workers` con API keys de servicio
+- `control-workers` autentica salidas hacia `control-plane` con API key de servicio
+- `resources`, `policies`, `audit`, `actions`, `incidents` y `alerts` pueden correr en memoria o con PostgreSQL segun config
 
 ## Endpoints
 
@@ -20,7 +26,9 @@ Nota:
 - `incidents.normalizeCreate`
 - `incidents.deriveSeverity`
 - `incidents.deriveSummary`
-- `incidents.InMemoryRepository.Create`
+- `incidents.InMemoryRepository.Create` o `incidents.PostgresRepository.Create`
+- `incidents.Usecases.emitAudit`
+- `[si NEXUS_CONTROL_PLANE_URL] audit.Client.Create`
 - `incidents.Usecases.emitAlert`
 - `[si severity=high|critical] alerts.Usecases.Create`
 - `incidents.toIncidentResponse`
@@ -35,7 +43,9 @@ Nota:
 - `handlers.DecodeJSON`
 - `alerts.Usecases.Create`
 - `alerts.normalizeCreate`
-- `alerts.InMemoryRepository.Create`
+- `alerts.InMemoryRepository.Create` o `alerts.PostgresRepository.Create`
+- `alerts.Usecases.emitAudit`
+- `[si NEXUS_CONTROL_PLANE_URL] audit.Client.Create`
 - `alerts.toAlertResponse`
 - `alerts.writeAlertUsecaseError`
 - `alerts.writeAlertError`
@@ -48,7 +58,7 @@ Nota:
 - `handlers.ParseLimit`
 - `handlers.ParseArchived`
 - `alerts.Usecases.List`
-- `alerts.InMemoryRepository.List`
+- `alerts.InMemoryRepository.List` o `alerts.PostgresRepository.List`
 - `alerts.toAlertResponse`
 - `alerts.writeAlertUsecaseError`
 - `alerts.writeAlertError`
@@ -60,7 +70,7 @@ Nota:
 - `alerts.Handler.getByID`
 - `alerts.parseAlertID`
 - `alerts.Usecases.GetByID`
-- `alerts.InMemoryRepository.GetByID`
+- `alerts.InMemoryRepository.GetByID` o `alerts.PostgresRepository.GetByID`
 - `alerts.mapRepoErr`
 - `alerts.toAlertResponse`
 - `alerts.writeAlertUsecaseError`
@@ -74,8 +84,8 @@ Nota:
 - `alerts.parseAlertID`
 - `handlers.DecodeJSON`
 - `alerts.Usecases.UpdateByID`
-- `alerts.InMemoryRepository.GetByID`
-- `alerts.InMemoryRepository.Update`
+- `alerts.InMemoryRepository.GetByID` o `alerts.PostgresRepository.GetByID`
+- `alerts.InMemoryRepository.Update` o `alerts.PostgresRepository.Update`
 - `alerts.mapRepoErr`
 - `alerts.toAlertResponse`
 - `alerts.writeAlertUsecaseError`
@@ -88,7 +98,7 @@ Nota:
 - `alerts.Handler.deleteByID`
 - `alerts.parseAlertID`
 - `alerts.Usecases.DeleteByID`
-- `alerts.InMemoryRepository.Delete`
+- `alerts.InMemoryRepository.Delete` o `alerts.PostgresRepository.Delete`
 - `alerts.mapRepoErr`
 - `alerts.writeAlertUsecaseError`
 - `alerts.writeAlertError`
@@ -99,7 +109,7 @@ Nota:
 - `alerts.Handler.archiveByID`
 - `alerts.parseAlertID`
 - `alerts.Usecases.ArchiveByID`
-- `alerts.InMemoryRepository.Archive`
+- `alerts.InMemoryRepository.Archive` o `alerts.PostgresRepository.Archive`
 - `alerts.mapRepoErr`
 - `alerts.toAlertResponse`
 - `alerts.writeAlertUsecaseError`
@@ -112,7 +122,7 @@ Nota:
 - `alerts.Handler.restoreByID`
 - `alerts.parseAlertID`
 - `alerts.Usecases.RestoreByID`
-- `alerts.InMemoryRepository.Restore`
+- `alerts.InMemoryRepository.Restore` o `alerts.PostgresRepository.Restore`
 - `alerts.mapRepoErr`
 - `alerts.toAlertResponse`
 - `alerts.writeAlertUsecaseError`
@@ -126,7 +136,7 @@ Nota:
 - `handlers.ParseLimit`
 - `handlers.ParseArchived`
 - `incidents.Usecases.List`
-- `incidents.InMemoryRepository.List`
+- `incidents.InMemoryRepository.List` o `incidents.PostgresRepository.List`
 - `incidents.toIncidentResponse`
 - `incidents.writeIncidentUsecaseError`
 - `incidents.writeIncidentError`
@@ -138,7 +148,7 @@ Nota:
 - `incidents.Handler.getByID`
 - `incidents.parseIncidentID`
 - `incidents.Usecases.GetByID`
-- `incidents.InMemoryRepository.GetByID`
+- `incidents.InMemoryRepository.GetByID` o `incidents.PostgresRepository.GetByID`
 - `incidents.mapRepoErr`
 - `incidents.toIncidentResponse`
 - `incidents.writeIncidentUsecaseError`
@@ -152,8 +162,8 @@ Nota:
 - `incidents.parseIncidentID`
 - `handlers.DecodeJSON`
 - `incidents.Usecases.UpdateByID`
-- `incidents.InMemoryRepository.GetByID`
-- `incidents.InMemoryRepository.Update`
+- `incidents.InMemoryRepository.GetByID` o `incidents.PostgresRepository.GetByID`
+- `incidents.InMemoryRepository.Update` o `incidents.PostgresRepository.Update`
 - `incidents.mapRepoErr`
 - `incidents.toIncidentResponse`
 - `incidents.writeIncidentUsecaseError`
@@ -166,7 +176,7 @@ Nota:
 - `incidents.Handler.deleteByID`
 - `incidents.parseIncidentID`
 - `incidents.Usecases.DeleteByID`
-- `incidents.InMemoryRepository.Delete`
+- `incidents.InMemoryRepository.Delete` o `incidents.PostgresRepository.Delete`
 - `incidents.mapRepoErr`
 - `incidents.writeIncidentUsecaseError`
 - `incidents.writeIncidentError`
@@ -177,7 +187,7 @@ Nota:
 - `incidents.Handler.archiveByID`
 - `incidents.parseIncidentID`
 - `incidents.Usecases.ArchiveByID`
-- `incidents.InMemoryRepository.Archive`
+- `incidents.InMemoryRepository.Archive` o `incidents.PostgresRepository.Archive`
 - `incidents.mapRepoErr`
 - `incidents.toIncidentResponse`
 - `incidents.writeIncidentUsecaseError`
@@ -190,23 +200,53 @@ Nota:
 - `incidents.Handler.restoreByID`
 - `incidents.parseIncidentID`
 - `incidents.Usecases.RestoreByID`
-- `incidents.InMemoryRepository.Restore`
+- `incidents.InMemoryRepository.Restore` o `incidents.PostgresRepository.Restore`
 - `incidents.mapRepoErr`
 - `incidents.toIncidentResponse`
 - `incidents.writeIncidentUsecaseError`
 - `incidents.writeIncidentError`
 - `handlers.WriteJSON`
 
+### `control-plane POST /internal/audit`
+
+- `audit.Handler.Register`
+- `audit.Handler.createInternal`
+- `handlers.DecodeJSON`
+- `audit.Usecases.Create`
+- `audit.InMemoryRepository.Create` o `audit.PostgresRepository.Create`
+- `handlers.WriteJSON`
+
+### `control-plane GET /v1/audit`
+
+- `audit.Handler.Register`
+- `audit.Handler.list`
+- `handlers.ParseLimit`
+- `audit.Usecases.List`
+- `audit.InMemoryRepository.List` o `audit.PostgresRepository.List`
+- `handlers.WriteJSON`
+
+### `control-plane GET /v1/audit/{id}`
+
+- `audit.Handler.Register`
+- `audit.Handler.getByID`
+- `audit.parseAuditID`
+- `audit.Usecases.GetByID`
+- `audit.InMemoryRepository.GetByID` o `audit.PostgresRepository.GetByID`
+- `handlers.WriteJSON`
+
 ### `control-plane POST /v1/resources`
 
 - `resources.Handler.Register`
 - `resources.Handler.create`
+- `actors.FromRequest`
 - `handlers.DecodeJSON`
 - `resources.Usecases.Create`
 - `resources.normalizeCreate`
 - `resources.validateType`
 - `resources.validateCriticality`
-- `resources.InMemoryRepository.Create`
+- `resources.InMemoryRepository.Create` o `resources.PostgresRepository.Create`
+- `resources.Handler.emitAudit`
+- `audit.SinkAdapter.Write`
 - `resources.toResourceResponse`
 - `resources.writeResourceUsecaseError`
 - `resources.writeResourceError`
@@ -220,7 +260,7 @@ Nota:
 - `handlers.ParseArchived`
 - `resources.Usecases.List`
 - `resources.validateType`
-- `resources.InMemoryRepository.List`
+- `resources.InMemoryRepository.List` o `resources.PostgresRepository.List`
 - `resources.toResourceResponse`
 - `resources.writeResourceUsecaseError`
 - `resources.writeResourceError`
@@ -232,7 +272,7 @@ Nota:
 - `resources.Handler.getByID`
 - `resources.parseResourceID`
 - `resources.Usecases.GetByID`
-- `resources.InMemoryRepository.GetByID`
+- `resources.InMemoryRepository.GetByID` o `resources.PostgresRepository.GetByID`
 - `resources.mapRepoErr`
 - `resources.toResourceResponse`
 - `resources.writeResourceUsecaseError`
@@ -249,8 +289,8 @@ Nota:
 - `resources.validateType`
 - `resources.validateCriticality`
 - `resources.Usecases.GetByID`
-- `resources.InMemoryRepository.GetByID`
-- `resources.InMemoryRepository.Update`
+- `resources.InMemoryRepository.GetByID` o `resources.PostgresRepository.GetByID`
+- `resources.InMemoryRepository.Update` o `resources.PostgresRepository.Update`
 - `resources.mapRepoErr`
 - `resources.toResourceResponse`
 - `resources.writeResourceUsecaseError`
@@ -263,7 +303,7 @@ Nota:
 - `resources.Handler.deleteByID`
 - `resources.parseResourceID`
 - `resources.Usecases.DeleteByID`
-- `resources.InMemoryRepository.Delete`
+- `resources.InMemoryRepository.Delete` o `resources.PostgresRepository.Delete`
 - `resources.mapRepoErr`
 
 ### `control-plane POST /v1/resources/{id}/archive`
@@ -272,7 +312,7 @@ Nota:
 - `resources.Handler.archiveByID`
 - `resources.parseResourceID`
 - `resources.Usecases.ArchiveByID`
-- `resources.InMemoryRepository.Archive`
+- `resources.InMemoryRepository.Archive` o `resources.PostgresRepository.Archive`
 - `resources.mapRepoErr`
 - `resources.toResourceResponse`
 - `resources.writeResourceUsecaseError`
@@ -285,7 +325,7 @@ Nota:
 - `resources.Handler.restoreByID`
 - `resources.parseResourceID`
 - `resources.Usecases.RestoreByID`
-- `resources.InMemoryRepository.Restore`
+- `resources.InMemoryRepository.Restore` o `resources.PostgresRepository.Restore`
 - `resources.mapRepoErr`
 - `resources.toResourceResponse`
 - `resources.writeResourceUsecaseError`
@@ -296,10 +336,13 @@ Nota:
 
 - `policies.Handler.Register`
 - `policies.Handler.create`
+- `actors.FromRequest`
 - `handlers.DecodeJSON`
 - `policies.Usecases.Create`
 - `policies.Evaluator.Validate`
-- `policies.InMemoryRepository.Create`
+- `policies.InMemoryRepository.Create` o `policies.PostgresRepository.Create`
+- `policies.Handler.emitAudit`
+- `audit.SinkAdapter.Write`
 - `policies.toPolicyResponse`
 - `policies.writePolicyUsecaseError`
 - `policies.writePolicyError`
@@ -311,7 +354,7 @@ Nota:
 - `policies.Handler.list`
 - `handlers.ParseArchived`
 - `policies.Usecases.List`
-- `policies.InMemoryRepository.List`
+- `policies.InMemoryRepository.List` o `policies.PostgresRepository.List`
 - `policies.toPolicyResponse`
 - `policies.writePolicyUsecaseError`
 - `policies.writePolicyError`
@@ -323,7 +366,7 @@ Nota:
 - `policies.Handler.getByID`
 - `policies.parsePolicyID`
 - `policies.Usecases.GetByID`
-- `policies.InMemoryRepository.GetByID`
+- `policies.InMemoryRepository.GetByID` o `policies.PostgresRepository.GetByID`
 - `policies.mapRepoErr`
 - `policies.toPolicyResponse`
 - `policies.writePolicyUsecaseError`
@@ -338,8 +381,8 @@ Nota:
 - `handlers.DecodeJSON`
 - `policies.Usecases.UpdateByID`
 - `policies.Evaluator.Validate`
-- `policies.InMemoryRepository.GetByID`
-- `policies.InMemoryRepository.Save`
+- `policies.InMemoryRepository.GetByID` o `policies.PostgresRepository.GetByID`
+- `policies.InMemoryRepository.Save` o `policies.PostgresRepository.Save`
 - `policies.mapRepoErr`
 - `policies.toPolicyResponse`
 - `policies.writePolicyUsecaseError`
@@ -352,7 +395,7 @@ Nota:
 - `policies.Handler.deleteByID`
 - `policies.parsePolicyID`
 - `policies.Usecases.DeleteByID`
-- `policies.InMemoryRepository.DeleteByID`
+- `policies.InMemoryRepository.DeleteByID` o `policies.PostgresRepository.DeleteByID`
 - `policies.mapRepoErr`
 - `policies.writePolicyUsecaseError`
 - `policies.writePolicyError`
@@ -363,7 +406,7 @@ Nota:
 - `policies.Handler.archiveByID`
 - `policies.parsePolicyID`
 - `policies.Usecases.ArchiveByID`
-- `policies.InMemoryRepository.ArchiveByID`
+- `policies.InMemoryRepository.ArchiveByID` o `policies.PostgresRepository.ArchiveByID`
 - `policies.mapRepoErr`
 - `policies.toPolicyResponse`
 - `policies.writePolicyUsecaseError`
@@ -376,7 +419,7 @@ Nota:
 - `policies.Handler.restoreByID`
 - `policies.parsePolicyID`
 - `policies.Usecases.RestoreByID`
-- `policies.InMemoryRepository.RestoreByID`
+- `policies.InMemoryRepository.RestoreByID` o `policies.PostgresRepository.RestoreByID`
 - `policies.mapRepoErr`
 - `policies.toPolicyResponse`
 - `policies.writePolicyUsecaseError`
@@ -402,7 +445,9 @@ Nota:
 - `action.buildEvidence`
 - `action.evaluatePolicyDecision`
 - `[si hay policy CEL] action.ActionPolicyEvaluator.Matches`
-- `action.InMemoryRepository.Create`
+- `action.InMemoryRepository.Create` o `action.PostgresRepository.Create`
+- `[si hay control-plane] action.Usecases.emitAudit`
+- `[si hay control-plane] audit.Client.Create`
 - `[si hay control-workers y la accion queda blocked] action.Usecases.emitIncident`
 - `[si hay control-workers] action.ControlWorkersClient.Create`
 - `action.toActionResponse`
@@ -418,7 +463,7 @@ Nota:
 - `action.Usecases.List`
 - `action.validateActionType`
 - `action.validateStatus`
-- `action.InMemoryRepository.List`
+- `action.InMemoryRepository.List` o `action.PostgresRepository.List`
 - `action.toActionResponse`
 - `action.writeActionUsecaseError`
 - `action.writeActionError`
@@ -430,7 +475,7 @@ Nota:
 - `action.Handler.getByID`
 - `action.parseActionID`
 - `action.Usecases.GetByID`
-- `action.InMemoryRepository.GetByID`
+- `action.InMemoryRepository.GetByID` o `action.PostgresRepository.GetByID`
 - `action.mapRepoErr`
 - `action.toActionResponse`
 - `action.writeActionUsecaseError`
@@ -444,7 +489,7 @@ Nota:
 - `action.parseActionID`
 - `action.Usecases.GetRisk`
 - `action.Usecases.GetByID`
-- `action.InMemoryRepository.GetByID`
+- `action.InMemoryRepository.GetByID` o `action.PostgresRepository.GetByID`
 - `action.toRiskResponse`
 - `action.writeActionUsecaseError`
 - `action.writeActionError`
@@ -457,7 +502,7 @@ Nota:
 - `action.parseActionID`
 - `action.Usecases.GetEvidence`
 - `action.Usecases.GetByID`
-- `action.InMemoryRepository.GetByID`
+- `action.InMemoryRepository.GetByID` o `action.PostgresRepository.GetByID`
 - `action.toEvidenceRecordResponse`
 - `action.writeActionUsecaseError`
 - `action.writeActionError`
@@ -473,10 +518,10 @@ Nota:
 - `action.Usecases.Approve`
 - `action.validateActor`
 - `action.Usecases.GetByID`
-- `action.InMemoryRepository.GetByID`
-- `action.InMemoryRepository.Decide`
-- `[si hay control-workers] action.Usecases.emitIncident`
-- `[si hay control-workers] action.ControlWorkersClient.Create`
+- `action.InMemoryRepository.GetByID` o `action.PostgresRepository.GetByID`
+- `action.InMemoryRepository.Decide` o `action.PostgresRepository.Decide`
+- `[si hay control-plane] action.Usecases.emitAudit`
+- `[si hay control-plane] audit.Client.Create`
 - `action.mapRepoErr`
 - `action.toActionResponse`
 - `action.writeActionUsecaseError`
@@ -493,8 +538,12 @@ Nota:
 - `action.Usecases.Reject`
 - `action.validateActor`
 - `action.Usecases.GetByID`
-- `action.InMemoryRepository.GetByID`
-- `action.InMemoryRepository.Decide`
+- `action.InMemoryRepository.GetByID` o `action.PostgresRepository.GetByID`
+- `action.InMemoryRepository.Decide` o `action.PostgresRepository.Decide`
+- `[si hay control-plane] action.Usecases.emitAudit`
+- `[si hay control-plane] audit.Client.Create`
+- `[si hay control-workers] action.Usecases.emitIncident`
+- `[si hay control-workers] action.ControlWorkersClient.Create`
 - `action.mapRepoErr`
 - `action.toActionResponse`
 - `action.writeActionUsecaseError`
@@ -508,10 +557,12 @@ Nota:
 - `action.parseActionID`
 - `action.Usecases.IssueLease`
 - `action.Usecases.GetByID`
-- `action.InMemoryRepository.GetByID`
+- `action.InMemoryRepository.GetByID` o `action.PostgresRepository.GetByID`
 - `action.allEvidencePassed`
 - `action.leaseTTL`
-- `action.InMemoryRepository.IssueLease`
+- `action.InMemoryRepository.IssueLease` o `action.PostgresRepository.IssueLease`
+- `[si hay control-plane] action.Usecases.emitAudit`
+- `[si hay control-plane] audit.Client.Create`
 - `action.mapRepoErr`
 - `action.toActionResponse`
 - `action.writeActionUsecaseError`
@@ -527,262 +578,19 @@ Nota:
 - `action.Usecases.Execute`
 - `action.validateActor`
 - `action.Usecases.GetByID`
-- `action.InMemoryRepository.GetByID`
+- `action.InMemoryRepository.GetByID` o `action.PostgresRepository.GetByID`
 - `action.DeterministicExecutor.Execute`
+- `[si execute falla y hay control-plane] action.Usecases.emitAudit`
+- `[si execute falla y hay control-plane] audit.Client.Create`
 - `[si execute falla y hay control-workers] action.Usecases.emitIncident`
 - `[si execute falla y hay control-workers] action.ControlWorkersClient.Create`
-- `action.InMemoryRepository.ConsumeLeaseAndMarkExecuted`
+- `action.InMemoryRepository.ConsumeLeaseAndMarkExecuted` o `action.PostgresRepository.ConsumeLeaseAndMarkExecuted`
+- `[si execute success y hay control-plane] action.Usecases.emitAudit`
+- `[si execute success y hay control-plane] audit.Client.Create`
 - `action.mapRepoErr`
 - `action.toActionResponse`
 - `action.writeActionUsecaseError`
 - `action.writeActionError`
-- `handlers.WriteJSON`
-
-### `data-plane POST /v1/run`
-
-- `Handler.Register`
-- `Handler.runTool`
-- `parseIdempotencyKey`
-- `Usecases.Run`
-- `clampTimeoutMS`
-- `resolveTool`
-- `resolveIdempotency`
-- `buildRequestFingerprint`
-- `mapRunError`
-- `toRunHTTPError`
-- `validateAndPrepare`
-- `decide`
-- `classifyRiskClass`
-- `evaluateDeterministicPreflight`
-- `IntentRepository.Create`
-- `ApprovalPort.RequestApproval`
-- `IntentRepository.LinkApproval`
-- `prepareExecution`
-- `RateLimiter.Allow`
-- `egress.Usecases.IsHostAllowed`
-- `SecretRepository.ListForTool`
-- `executeAndFinish`
-- `markCompletedIdempotency`
-- `markFailedIdempotency`
-- `Executor.Execute`
-- `writeRunResponse`
-- `writeIdempotencyHeader`
-- `handlers.WriteJSON`
-- `writeError`
-
-### `data-plane POST /v1/policies`
-
-- `policy.Handler.Register`
-- `policy.Handler.create`
-- `handlers.DecodeJSON`
-- `policy.Usecases.Create`
-- `policy.Usecases.ensureToolExists`
-- `policy.Evaluator.Validate`
-- `InMemoryRepository.Create`
-- `policy.toPolicyResponse`
-- `policy.writePolicyUsecaseError`
-- `policy.writePolicyError`
-- `handlers.WriteJSON`
-
-### `data-plane GET /v1/policies`
-
-- `policy.Handler.Register`
-- `policy.Handler.list`
-- `handlers.ParseArchived`
-- `policy.Usecases.List`
-- `InMemoryRepository.List`
-- `policy.toPolicyResponse`
-- `policy.writePolicyUsecaseError`
-- `policy.writePolicyError`
-- `handlers.WriteJSON`
-
-### `data-plane GET /v1/policies/{id}`
-
-- `policy.Handler.Register`
-- `policy.Handler.getByID`
-- `policy.parsePolicyID`
-- `policy.Usecases.GetByID`
-- `InMemoryRepository.GetByID`
-- `policy.mapRepoErr`
-- `policy.toPolicyResponse`
-- `policy.writePolicyUsecaseError`
-- `policy.writePolicyError`
-- `handlers.WriteJSON`
-
-### `data-plane PATCH /v1/policies/{id}`
-
-- `policy.Handler.Register`
-- `policy.Handler.patchByID`
-- `policy.parsePolicyID`
-- `handlers.DecodeJSON`
-- `policy.Usecases.UpdateByID`
-- `policy.Usecases.ensureToolExists`
-- `policy.Evaluator.Validate`
-- `InMemoryRepository.GetByID`
-- `InMemoryRepository.Save`
-- `policy.mapRepoErr`
-- `policy.toPolicyResponse`
-- `policy.writePolicyUsecaseError`
-- `policy.writePolicyError`
-- `handlers.WriteJSON`
-
-### `data-plane DELETE /v1/policies/{id}`
-
-- `policy.Handler.Register`
-- `policy.Handler.deleteByID`
-- `policy.parsePolicyID`
-- `policy.Usecases.DeleteByID`
-- `InMemoryRepository.DeleteByID`
-- `policy.mapRepoErr`
-- `policy.writePolicyUsecaseError`
-- `policy.writePolicyError`
-
-### `data-plane POST /v1/policies/{id}/archive`
-
-- `policy.Handler.Register`
-- `policy.Handler.archiveByID`
-- `policy.parsePolicyID`
-- `policy.Usecases.ArchiveByID`
-- `InMemoryRepository.ArchiveByID`
-- `policy.mapRepoErr`
-- `policy.toPolicyResponse`
-- `policy.writePolicyUsecaseError`
-- `policy.writePolicyError`
-- `handlers.WriteJSON`
-
-### `data-plane POST /v1/policies/{id}/restore`
-
-- `policy.Handler.Register`
-- `policy.Handler.restoreByID`
-- `policy.parsePolicyID`
-- `policy.Usecases.RestoreByID`
-- `InMemoryRepository.RestoreByID`
-- `policy.mapRepoErr`
-- `policy.toPolicyResponse`
-- `policy.writePolicyUsecaseError`
-- `policy.writePolicyError`
-- `handlers.WriteJSON`
-
-### `data-plane GET /v1/approvals`
-
-- `approval.Handler.Register`
-- `approval.Handler.listPending`
-- `approval.Usecases.ListPending`
-- `approval.InMemoryRepository.ListPending`
-- `approval.toApprovalDTO`
-- `approval.writeApprovalUsecaseError`
-- `approval.writeApprovalError`
-- `handlers.WriteJSON`
-
-### `data-plane GET /v1/approvals/{id}`
-
-- `approval.Handler.Register`
-- `approval.Handler.getByID`
-- `approval.parseApprovalID`
-- `approval.Usecases.GetByID`
-- `approval.InMemoryRepository.GetByID`
-- `approval.toApprovalDTO`
-- `approval.writeApprovalUsecaseError`
-- `approval.writeApprovalError`
-- `handlers.WriteJSON`
-
-### `data-plane GET /v1/run/intents`
-
-- `Handler.Register`
-- `Handler.listIntents`
-- `Usecases.ListIntents`
-- `InMemoryIntentRepository.ListRecent`
-- `toIntentDTO`
-- `writeGatewayError`
-- `handlers.WriteJSON`
-
-### `data-plane GET /v1/run/intents/{id}`
-
-- `Handler.Register`
-- `Handler.getIntent`
-- `Usecases.GetIntent`
-- `InMemoryIntentRepository.GetByID`
-- `toIntentDTO`
-- `writeGatewayError`
-- `handlers.WriteJSON`
-
-### `data-plane GET /v1/run/intents/{id}/preflight`
-
-- `Handler.Register`
-- `Handler.getIntentPreflight`
-- `Usecases.GetIntentPreflight`
-- `Usecases.GetIntent`
-- `InMemoryIntentRepository.GetByID`
-- `toPreflightReviewDTO`
-- `writeGatewayError`
-- `handlers.WriteJSON`
-
-### `data-plane POST /v1/run/intents/{id}/lease`
-
-- `Handler.Register`
-- `Handler.issueExecutionLease`
-- `Usecases.IssueExecutionLease`
-- `InMemoryIntentRepository.GetByID`
-- `InMemoryLeaseRepository.Create`
-- `toExecutionLeaseDTO`
-- `writeGatewayError`
-- `handlers.WriteJSON`
-
-### `data-plane POST /v1/run/intents/{id}/execute`
-
-- `Handler.Register`
-- `Handler.executeIntent`
-- `parseTimeoutMS`
-- `Usecases.ExecuteIntentWithLease`
-- `InMemoryIntentRepository.GetByID`
-- `InMemoryLeaseRepository.Consume`
-- `Run`
-- `clampTimeoutMS`
-- `resolveTool`
-- `resolveIdempotency`
-- `buildRequestFingerprint`
-- `mapRunError`
-- `toRunHTTPError`
-- `validateAndPrepare`
-- `decide`
-- `prepareExecution`
-- `executeAndFinish`
-- `markCompletedIdempotency`
-- `markFailedIdempotency`
-- `Executor.Execute`
-- `InMemoryIntentRepository.MarkExecuted`
-- `writeGatewayError`
-- `writeRunResponse`
-- `writeIdempotencyHeader`
-- `handlers.WriteJSON`
-- `writeError`
-
-### `data-plane POST /v1/approvals/{id}/approve`
-
-- `approval.Handler.Register`
-- `approval.Handler.approve`
-- `approval.Handler.decide`
-- `approval.parseApprovalID`
-- `handlers.DecodeJSON`
-- `approval.Usecases.Approve`
-- `approval.InMemoryRepository.Decide`
-- `IntentStatusPort.MarkApproved`
-- `approval.writeApprovalUsecaseError`
-- `approval.writeApprovalError`
-- `handlers.WriteJSON`
-
-### `data-plane POST /v1/approvals/{id}/reject`
-
-- `approval.Handler.Register`
-- `approval.Handler.reject`
-- `approval.Handler.decide`
-- `approval.parseApprovalID`
-- `handlers.DecodeJSON`
-- `approval.Usecases.Reject`
-- `approval.InMemoryRepository.Decide`
-- `IntentStatusPort.MarkRejected`
-- `approval.writeApprovalUsecaseError`
-- `approval.writeApprovalError`
 - `handlers.WriteJSON`
 
 Detalles en `DOC.md`.

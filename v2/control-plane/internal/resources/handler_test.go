@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	auditpkg "nexus/v2/control-plane/internal/audit"
 	resourcedto "nexus/v2/control-plane/internal/resources/handler/dto"
 )
 
@@ -122,5 +123,46 @@ func TestResourceEndpointsValidation(t *testing.T) {
 	mux.ServeHTTP(badIDRec, badIDReq)
 	if badIDRec.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected bad id status: %d body=%s", badIDRec.Code, badIDRec.Body.String())
+	}
+}
+
+func TestResourceEndpointsEmitAudit(t *testing.T) {
+	t.Parallel()
+
+	uc := NewUsecases(NewInMemoryRepository(nil))
+	auditUC := auditpkg.NewUsecases(auditpkg.NewInMemoryRepository(nil))
+	mux := http.NewServeMux()
+	auditpkg.NewHandler(auditUC).Register(mux)
+	NewHandler(uc).WithAuditSink(auditpkg.NewSinkAdapter(auditUC)).Register(mux)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/resources", bytes.NewBufferString(`{
+		"type":"wallet",
+		"name":"wallet hot usdc 1",
+		"environment":"prod",
+		"chain":"ethereum",
+		"criticality":"critical"
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Nexus-Actor-Type", "user")
+	createReq.Header.Set("X-Nexus-Actor-Id", "alice")
+	createRec := httptest.NewRecorder()
+	mux.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("unexpected create status: %d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	var created resourcedto.ResourceResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	auditReq := httptest.NewRequest(http.MethodGet, "/v1/audit?resource_id="+created.ID+"&event_type=resource_created&actor_id=alice", nil)
+	auditRec := httptest.NewRecorder()
+	mux.ServeHTTP(auditRec, auditReq)
+	if auditRec.Code != http.StatusOK {
+		t.Fatalf("unexpected audit status: %d body=%s", auditRec.Code, auditRec.Body.String())
+	}
+	if got := auditRec.Body.String(); !bytes.Contains([]byte(got), []byte(`"resource_created"`)) {
+		t.Fatalf("unexpected audit body: %s", got)
 	}
 }

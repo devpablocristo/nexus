@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
 )
 
 type ControlWorkersClient struct {
 	baseURL string
 	client  *http.Client
+	apiKey  string
 }
 
 func NewControlWorkersClient(baseURL string, timeout time.Duration) *ControlWorkersClient {
@@ -24,6 +27,14 @@ func NewControlWorkersClient(baseURL string, timeout time.Duration) *ControlWork
 		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		client:  &http.Client{Timeout: timeout},
 	}
+}
+
+func (c *ControlWorkersClient) WithAPIKey(key string) *ControlWorkersClient {
+	if c == nil {
+		return nil
+	}
+	c.apiKey = strings.TrimSpace(key)
+	return c
 }
 
 func (c *ControlWorkersClient) Create(ctx context.Context, req IncidentRequest) error {
@@ -53,6 +64,7 @@ func (c *ControlWorkersClient) Create(ctx context.Context, req IncidentRequest) 
 		return fmt.Errorf("build control-workers incident request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	sharedapikey.Apply(httpReq, c.apiKey)
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {

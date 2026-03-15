@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	"github.com/google/uuid"
 
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
@@ -63,6 +64,7 @@ type Usecases struct {
 	policies        PolicySource
 	policyEvaluator actionPolicyEvaluator
 	incidents       IncidentSink
+	audit           AuditSink
 }
 
 // NewUsecases builds action use cases.
@@ -154,7 +156,40 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 	for idx := range created.Evidence {
 		created.Evidence[idx].ActionID = created.ID
 	}
+	u.emitAudit(ctx, sharedaudit.WriteRequest{
+		EventType:     "action_created",
+		SourceService: "data-plane",
+		ActionID:      created.ID.String(),
+		ResourceID:    created.ResourceID,
+		ResourceType:  string(created.ResourceType),
+		Actor:         actionAuditActor(created.ProposedBy),
+		Summary:       "action created",
+		Data: map[string]any{
+			"action_type": string(created.Type),
+			"decision":    string(created.Decision),
+			"status":      string(created.Status),
+			"risk_level":  string(created.Risk.Level),
+			"risk_score":  created.Risk.Score,
+		},
+		OccurredAt: created.CreatedAt,
+	})
 	if created.Status == actiondomain.ActionStatusBlocked {
+		u.emitAudit(ctx, sharedaudit.WriteRequest{
+			EventType:     "action_blocked",
+			SourceService: "data-plane",
+			ActionID:      created.ID.String(),
+			ResourceID:    created.ResourceID,
+			ResourceType:  string(created.ResourceType),
+			Actor:         actionAuditActor(created.ProposedBy),
+			Summary:       "action blocked",
+			Data: map[string]any{
+				"action_type": string(created.Type),
+				"decision":    string(created.Decision),
+				"status":      string(created.Status),
+				"risk_level":  string(created.Risk.Level),
+			},
+			OccurredAt: created.UpdatedAt,
+		})
 		u.emitIncident(ctx, created, IncidentTriggerBlockedAction, blockedIncidentReason(created), map[string]any{
 			"decision":      string(created.Decision),
 			"status":        string(created.Status),
@@ -233,6 +268,22 @@ func (u *Usecases) Approve(ctx context.Context, id uuid.UUID, req DecideRequest)
 	if err != nil {
 		return actiondomain.Action{}, mapRepoErr(err)
 	}
+	u.emitAudit(ctx, sharedaudit.WriteRequest{
+		EventType:     "action_approved",
+		SourceService: "data-plane",
+		ActionID:      updated.ID.String(),
+		ResourceID:    updated.ResourceID,
+		ResourceType:  string(updated.ResourceType),
+		Actor:         actionAuditActor(req.DecidedBy),
+		Summary:       "action approved",
+		Data: map[string]any{
+			"action_type": string(updated.Type),
+			"decision":    string(updated.Decision),
+			"status":      string(updated.Status),
+			"comment":     strings.TrimSpace(req.Comment),
+		},
+		OccurredAt: updated.UpdatedAt,
+	})
 	return updated, nil
 }
 
@@ -259,6 +310,22 @@ func (u *Usecases) Reject(ctx context.Context, id uuid.UUID, req DecideRequest) 
 	if err != nil {
 		return actiondomain.Action{}, mapRepoErr(err)
 	}
+	u.emitAudit(ctx, sharedaudit.WriteRequest{
+		EventType:     "action_rejected",
+		SourceService: "data-plane",
+		ActionID:      updated.ID.String(),
+		ResourceID:    updated.ResourceID,
+		ResourceType:  string(updated.ResourceType),
+		Actor:         actionAuditActor(req.DecidedBy),
+		Summary:       "action rejected",
+		Data: map[string]any{
+			"action_type": string(updated.Type),
+			"decision":    string(updated.Decision),
+			"status":      string(updated.Status),
+			"comment":     strings.TrimSpace(req.Comment),
+		},
+		OccurredAt: updated.UpdatedAt,
+	})
 	u.emitIncident(ctx, updated, IncidentTriggerApprovalRejected, rejectionIncidentReason(req.Comment), map[string]any{
 		"decision":   string(updated.Decision),
 		"status":     string(updated.Status),
@@ -295,6 +362,21 @@ func (u *Usecases) IssueLease(ctx context.Context, id uuid.UUID) (actiondomain.A
 	if err != nil {
 		return actiondomain.Action{}, mapRepoErr(err)
 	}
+	u.emitAudit(ctx, sharedaudit.WriteRequest{
+		EventType:     "action_leased",
+		SourceService: "data-plane",
+		ActionID:      updated.ID.String(),
+		ResourceID:    updated.ResourceID,
+		ResourceType:  string(updated.ResourceType),
+		Summary:       "action lease issued",
+		Data: map[string]any{
+			"action_type": string(updated.Type),
+			"status":      string(updated.Status),
+			"lease_id":    updated.Lease.ID.String(),
+			"expires_at":  updated.Lease.ExpiresAt,
+		},
+		OccurredAt: updated.UpdatedAt,
+	})
 	return updated, nil
 }
 
@@ -319,6 +401,21 @@ func (u *Usecases) Execute(ctx context.Context, id uuid.UUID, req ExecuteRequest
 
 	result, err := u.executor.Execute(ctx, item, req.ExecutedBy)
 	if err != nil {
+		u.emitAudit(ctx, sharedaudit.WriteRequest{
+			EventType:     "action_execution_failed",
+			SourceService: "data-plane",
+			ActionID:      item.ID.String(),
+			ResourceID:    item.ResourceID,
+			ResourceType:  string(item.ResourceType),
+			Actor:         actionAuditActor(req.ExecutedBy),
+			Summary:       "action execution failed",
+			Data: map[string]any{
+				"action_type": string(item.Type),
+				"lease_id":    req.LeaseID.String(),
+				"error":       executionIncidentReason(err),
+			},
+			OccurredAt: nowUTC(),
+		})
 		u.emitIncident(ctx, item, IncidentTriggerExecutionFailed, executionIncidentReason(err), map[string]any{
 			"lease_id":    req.LeaseID.String(),
 			"executed_by": actorDetails(req.ExecutedBy),
@@ -340,6 +437,22 @@ func (u *Usecases) Execute(ctx context.Context, id uuid.UUID, req ExecuteRequest
 	if err != nil {
 		return actiondomain.Action{}, mapRepoErr(err)
 	}
+	u.emitAudit(ctx, sharedaudit.WriteRequest{
+		EventType:     "action_executed",
+		SourceService: "data-plane",
+		ActionID:      updated.ID.String(),
+		ResourceID:    updated.ResourceID,
+		ResourceType:  string(updated.ResourceType),
+		Actor:         actionAuditActor(req.ExecutedBy),
+		Summary:       "action executed",
+		Data: map[string]any{
+			"action_type":  string(updated.Type),
+			"status":       string(updated.Status),
+			"lease_id":     req.LeaseID.String(),
+			"execution_id": execution.Result["execution_id"],
+		},
+		OccurredAt: updated.Execution.ExecutedAt,
+	})
 	return updated, nil
 }
 

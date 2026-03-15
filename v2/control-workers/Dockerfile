@@ -5,11 +5,13 @@ WORKDIR /src
 RUN apk add --no-cache git
 
 COPY control-workers/go.mod control-workers/go.sum ./control-workers/
+COPY pkgs/go-pkg/go.mod pkgs/go-pkg/go.sum ./pkgs/go-pkg/
 WORKDIR /src/control-workers
 RUN go mod download
 
 WORKDIR /src
 COPY control-workers ./control-workers
+COPY pkgs/go-pkg ./pkgs/go-pkg
 
 WORKDIR /src/control-workers
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nexus-control-workers ./cmd/api

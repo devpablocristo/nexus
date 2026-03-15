@@ -21,6 +21,9 @@ func TestControlWorkersClientCreate(t *testing.T) {
 		if r.URL.Path != "/v1/incidents" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
+		if got, want := r.Header.Get("X-API-Key"), "control-workers-secret"; got != want {
+			t.Fatalf("unexpected api key header: got=%q want=%q", got, want)
+		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -29,7 +32,7 @@ func TestControlWorkersClientCreate(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewControlWorkersClient(server.URL, 0)
+	client := NewControlWorkersClient(server.URL, 0).WithAPIKey("control-workers-secret")
 	err := client.Create(context.Background(), IncidentRequest{
 		SourceID:     "action-1",
 		ActionType:   actiondomain.ActionTypeWithdrawal,

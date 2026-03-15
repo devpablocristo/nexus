@@ -5,12 +5,8 @@ import (
 	"testing"
 )
 
-func TestUsecasesPolicyLifecycle(t *testing.T) {
-	t.Parallel()
-
-	uc := NewUsecases(NewInMemoryRepository(nil), NewEvaluator())
-
-	created, err := uc.Create(context.Background(), CreateRequest{
+func newTestPolicy() CreateRequest {
+	return CreateRequest{
 		ActionType:         "withdrawal",
 		ResourceType:       "wallet",
 		Effect:             "allow",
@@ -19,7 +15,15 @@ func TestUsecasesPolicyLifecycle(t *testing.T) {
 		Reason:             "withdrawals from wallets require approval",
 		RequireApproval:    true,
 		ApprovalTTLSeconds: 600,
-	})
+	}
+}
+
+func TestUsecasesPolicyLifecycle(t *testing.T) {
+	t.Parallel()
+
+	uc := NewUsecases(NewInMemoryRepository(nil), NewEvaluator())
+
+	created, err := uc.Create(context.Background(), newTestPolicy())
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}

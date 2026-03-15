@@ -1,0 +1,53 @@
+name: V2 Milestone
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/v2-milestone.yml"
+      - "v2/**"
+  pull_request:
+    paths:
+      - ".github/workflows/v2-milestone.yml"
+      - "v2/**"
+
+permissions:
+  contents: read
+
+jobs:
+  milestone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: v2/go.work
+          cache-dependency-path: |
+            v2/go.work.sum
+            v2/pkgs/go-pkg/go.sum
+            v2/data-plane/go.sum
+            v2/control-plane/go.sum
+            v2/control-workers/go.sum
+            v2/pkgs/go-pkg/go.mod
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          install-mode: binary
+          verify: false
+          working-directory: v2/data-plane
+          args: --version
+
+      - name: Run milestone gate
+        run: make -C v2 milestone

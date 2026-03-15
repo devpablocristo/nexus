@@ -6,6 +6,7 @@ RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
 WORKDIR /src
 
 COPY control-workers/go.mod control-workers/go.sum ./control-workers/
+COPY pkgs/go-pkg/go.mod pkgs/go-pkg/go.sum ./pkgs/go-pkg/
 WORKDIR /src/control-workers
 RUN go mod download
 

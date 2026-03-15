@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
+	"github.com/devpablocristo/nexus/v2/pkgs/go-pkg/httpserver"
 	"nexus/v2/data-plane/wire"
 )
 
@@ -19,24 +21,24 @@ func main() {
 	}
 
 	cfg := wire.Config{
-		EchoURL:           os.Getenv("NEXUS_TOOL_ECHO_URL"),
-		ControlPlaneURL:   os.Getenv("NEXUS_CONTROL_PLANE_URL"),
-		ControlWorkersURL: os.Getenv("NEXUS_CONTROL_WORKERS_URL"),
-		HTTPTimeout:       5 * time.Second,
-		RateLimitBackend:  os.Getenv("NEXUS_RATE_LIMIT_BACKEND"),
-		RedisURL:          os.Getenv("NEXUS_REDIS_URL"),
+		ControlPlaneURL:      os.Getenv("NEXUS_CONTROL_PLANE_URL"),
+		ControlPlaneAPIKey:   os.Getenv("NEXUS_CONTROL_PLANE_API_KEY"),
+		ControlWorkersURL:    os.Getenv("NEXUS_CONTROL_WORKERS_URL"),
+		ControlWorkersAPIKey: os.Getenv("NEXUS_CONTROL_WORKERS_API_KEY"),
+		DataPlaneDatabaseURL: os.Getenv("NEXUS_DATA_PLANE_DATABASE_URL"),
+		HTTPTimeout:          5 * time.Second,
 	}
 	handler, cleanup, err := wire.NewServer(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer cleanup()
-
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
+	authn, err := sharedapikey.NewAuthenticator(os.Getenv("NEXUS_API_KEYS"))
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	server := httpserver.New(addr, authn.Middleware(handler))
 
 	log.Printf("data-plane v2 listening on %s", addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

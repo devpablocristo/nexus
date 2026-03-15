@@ -2,24 +2,25 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose
 
-.PHONY: test qa smoke e2e e2e-incidents smoke-run e2e-run smoke-control-plane smoke-control-workers smoke-all e2e-all acceptance up down logs status dev-up dev-down data-plane-dev control-plane-dev control-workers-dev echo-dev
+.PHONY: test qa milestone smoke e2e e2e-incidents smoke-control-plane smoke-control-workers smoke-all e2e-all acceptance up down logs status dev-up dev-down data-plane-dev control-plane-dev control-workers-dev
 
 test:
+	cd pkgs/go-pkg && go test ./...
 	cd data-plane && go test ./...
 	cd control-plane && go test ./...
 	cd control-workers && go test ./...
 
 qa:
+	./scripts/quality/check-go-pkg.sh
 	./scripts/quality/check-crud-pattern.sh
 	./scripts/quality/check-data-plane.sh
 	./scripts/quality/check-control-plane.sh
 	./scripts/quality/check-control-workers.sh
 
+milestone: qa acceptance
+
 smoke:
 	./scripts/smoke/run-actions-basic-flow.sh
-
-smoke-run:
-	./scripts/smoke/run-basic-flow.sh
 
 smoke-control-plane:
 	./scripts/smoke/run-control-plane-resources-flow.sh
@@ -33,12 +34,9 @@ e2e:
 e2e-incidents:
 	./scripts/e2e/run-actions-incidents-flow.sh
 
-e2e-run:
-	./scripts/e2e/run-approval-flow.sh
+smoke-all: smoke smoke-control-plane smoke-control-workers
 
-smoke-all: smoke smoke-run smoke-control-plane smoke-control-workers
-
-e2e-all: e2e e2e-incidents e2e-run
+e2e-all: e2e e2e-incidents
 
 acceptance: smoke-all e2e-all
 
@@ -70,6 +68,3 @@ control-plane-dev:
 
 control-workers-dev:
 	./scripts/dev/run-control-workers.sh
-
-echo-dev:
-	./scripts/dev/run-echo-upstream.sh

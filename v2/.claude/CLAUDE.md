@@ -16,7 +16,9 @@ Use these only when the task actually calls for them:
 - `api-security-hardening` for auth, rate limits, CORS, validation hardening, and API security
 - `ddd-hexagonal-architecture` when formalizing ports/adapters and architectural boundaries
 - `monitoring-observability` when adding logs, metrics, tracing, or observability concerns
-- `event-driven-architecture` only if `v2` starts using events or async workflows
+- `event-driven-architecture` when designing audit record emission, cross-service event flows, or async workflows
+- `postgresql-database-engineering` for schema design, indexing, partitioning, connection pooling, and query optimization — especially for audit records and any module migrating to real persistence
+- `docker` when adding or modifying containers in compose (e.g., PostgreSQL, Redis), configuring volumes, health checks, or init scripts
 
 Do not install external skills for these areas unless the local skills are clearly insufficient.
 

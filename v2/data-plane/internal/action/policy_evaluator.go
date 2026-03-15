@@ -15,6 +15,7 @@ type actionPolicyEvaluator interface {
 
 type ActionPolicyEvaluator struct {
 	env         *cel.Env
+	envErr      error
 	mu          sync.Mutex
 	programs    map[string]cel.Program
 	order       []string
@@ -26,11 +27,9 @@ func NewActionPolicyEvaluator() *ActionPolicyEvaluator {
 		cel.Variable("action", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("resource", cel.MapType(cel.StringType, cel.DynType)),
 	)
-	if err != nil {
-		panic(fmt.Sprintf("create CEL env: %v", err))
-	}
 	return &ActionPolicyEvaluator{
 		env:         env,
+		envErr:      err,
 		programs:    make(map[string]cel.Program),
 		maxPrograms: 256,
 	}
@@ -61,6 +60,9 @@ func (e *ActionPolicyEvaluator) Matches(expression string, action, resource map[
 }
 
 func (e *ActionPolicyEvaluator) program(expression string) (cel.Program, error) {
+	if e.envErr != nil {
+		return nil, fmt.Errorf("create CEL env: %w", e.envErr)
+	}
 	e.mu.Lock()
 	if cached, ok := e.programs[expression]; ok {
 		e.mu.Unlock()

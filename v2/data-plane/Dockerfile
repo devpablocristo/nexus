@@ -5,11 +5,13 @@ WORKDIR /src
 RUN apk add --no-cache git
 
 COPY data-plane/go.mod data-plane/go.sum ./data-plane/
+COPY pkgs/go-pkg/go.mod pkgs/go-pkg/go.sum ./pkgs/go-pkg/
 WORKDIR /src/data-plane
 RUN go mod download
 
 WORKDIR /src
 COPY data-plane ./data-plane
+COPY pkgs/go-pkg ./pkgs/go-pkg
 
 WORKDIR /src/data-plane
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nexus-data-plane ./cmd/api

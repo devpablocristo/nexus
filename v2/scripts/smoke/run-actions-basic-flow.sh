@@ -13,8 +13,9 @@ CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-18102}"
 DATA_PLANE_PORT="${DATA_PLANE_PORT:-18100}"
 CONTROL_PLANE_URL="http://127.0.0.1:${CONTROL_PLANE_PORT}"
 BASE_URL="http://127.0.0.1:${DATA_PLANE_PORT}"
-READY_URL="${BASE_URL}/v1/actions"
+READY_URL="${BASE_URL}/healthz"
 ACTIONS_URL="${BASE_URL}/v1/actions"
+ADMIN_API_KEY="$(admin_api_key)"
 
 cleanup() {
   [[ -n "${CONTROL_PLANE_PID:-}" ]] && kill "${CONTROL_PLANE_PID}" >/dev/null 2>&1 || true
@@ -23,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 
 create_resource() {
-  curl -sS -H 'Content-Type: application/json' -X POST "${CONTROL_PLANE_URL}/v1/resources" -d @- <<'JSON'
+  curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" -H 'Content-Type: application/json' -X POST "${CONTROL_PLANE_URL}/v1/resources" -d @- <<'JSON'
 {
   "type": "wallet",
   "name": "wallet hot usdc 1",
@@ -36,7 +37,7 @@ JSON
 }
 
 create_policy() {
-  curl -sS -H 'Content-Type: application/json' -X POST "${CONTROL_PLANE_URL}/v1/policies" -d @- <<'JSON'
+  curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" -H 'Content-Type: application/json' -X POST "${CONTROL_PLANE_URL}/v1/policies" -d @- <<'JSON'
 {
   "action_type": "withdrawal",
   "resource_type": "wallet",
@@ -51,6 +52,7 @@ JSON
 
 create_action() {
   curl -sS -D "$1" -o "$2" -w '%{http_code}' \
+    -H "X-API-Key: ${ADMIN_API_KEY}" \
     -H 'Content-Type: application/json' \
     -X POST "${ACTIONS_URL}" \
     -d @- <<JSON
@@ -76,7 +78,7 @@ JSON
 PORT="${CONTROL_PLANE_PORT}" "${SCRIPT_DIR}/../dev/run-control-plane.sh" &
 CONTROL_PLANE_PID=$!
 
-wait_for_http "${CONTROL_PLANE_URL}/v1/resources" 80 0.1
+wait_for_http "${CONTROL_PLANE_URL}/healthz" 80 0.1
 
 resource_body="$(create_resource)"
 resource_id="$(printf '%s' "${resource_body}" | json_get "id")"

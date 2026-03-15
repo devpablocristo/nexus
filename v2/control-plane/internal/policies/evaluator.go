@@ -13,6 +13,7 @@ const defaultProgramCacheSize = 256
 
 type Evaluator struct {
 	env         *cel.Env
+	envErr      error
 	mu          sync.Mutex
 	programs    map[string]cel.Program
 	order       []string
@@ -32,12 +33,10 @@ func newEvaluatorWithLimit(limit int) *Evaluator {
 		cel.Variable("action", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("resource", cel.MapType(cel.StringType, cel.DynType)),
 	)
-	if err != nil {
-		panic(fmt.Sprintf("create CEL env: %v", err))
-	}
 
 	return &Evaluator{
 		env:         env,
+		envErr:      err,
 		programs:    make(map[string]cel.Program),
 		maxPrograms: limit,
 	}
@@ -86,6 +85,9 @@ func (e *Evaluator) Matches(expression string, action, resource map[string]any) 
 }
 
 func (e *Evaluator) compile(expression string) (*cel.Ast, error) {
+	if e.envErr != nil {
+		return nil, fmt.Errorf("create CEL env: %w", e.envErr)
+	}
 	ast, issues := e.env.Compile(expression)
 	if issues.Err() != nil {
 		return nil, fmt.Errorf("compile policy expression: %w", issues.Err())

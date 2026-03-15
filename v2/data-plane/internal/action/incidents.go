@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
@@ -53,7 +54,9 @@ func (u *Usecases) emitIncident(ctx context.Context, item actiondomain.Action, t
 		Reason:       strings.TrimSpace(reason),
 		Details:      cloneMap(details),
 	}
-	_ = u.incidents.Create(ctx, req)
+	if err := u.incidents.Create(ctx, req); err != nil {
+		log.Printf("action incident sink failed: action_id=%s trigger=%s err=%v", item.ID, trigger, err)
+	}
 }
 
 func incidentSummary(trigger IncidentTrigger, actionType actiondomain.ActionType) string {

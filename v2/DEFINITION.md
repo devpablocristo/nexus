@@ -174,21 +174,26 @@ Hoy el centro de producto y de dominio de `v2` es:
 - `control-plane`
   - `resources`
   - `action policies`
+  - `audit records`
+  - write interno por `/internal/audit`
+  - lectura administrativa por `/v1/audit`
 
 - `data-plane`
   - `actions`
   - `approvals`
   - `leases`
   - `execute`
+  - emision best effort de `audit` para `action_created`, `action_blocked`, `action_approved`, `action_rejected`, `action_leased`, `action_executed` y `action_execution_failed`
 
 - `control-workers`
   - `incidents`
   - apertura determinista de incidentes desde `data-plane/actions` cuando una accion queda bloqueada, rechazada o falla al ejecutar
   - `alerts`
   - apertura determinista de alerts desde `incidents` segun severidad
+  - emision best effort de `audit` para `incident_created` y `alert_created`
 
-`/run` sigue existiendo en `data-plane`, pero hoy queda como superficie legacy e interna del runtime.
-La direccion principal de producto ya no es `run/tool`, sino `action/resource/policy/approval/lease`.
+La direccion principal de producto es `action/resource/policy/approval/lease`.
+El eje anterior `run/tool` ya fue retirado de la superficie publica de `v2`.
 
 ## Que Nexus no es
 

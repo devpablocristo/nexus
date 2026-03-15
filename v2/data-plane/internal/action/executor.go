@@ -33,11 +33,11 @@ func (e *DeterministicExecutor) Execute(ctx context.Context, action actiondomain
 	}
 
 	return map[string]any{
-		"mode":        "deterministic_simulation",
+		"mode":         "deterministic_simulation",
 		"execution_id": "exec_" + action.ID.String(),
-		"action_id":   action.ID.String(),
-		"action_type": string(action.Type),
-		"resource_id": action.ResourceID,
+		"action_id":    action.ID.String(),
+		"action_type":  string(action.Type),
+		"resource_id":  action.ResourceID,
 		"executed_by": map[string]any{
 			"type": string(executedBy.Type),
 			"id":   executedBy.ID,

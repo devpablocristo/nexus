@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	auditpkg "nexus/v2/control-plane/internal/audit"
 	policydto "nexus/v2/control-plane/internal/policies/handler/dto"
 )
 
@@ -72,5 +73,44 @@ func TestPolicyEndpointsLifecycle(t *testing.T) {
 	}
 	if len(archivedList.Items) != 1 || !archivedList.Items[0].Archived {
 		t.Fatalf("unexpected archived list: %#v", archivedList)
+	}
+}
+
+func TestPolicyEndpointsEmitAudit(t *testing.T) {
+	t.Parallel()
+
+	uc := NewUsecases(NewInMemoryRepository(nil), NewEvaluator())
+	auditUC := auditpkg.NewUsecases(auditpkg.NewInMemoryRepository(nil))
+	mux := http.NewServeMux()
+	auditpkg.NewHandler(auditUC).Register(mux)
+	NewHandler(uc).WithAuditSink(auditpkg.NewSinkAdapter(auditUC)).Register(mux)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/policies", bytes.NewBufferString(`{
+		"action_type":"withdrawal",
+		"resource_type":"wallet",
+		"effect":"allow",
+		"priority":10,
+		"expression":"action.action_type == \"withdrawal\" && resource.type == \"wallet\"",
+		"reason":"withdrawals from wallets require approval",
+		"require_approval":true,
+		"approval_ttl_seconds":600
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("X-Nexus-Actor-Type", "user")
+	createReq.Header.Set("X-Nexus-Actor-Id", "alice")
+	createRec := httptest.NewRecorder()
+	mux.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("unexpected create status: %d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	auditReq := httptest.NewRequest(http.MethodGet, "/v1/audit?event_type=policy_created&actor_id=alice", nil)
+	auditRec := httptest.NewRecorder()
+	mux.ServeHTTP(auditRec, auditReq)
+	if auditRec.Code != http.StatusOK {
+		t.Fatalf("unexpected audit status: %d body=%s", auditRec.Code, auditRec.Body.String())
+	}
+	if got := auditRec.Body.String(); !bytes.Contains([]byte(got), []byte(`"policy_created"`)) {
+		t.Fatalf("unexpected audit body: %s", got)
 	}
 }

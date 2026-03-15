@@ -3,13 +3,16 @@ package resources
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/google/uuid"
 
+	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
 	resourcedto "nexus/v2/control-plane/internal/resources/handler/dto"
 	resourcedomain "nexus/v2/control-plane/internal/resources/usecases/domain"
+	"nexus/v2/control-plane/internal/shared/actors"
 )
 
 type resourceUsecase interface {
@@ -23,11 +26,21 @@ type resourceUsecase interface {
 }
 
 type Handler struct {
-	uc resourceUsecase
+	uc    resourceUsecase
+	audit resourceAuditSink
 }
 
 func NewHandler(uc resourceUsecase) *Handler {
 	return &Handler{uc: uc}
+}
+
+type resourceAuditSink interface {
+	Write(ctx context.Context, req sharedaudit.WriteRequest) error
+}
+
+func (h *Handler) WithAuditSink(sink resourceAuditSink) *Handler {
+	h.audit = sink
+	return h
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -41,6 +54,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	actor, ok := parseAdminActor(w, r)
+	if !ok {
+		return
+	}
 	var req resourcedto.CreateResourceRequest
 	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writeResourceError(w, http.StatusBadRequest, "INVALID_JSON", "invalid json")
@@ -61,6 +78,11 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Location", "/v1/resources/"+item.ID)
+	h.emitAudit(r.Context(), actor, "resource_created", item, map[string]any{
+		"name":        item.Name,
+		"environment": item.Environment,
+		"chain":       item.Chain,
+	})
 	sharedhandlers.WriteJSON(w, http.StatusCreated, toResourceResponse(item))
 }
 
@@ -112,6 +134,10 @@ func (h *Handler) updateByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parseAdminActor(w, r)
+	if !ok {
+		return
+	}
 
 	var req resourcedto.UpdateResourceRequest
 	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
@@ -143,6 +169,11 @@ func (h *Handler) updateByID(w http.ResponseWriter, r *http.Request) {
 		writeResourceUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "resource_updated", item, map[string]any{
+		"name":        item.Name,
+		"environment": item.Environment,
+		"chain":       item.Chain,
+	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toResourceResponse(item))
 }
 
@@ -151,10 +182,22 @@ func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parseAdminActor(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writeResourceUsecaseError(w, err)
+		return
+	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {
 		writeResourceUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "resource_deleted", item, map[string]any{
+		"name": item.Name,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -163,11 +206,18 @@ func (h *Handler) archiveByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parseAdminActor(w, r)
+	if !ok {
+		return
+	}
 	item, err := h.uc.ArchiveByID(r.Context(), id)
 	if err != nil {
 		writeResourceUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "resource_archived", item, map[string]any{
+		"archived_at": item.ArchivedAt,
+	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toResourceResponse(item))
 }
 
@@ -176,11 +226,18 @@ func (h *Handler) restoreByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	actor, ok := parseAdminActor(w, r)
+	if !ok {
+		return
+	}
 	item, err := h.uc.RestoreByID(r.Context(), id)
 	if err != nil {
 		writeResourceUsecaseError(w, err)
 		return
 	}
+	h.emitAudit(r.Context(), actor, "resource_restored", item, map[string]any{
+		"name": item.Name,
+	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toResourceResponse(item))
 }
 
@@ -221,4 +278,63 @@ func toResourceResponse(item resourcedomain.ProtectedResource) resourcedto.Resou
 		CreatedAt:   item.CreatedAt,
 		UpdatedAt:   item.UpdatedAt,
 	}
+}
+
+func parseAdminActor(w http.ResponseWriter, r *http.Request) (*sharedaudit.Actor, bool) {
+	actor, err := actors.FromRequest(r)
+	if err == nil {
+		return actor, true
+	}
+	if errors.Is(err, actors.ErrIncompleteActorHeaders) {
+		writeResourceError(w, http.StatusBadRequest, "VALIDATION", "actor headers require both X-Nexus-Actor-Type and X-Nexus-Actor-Id")
+		return nil, false
+	}
+	writeResourceError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+	return nil, false
+}
+
+func (h *Handler) emitAudit(ctx context.Context, actor *sharedaudit.Actor, eventType string, item resourcedomain.ProtectedResource, data map[string]any) {
+	if h.audit == nil {
+		return
+	}
+	if err := h.audit.Write(ctx, sharedaudit.WriteRequest{
+		EventType:     eventType,
+		SourceService: "control-plane",
+		ResourceID:    item.ID,
+		ResourceType:  string(item.Type),
+		Actor:         actor,
+		Summary:       resourceAuditSummary(eventType),
+		Data:          cloneMap(data),
+		OccurredAt:    nowUTC(),
+	}); err != nil {
+		log.Printf("control-plane resource audit failed: resource_id=%s event_type=%s err=%v", item.ID, eventType, err)
+	}
+}
+
+func resourceAuditSummary(eventType string) string {
+	switch eventType {
+	case "resource_created":
+		return "resource created"
+	case "resource_updated":
+		return "resource updated"
+	case "resource_deleted":
+		return "resource deleted"
+	case "resource_archived":
+		return "resource archived"
+	case "resource_restored":
+		return "resource restored"
+	default:
+		return "resource changed"
+	}
+}
+
+func cloneMap(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
