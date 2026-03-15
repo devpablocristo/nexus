@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"nexus/v2/data-plane/internal/action"
 	"nexus/v2/data-plane/internal/approval"
 	"nexus/v2/data-plane/internal/egress"
 	"nexus/v2/data-plane/internal/gateway"
@@ -19,10 +20,12 @@ import (
 )
 
 type Config struct {
-	EchoURL          string
-	HTTPTimeout      time.Duration
-	RateLimitBackend string
-	RedisURL         string
+	EchoURL           string
+	ControlPlaneURL   string
+	ControlWorkersURL string
+	HTTPTimeout       time.Duration
+	RateLimitBackend  string
+	RedisURL          string
 }
 
 func NewServer(cfg Config) (http.Handler, func(), error) {
@@ -68,11 +71,20 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	runUsecase := gateway.NewUsecases(repo, policies, idempotency, limiter, egressUC, secretRepo, evaluator, executor)
 	runUsecase = runUsecase.WithIntentRepository(intentRepo).WithLeaseRepository(leaseRepo).WithApproval(approval.NewGatewayAdapter(approvalUC))
 	policyUsecase := policy.NewUsecases(policies, repo, evaluator)
+	actionUsecase := action.NewUsecases(action.NewInMemoryRepository(nil))
+	if strings.TrimSpace(cfg.ControlPlaneURL) != "" {
+		controlPlaneClient := action.NewControlPlaneClient(cfg.ControlPlaneURL, cfg.HTTPTimeout)
+		actionUsecase = actionUsecase.WithResourceResolver(controlPlaneClient).WithPolicySource(controlPlaneClient)
+	}
+	if strings.TrimSpace(cfg.ControlWorkersURL) != "" {
+		actionUsecase = actionUsecase.WithIncidentSink(action.NewControlWorkersClient(cfg.ControlWorkersURL, cfg.HTTPTimeout))
+	}
 
 	mux := http.NewServeMux()
 	gateway.NewHandler(runUsecase).Register(mux)
 	policy.NewHandler(policyUsecase).Register(mux)
 	approval.NewHandler(approvalUC).Register(mux)
+	action.NewHandler(actionUsecase).Register(mux)
 	return mux, cleanup, nil
 }
 

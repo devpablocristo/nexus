@@ -1,0 +1,31 @@
+services:
+  nexus-control-workers:
+    build:
+      context: .
+      dockerfile: control-workers/Dockerfile.dev
+    working_dir: /src/control-workers
+    volumes:
+      - ./control-workers:/src/control-workers
+    command: ["air", "-c", ".air.toml"]
+
+  nexus-control-plane:
+    build:
+      context: .
+      dockerfile: control-plane/Dockerfile.dev
+    working_dir: /src/control-plane
+    volumes:
+      - ./control-plane:/src/control-plane
+    command: ["air", "-c", ".air.toml"]
+
+  nexus-data-plane:
+    build:
+      context: .
+      dockerfile: data-plane/Dockerfile.dev
+    working_dir: /src/data-plane
+    volumes:
+      - ./data-plane:/src/data-plane
+    environment:
+      NEXUS_CONTROL_PLANE_URL: "${NEXUS_CONTROL_PLANE_URL:-http://nexus-control-plane:8081}"
+    depends_on:
+      - nexus-control-plane
+    command: ["air", "-c", ".air.toml"]

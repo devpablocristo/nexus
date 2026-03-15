@@ -2,13 +2,12 @@ package policy
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/google/uuid"
 
+	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
 	policydto "nexus/v2/data-plane/internal/policy/handler/dto"
 	policydomain "nexus/v2/data-plane/internal/policy/usecases/domain"
 )
@@ -43,7 +42,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var req policydto.CreatePolicyRequest
-	if err := decodeJSON(r, &req); err != nil {
+	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writePolicyError(w, http.StatusBadRequest, "INVALID_JSON", "invalid json")
 		return
 	}
@@ -63,19 +62,20 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, toPolicyResponse(created))
+	w.Header().Set("Location", "/v1/policies/"+created.ID.String())
+	sharedhandlers.WriteJSON(w, http.StatusCreated, toPolicyResponse(created))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	includeArchived, err := parseOptionalBool(r.URL.Query().Get("include_archived"))
+	archived, err := sharedhandlers.ParseArchived(r.URL.Query().Get("archived"))
 	if err != nil {
-		writePolicyError(w, http.StatusBadRequest, "VALIDATION", "include_archived must be true or false")
+		writePolicyError(w, http.StatusBadRequest, "VALIDATION", "archived must be true or false")
 		return
 	}
 
 	items, err := h.uc.List(r.Context(), ListRequest{
-		ToolName:        r.URL.Query().Get("tool_name"),
-		IncludeArchived: includeArchived,
+		ToolName: r.URL.Query().Get("tool_name"),
+		Archived: archived,
 	})
 	if err != nil {
 		writePolicyUsecaseError(w, err)
@@ -89,7 +89,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		resp.Items = append(resp.Items, toPolicyResponse(item))
 	}
 
-	writeJSON(w, http.StatusOK, resp)
+	sharedhandlers.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +104,7 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toPolicyResponse(item))
+	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
 }
 
 func (h *Handler) patchByID(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +114,7 @@ func (h *Handler) patchByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req policydto.UpdatePolicyRequest
-	if err := decodeJSON(r, &req); err != nil {
+	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writePolicyError(w, http.StatusBadRequest, "INVALID_JSON", "invalid json")
 		return
 	}
@@ -134,7 +134,7 @@ func (h *Handler) patchByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toPolicyResponse(item))
+	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
 }
 
 func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +163,7 @@ func (h *Handler) archiveByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toPolicyResponse(item))
+	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
 }
 
 func (h *Handler) restoreByID(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +178,7 @@ func (h *Handler) restoreByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toPolicyResponse(item))
+	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
 }
 
 func parsePolicyID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
@@ -188,19 +188,6 @@ func parsePolicyID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
-}
-
-func parseOptionalBool(raw string) (bool, error) {
-	if raw == "" {
-		return false, nil
-	}
-	return strconv.ParseBool(raw)
-}
-
-func decodeJSON(r *http.Request, dst any) error {
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	return dec.Decode(dst)
 }
 
 func toPolicyResponse(item policydomain.Policy) policydto.PolicyResponse {
@@ -231,16 +218,10 @@ func writePolicyUsecaseError(w http.ResponseWriter, err error) {
 }
 
 func writePolicyError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, policydto.ErrorResponse{
+	sharedhandlers.WriteJSON(w, status, policydto.ErrorResponse{
 		Error: policydto.ErrorObject{
 			Code:    code,
 			Message: message,
 		},
 	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
 }

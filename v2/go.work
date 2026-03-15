@@ -1,3 +1,8 @@
 go 1.26.0
 
-use ./data-plane
+use (
+	./control-plane
+	./control-workers
+	./data-plane
+	./pkgs/go-pkg
+)

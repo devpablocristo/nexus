@@ -1,0 +1,85 @@
+---
+description: Arquitectura hexagonal Go - accept interfaces return structs
+globs: data-plane/**/*.go,control-workers/**/*.go
+alwaysApply: true
+---
+
+# Go Hexagonal Architecture
+
+## Naming
+
+- El nombre del struct principal de un archivo debe coincidir con el nombre del archivo.
+  - `usecases.go` → `type Usecases struct`
+  - `handler.go` → `type Handler struct`
+  - `repository.go` → `type Repository struct`
+- El constructor sigue el mismo patron: `NewUsecases(...)`, `NewHandler(...)`, `NewRepository(...)`.
+
+## Accept interfaces, return structs
+
+- Los constructores devuelven `*Struct` (puntero a struct concreto), nunca una interfaz.
+- Las interfaces se definen en el **consumidor** (quien las necesita), no en el proveedor.
+
+## Ports en el consumidor
+
+- Cada adapter (handler, repository, worker) define su propio port (interfaz) con **solo los metodos que necesita**.
+- Ejemplo: `handler.go` define una interfaz local con los metodos de usecases que usa, no importa una interfaz global.
+
+```go
+// handler.go — define su propio port
+type runUsecase interface {
+    Run(ctx context.Context, orgID uuid.UUID, req RunRequest) (RunResponse, error)
+}
+
+type Handler struct {
+    uc runUsecase
+}
+```
+
+## Inyeccion de dependencias
+
+- El wiring (`wire/`) conecta structs concretos a los ports de cada consumidor.
+- El consumidor nunca conoce el tipo concreto, solo su interfaz local.
+
+## Estructura por modulo
+
+Cada modulo en `internal/` sigue esta estructura:
+
+```
+internal/<modulo>/
+  usecases.go          — logica de negocio (struct Usecases)
+  handler.go           — HTTP adapter (struct Handler, define su port)
+  repository.go        — DB adapter (struct Repository)
+  handler/dto/dto.go   — DTOs de entrada/salida HTTP
+  usecases/domain/     — entidades de dominio
+  repository/models/   — modelos de persistencia
+```
+
+## Patrón de Adapters
+
+Un **adapter** es cualquier componente que adapta una API externa al dominio (handler HTTP, emitter, consumer, gateway_adapter, etc.).
+
+### Regla obligatoria
+
+1. **Archivo principal en la raíz del dominio**: `adapter.go` (ej. `handler.go`, `emitter.go`) queda en la raíz del módulo.
+2. **Directorio con el nombre del adapter**: Todo lo relacionado con ese adapter va en `adapter/`:
+   - `adapter/dto/` — DTOs de entrada/salida
+   - `adapter/` — cualquier archivo auxiliar del adapter
+3. **Dependencia explícita**: El adapter recibe y usa Usecases (o el port que corresponda). Al inyectar `adapter.NewX(uc *Usecases)` queda explícito que el adapter depende del use case.
+
+### Ejemplo
+
+```
+internal/ops/eventstore/
+  emitter.go           — interface Emitter, NewEmitter(uc *Usecases), archivo principal en raíz
+  emitter/
+    dto/dto.go         — EmitInput y tipos del adapter
+  usecases.go
+  ...
+```
+
+### Aplicar a
+
+- `handler` → `handler.go` + `handler/dto/`
+- `emitter` → `emitter.go` + `emitter/dto/`
+- `consumer` → `consumer.go` + `consumer/` (si necesita dto u otros archivos)
+- `gateway_adapter` → `gateway_adapter.go` + `gateway_adapter/dto/` (si aplica)

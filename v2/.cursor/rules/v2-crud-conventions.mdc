@@ -1,0 +1,30 @@
+---
+description: Convenciones obligatorias de CRUD para v2
+globs:
+  - v2/**
+alwaysApply: true
+---
+
+# Convenciones de CRUD para v2
+
+Aplican a todos los recursos de `v2`.
+
+## Patron obligatorio
+
+- `POST /v1/<resource>`
+- `GET /v1/<resource>`
+- `GET /v1/<resource>/{id}`
+- `PATCH /v1/<resource>/{id}`
+- `DELETE /v1/<resource>/{id}` para hard delete
+- `POST /v1/<resource>/{id}/archive` para soft delete
+- `POST /v1/<resource>/{id}/restore` para restaurar soft delete
+
+## Reglas obligatorias
+
+- Todos los CRUD deben seguir exactamente el mismo patron.
+- Aplicar DRY donde convenga.
+- `DELETE` siempre significa hard delete.
+- Soft delete no usa `DELETE`.
+- Para soft delete se usa `archive`.
+- Para restaurar soft deletes se usa `restore`.
+- Mantener esta convencion siempre igual en todos los recursos.

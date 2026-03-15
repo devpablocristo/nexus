@@ -8,7 +8,10 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
+	github.com/devpablocristo/nexus/v2/pkgs/go-pkg v0.0.0
 )
+
+replace github.com/devpablocristo/nexus/v2/pkgs/go-pkg => ../pkgs/go-pkg
 
 require (
 	cel.dev/expr v0.25.1 // indirect

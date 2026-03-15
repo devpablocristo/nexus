@@ -1,0 +1,16 @@
+FROM golang:1.26-alpine
+
+RUN apk add --no-cache git wget
+RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
+
+WORKDIR /src
+
+COPY data-plane/go.mod data-plane/go.sum ./data-plane/
+WORKDIR /src/data-plane
+RUN go mod download
+
+WORKDIR /src/data-plane
+
+EXPOSE 8080
+
+CMD ["air", "-c", ".air.toml"]

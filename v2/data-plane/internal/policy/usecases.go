@@ -41,8 +41,8 @@ type CreateRequest struct {
 }
 
 type ListRequest struct {
-	ToolName        string
-	IncludeArchived bool
+	ToolName string
+	Archived *bool
 }
 
 type PolicyPatch struct {
@@ -232,6 +232,15 @@ func mapRepoErr(err error) error {
 	}
 	if errors.Is(err, ErrNotFound) {
 		return newHTTPError(http.StatusNotFound, "NOT_FOUND", "policy not found")
+	}
+	if errors.Is(err, ErrArchived) {
+		return newHTTPError(http.StatusConflict, "ARCHIVED", "policy is archived")
+	}
+	if errors.Is(err, ErrAlreadyArchived) {
+		return newHTTPError(http.StatusConflict, "ALREADY_ARCHIVED", "policy already archived")
+	}
+	if errors.Is(err, ErrNotArchived) {
+		return newHTTPError(http.StatusConflict, "NOT_ARCHIVED", "policy is not archived")
 	}
 	return err
 }

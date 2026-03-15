@@ -19,10 +19,12 @@ func main() {
 	}
 
 	cfg := wire.Config{
-		EchoURL:          os.Getenv("NEXUS_TOOL_ECHO_URL"),
-		HTTPTimeout:      5 * time.Second,
-		RateLimitBackend: os.Getenv("NEXUS_RATE_LIMIT_BACKEND"),
-		RedisURL:         os.Getenv("NEXUS_REDIS_URL"),
+		EchoURL:           os.Getenv("NEXUS_TOOL_ECHO_URL"),
+		ControlPlaneURL:   os.Getenv("NEXUS_CONTROL_PLANE_URL"),
+		ControlWorkersURL: os.Getenv("NEXUS_CONTROL_WORKERS_URL"),
+		HTTPTimeout:       5 * time.Second,
+		RateLimitBackend:  os.Getenv("NEXUS_RATE_LIMIT_BACKEND"),
+		RedisURL:          os.Getenv("NEXUS_REDIS_URL"),
 	}
 	handler, cleanup, err := wire.NewServer(cfg)
 	if err != nil {

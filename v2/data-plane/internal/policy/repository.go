@@ -13,10 +13,13 @@ import (
 )
 
 var ErrNotFound = errors.New("policy not found")
+var ErrArchived = errors.New("policy archived")
+var ErrAlreadyArchived = errors.New("policy already archived")
+var ErrNotArchived = errors.New("policy not archived")
 
 type ListFilters struct {
-	ToolName        string
-	IncludeArchived bool
+	ToolName string
+	Archived *bool
 }
 
 // InMemoryRepository stores policies in memory for v2.
@@ -69,8 +72,10 @@ func (r *InMemoryRepository) List(_ context.Context, filters ListFilters) ([]pol
 		if filters.ToolName != "" && item.ToolName != filters.ToolName {
 			continue
 		}
-		if item.Archived && !filters.IncludeArchived {
-			continue
+		if filters.Archived != nil {
+			if item.Archived != *filters.Archived {
+				continue
+			}
 		}
 		items = append(items, item)
 	}
@@ -93,8 +98,12 @@ func (r *InMemoryRepository) Save(_ context.Context, item policydomain.Policy) (
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.items[item.ID]; !ok {
+	current, ok := r.items[item.ID]
+	if !ok {
 		return policydomain.Policy{}, ErrNotFound
+	}
+	if current.Archived {
+		return policydomain.Policy{}, ErrArchived
 	}
 	item.UpdatedAt = time.Now().UTC()
 	r.items[item.ID] = item
@@ -120,6 +129,9 @@ func (r *InMemoryRepository) ArchiveByID(_ context.Context, id uuid.UUID) (polic
 	if !ok {
 		return policydomain.Policy{}, ErrNotFound
 	}
+	if item.Archived {
+		return policydomain.Policy{}, ErrAlreadyArchived
+	}
 	now := time.Now().UTC()
 	item.Archived = true
 	item.ArchivedAt = &now
@@ -135,6 +147,9 @@ func (r *InMemoryRepository) RestoreByID(_ context.Context, id uuid.UUID) (polic
 	item, ok := r.items[id]
 	if !ok {
 		return policydomain.Policy{}, ErrNotFound
+	}
+	if !item.Archived {
+		return policydomain.Policy{}, ErrNotArchived
 	}
 	item.Archived = false
 	item.ArchivedAt = nil

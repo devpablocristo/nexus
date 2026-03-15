@@ -2,13 +2,13 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/google/uuid"
 
+	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
 	gwdto "nexus/v2/data-plane/internal/gateway/handler/dto"
 	gwdomain "nexus/v2/data-plane/internal/gateway/usecases/domain"
 )
@@ -43,9 +43,7 @@ func (h *Handler) runTool(w http.ResponseWriter, r *http.Request) {
 	reqID := newRequestID()
 
 	var req gwdto.RunRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
+	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, reqID, "INVALID_JSON", "invalid json", nil)
 		return
 	}
@@ -87,7 +85,7 @@ func writeError(w http.ResponseWriter, status int, requestID, code, message stri
 	if idem != nil {
 		writeIdempotencyHeader(w, idem.Outcome)
 	}
-	writeJSON(w, status, gwdto.ErrorResponse{
+	sharedhandlers.WriteJSON(w, status, gwdto.ErrorResponse{
 		RequestID: requestID,
 		Error: gwdto.ErrorObject{
 			Code:    code,
@@ -100,14 +98,10 @@ func writeError(w http.ResponseWriter, status int, requestID, code, message stri
 func (h *Handler) listIntents(w http.ResponseWriter, r *http.Request) {
 	reqID := newRequestID()
 
-	limit := 50
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
-			writeError(w, http.StatusBadRequest, reqID, "VALIDATION", "limit must be a positive integer", nil)
-			return
-		}
-		limit = parsed
+	limit, err := sharedhandlers.ParseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, reqID, "VALIDATION", "limit must be a positive integer", nil)
+		return
 	}
 
 	items, err := h.run.ListIntents(r.Context(), limit)
@@ -120,7 +114,7 @@ func (h *Handler) listIntents(w http.ResponseWriter, r *http.Request) {
 	for _, item := range items {
 		resp.Items = append(resp.Items, toIntentDTO(item))
 	}
-	writeJSON(w, http.StatusOK, resp)
+	sharedhandlers.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) getIntent(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +131,7 @@ func (h *Handler) getIntent(w http.ResponseWriter, r *http.Request) {
 		h.writeGatewayError(w, reqID, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toIntentDTO(item))
+	sharedhandlers.WriteJSON(w, http.StatusOK, toIntentDTO(item))
 }
 
 func (h *Handler) getIntentPreflight(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +148,7 @@ func (h *Handler) getIntentPreflight(w http.ResponseWriter, r *http.Request) {
 		h.writeGatewayError(w, reqID, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toPreflightReviewDTO(item))
+	sharedhandlers.WriteJSON(w, http.StatusOK, toPreflightReviewDTO(item))
 }
 
 func (h *Handler) executeIntent(w http.ResponseWriter, r *http.Request) {
@@ -167,9 +161,7 @@ func (h *Handler) executeIntent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req gwdto.ExecuteIntentRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil || req.LeaseID == "" {
+	if err := sharedhandlers.DecodeJSON(r, &req); err != nil || req.LeaseID == "" {
 		writeError(w, http.StatusBadRequest, reqID, "VALIDATION", "lease_id required", nil)
 		return
 	}
@@ -202,7 +194,7 @@ func (h *Handler) issueExecutionLease(w http.ResponseWriter, r *http.Request) {
 		h.writeGatewayError(w, reqID, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toExecutionLeaseDTO(lease))
+	sharedhandlers.WriteJSON(w, http.StatusCreated, toExecutionLeaseDTO(lease))
 }
 
 func (h *Handler) writeGatewayError(w http.ResponseWriter, requestID string, err error) {
@@ -296,7 +288,7 @@ func writeRunResponse(w http.ResponseWriter, resp gwdomain.RunResponse) {
 		status = http.StatusOK
 	}
 
-	writeJSON(w, status, gwdto.RunResponse{
+	sharedhandlers.WriteJSON(w, status, gwdto.RunResponse{
 		RequestID:   resp.RequestID,
 		Decision:    resp.Decision,
 		ToolName:    resp.ToolName,
@@ -308,12 +300,6 @@ func writeRunResponse(w http.ResponseWriter, resp gwdomain.RunResponse) {
 		ApprovalID:  resp.ApprovalID,
 		Idempotency: toIdempotencyDTO(resp.Idempotency),
 	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func toIdempotencyDTO(meta gwdomain.IdempotencyMeta) *gwdto.IdempotencyDTO {

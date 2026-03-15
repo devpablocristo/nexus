@@ -2,12 +2,12 @@ package approval
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
 
+	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
 	approvaldto "nexus/v2/data-plane/internal/approval/handler/dto"
 	domain "nexus/v2/data-plane/internal/approval/usecases/domain"
 )
@@ -45,7 +45,7 @@ func (h *Handler) listPending(w http.ResponseWriter, r *http.Request) {
 	for _, item := range items {
 		resp.Items = append(resp.Items, toApprovalDTO(item))
 	}
-	writeApprovalJSON(w, http.StatusOK, resp)
+	sharedhandlers.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +58,7 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		writeApprovalUsecaseError(w, err)
 		return
 	}
-	writeApprovalJSON(w, http.StatusOK, toApprovalDTO(item))
+	sharedhandlers.WriteJSON(w, http.StatusOK, toApprovalDTO(item))
 }
 
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +76,7 @@ func (h *Handler) decide(w http.ResponseWriter, r *http.Request, approve bool) {
 	}
 
 	var req approvaldto.DecideRequest
-	if err := decodeApprovalJSON(r, &req); err != nil {
+	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writeApprovalError(w, http.StatusBadRequest, "INVALID_JSON", "invalid json")
 		return
 	}
@@ -97,7 +97,7 @@ func (h *Handler) decide(w http.ResponseWriter, r *http.Request, approve bool) {
 		return
 	}
 
-	writeApprovalJSON(w, http.StatusOK, approvaldto.DecideResponse{Status: status})
+	sharedhandlers.WriteJSON(w, http.StatusOK, approvaldto.DecideResponse{Status: status})
 }
 
 func parseApprovalID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
@@ -107,12 +107,6 @@ func parseApprovalID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
-}
-
-func decodeApprovalJSON(r *http.Request, dst any) error {
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	return dec.Decode(dst)
 }
 
 func toApprovalDTO(item domain.PendingApproval) approvaldto.ApprovalItem {
@@ -149,16 +143,10 @@ func writeApprovalUsecaseError(w http.ResponseWriter, err error) {
 }
 
 func writeApprovalError(w http.ResponseWriter, status int, code, message string) {
-	writeApprovalJSON(w, status, approvaldto.ErrorResponse{
+	sharedhandlers.WriteJSON(w, status, approvaldto.ErrorResponse{
 		Error: approvaldto.ErrorObject{
 			Code:    code,
 			Message: message,
 		},
 	})
-}
-
-func writeApprovalJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
 }

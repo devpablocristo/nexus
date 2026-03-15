@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,8 +55,24 @@ func TestPolicyLifecycle(t *testing.T) {
 		t.Fatal("created policy should not be archived")
 	}
 
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/policies", bytes.NewBufferString(`{
+		"tool_name":"echo",
+		"effect":"deny",
+		"expression":"input.hello == \"header-check\""
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	server.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("unexpected location-check status: %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	location := strings.TrimSpace(createRec.Header().Get("Location"))
+	if location == "" || !strings.HasPrefix(location, "/v1/policies/") {
+		t.Fatalf("unexpected location header: %q", location)
+	}
+
 	listResp := doJSON[policydto.ListPoliciesResponse](t, server, http.MethodGet, "/v1/policies", nil, http.StatusOK)
-	if len(listResp.Items) != 1 {
+	if len(listResp.Items) != 2 {
 		t.Fatalf("unexpected list size: %d", len(listResp.Items))
 	}
 
@@ -103,6 +120,11 @@ func TestPolicyLifecycle(t *testing.T) {
 		t.Fatal("expected archived policy")
 	}
 
+	alreadyArchivedResp := doJSON[policydto.ErrorResponse](t, server, http.MethodPost, "/v1/policies/"+createResp.ID+"/archive", map[string]any{}, http.StatusConflict)
+	if alreadyArchivedResp.Error.Code != "ALREADY_ARCHIVED" {
+		t.Fatalf("unexpected already archived error code: %s", alreadyArchivedResp.Error.Code)
+	}
+
 	archivedPatchResp := doJSON[policydto.ErrorResponse](t, server, http.MethodPatch, "/v1/policies/"+createResp.ID, map[string]any{
 		"reason": "should fail while archived",
 	}, http.StatusConflict)
@@ -111,18 +133,23 @@ func TestPolicyLifecycle(t *testing.T) {
 	}
 
 	listAfterArchive := doJSON[policydto.ListPoliciesResponse](t, server, http.MethodGet, "/v1/policies", nil, http.StatusOK)
-	if len(listAfterArchive.Items) != 0 {
-		t.Fatalf("expected empty list after archive, got=%d", len(listAfterArchive.Items))
+	if len(listAfterArchive.Items) != 1 {
+		t.Fatalf("expected one visible policy after archive, got=%d", len(listAfterArchive.Items))
 	}
 
-	listIncludingArchived := doJSON[policydto.ListPoliciesResponse](t, server, http.MethodGet, "/v1/policies?include_archived=true", nil, http.StatusOK)
+	listIncludingArchived := doJSON[policydto.ListPoliciesResponse](t, server, http.MethodGet, "/v1/policies?archived=true", nil, http.StatusOK)
 	if len(listIncludingArchived.Items) != 1 || !listIncludingArchived.Items[0].Archived {
-		t.Fatalf("expected archived item in include_archived list: %#v", listIncludingArchived.Items)
+		t.Fatalf("expected archived item in archived list: %#v", listIncludingArchived.Items)
 	}
 
 	restoreResp := doJSON[policydto.PolicyResponse](t, server, http.MethodPost, "/v1/policies/"+createResp.ID+"/restore", map[string]any{}, http.StatusOK)
 	if restoreResp.Archived {
 		t.Fatal("expected restored policy")
+	}
+
+	notArchivedResp := doJSON[policydto.ErrorResponse](t, server, http.MethodPost, "/v1/policies/"+createResp.ID+"/restore", map[string]any{}, http.StatusConflict)
+	if notArchivedResp.Error.Code != "NOT_ARCHIVED" {
+		t.Fatalf("unexpected not archived error code: %s", notArchivedResp.Error.Code)
 	}
 
 	reblockedRun := doJSON[gwdto.RunResponse](t, server, http.MethodPost, "/v1/run", map[string]any{

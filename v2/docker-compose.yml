@@ -1,0 +1,85 @@
+services:
+  nexus-control-workers:
+    build:
+      context: .
+      dockerfile: control-workers/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8082"
+    ports:
+      - "${NEXUS_CONTROL_WORKERS_PORT:-18083}:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/v1/incidents >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  nexus-control-plane:
+    build:
+      context: .
+      dockerfile: control-plane/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8081"
+    ports:
+      - "${NEXUS_CONTROL_PLANE_PORT:-18082}:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/v1/resources >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${NEXUS_REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  echo-upstream:
+    image: python:3.12-alpine
+    restart: unless-stopped
+    working_dir: /workspace
+    command: ["python", "/workspace/scripts/dev/echo_server.py", "18081"]
+    volumes:
+      - ./scripts/dev:/workspace/scripts/dev:ro
+    ports:
+      - "${NEXUS_ECHO_UPSTREAM_PORT:-18081}:18081"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1', 18081), 1); s.close()\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  nexus-data-plane:
+    build:
+      context: .
+      dockerfile: data-plane/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      NEXUS_TOOL_ECHO_URL: "${NEXUS_TOOL_ECHO_URL:-http://echo-upstream:18081/echo}"
+      NEXUS_CONTROL_PLANE_URL: "${NEXUS_CONTROL_PLANE_URL:-http://nexus-control-plane:8081}"
+      NEXUS_CONTROL_WORKERS_URL: "${NEXUS_CONTROL_WORKERS_URL:-http://nexus-control-workers:8082}"
+      NEXUS_RATE_LIMIT_BACKEND: "${NEXUS_RATE_LIMIT_BACKEND:-memory}"
+      NEXUS_REDIS_URL: "${NEXUS_REDIS_URL:-redis://redis:6379/0}"
+    depends_on:
+      nexus-control-workers:
+        condition: service_healthy
+      nexus-control-plane:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      echo-upstream:
+        condition: service_healthy
+    ports:
+      - "${NEXUS_HTTP_PORT:-18080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/v1/run/intents >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

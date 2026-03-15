@@ -11,6 +11,9 @@ Estas reglas aplican a todos los CRUD de `v2`.
 - para soft delete se usa `archive`
 - para restaurar soft deletes se usa `restore`
 - esta convencion debe mantenerse siempre igual en todos los recursos
+- los CRUD handlers deben reutilizar `v2/pkgs/go-pkg/handlers`
+- no se aceptan helpers HTTP locales tipo `decodeJSON`, `writeJSON`, `parseLimit`, `parseArchived`
+- `./scripts/quality/check-crud-pattern.sh` hace cumplir esta regla en `qa`
 
 Patron esperado:
 
@@ -21,6 +24,276 @@ Patron esperado:
 - `DELETE /v1/<resource>/{id}` para hard delete
 - `POST /v1/<resource>/{id}/archive` para soft delete
 - `POST /v1/<resource>/{id}/restore` para restaurar soft delete
+
+## Mapa actual por servicio
+
+- `control-plane`
+  - administra `resources`
+  - administra `action policies`
+
+- `control-workers`
+  - opera `incidents`
+  - opera `alerts`
+
+- `data-plane`
+  - ejecuta `/actions`
+  - mantiene `/run`, `approvals` e `intents`
+  - todavia conserva su policy engine legacy para `/run`
+
+Nota importante:
+
+- hoy existen dos superficies distintas con path `/v1/policies`
+- `control-plane /v1/policies` administra action policies para `/actions`
+- `data-plane /v1/policies` sigue siendo la superficie legacy del policy engine de `/run`
+
+## `/incidents` en `control-workers`
+
+`control-workers` abre y opera incidentes deterministas a partir de eventos del dominio.
+
+### Endpoints actuales
+
+- `POST /v1/incidents`
+- `GET /v1/incidents`
+- `GET /v1/incidents/{id}`
+- `PATCH /v1/incidents/{id}`
+- `DELETE /v1/incidents/{id}`
+- `POST /v1/incidents/{id}/archive`
+- `POST /v1/incidents/{id}/restore`
+
+### Scope actual
+
+`source_kind` soportados:
+
+- `action`
+
+`trigger` soportados:
+
+- `blocked_action`
+- `approval_rejected`
+- `approval_expired`
+- `execution_failed`
+
+`status` soportados:
+
+- `open`
+- `acknowledged`
+- `resolved`
+
+`severity` soportados:
+
+- `low`
+- `medium`
+- `high`
+- `critical`
+
+`risk_level` soportados:
+
+- `low`
+- `medium`
+- `high`
+- `critical`
+
+Campos actuales:
+
+- `id`
+- `source_kind`
+- `source_id`
+- `action_type`
+- `resource_id`
+- `resource_type`
+- `trigger`
+- `risk_level`
+- `severity`
+- `status`
+- `summary`
+- `reason`
+- `details`
+- `archived_at`
+- `resolved_at`
+- `created_at`
+- `updated_at`
+
+### Comportamiento actual
+
+- `POST /v1/incidents` abre un incidente nuevo
+- la severidad se deriva de forma determinista a partir de `trigger + risk_level`
+- si `summary` no viene, se deriva automaticamente a partir de `trigger + action_type`
+- el incidente arranca en `status=open`
+- `PATCH /v1/incidents/{id}` hoy permite actualizar `status`, `summary`, `reason` y `details`
+- cuando `status=resolved`, se completa `resolved_at`
+- cuando el status vuelve a `open` o `acknowledged`, `resolved_at` se limpia
+- si la severidad derivada es `high` o `critical`, intenta abrir un alert determinista
+- `DELETE` hace hard delete
+- `archive` hace soft delete
+- `restore` restaura un incidente archivado
+- `GET /v1/incidents` soporta filtros por `source_kind`, `trigger`, `severity`, `status`, `archived` y `limit`
+
+### Flujo interno actual
+
+- `POST /v1/incidents`
+  - `incidents.Handler.create`
+  - `incidents.Usecases.Create`
+  - `incidents.normalizeCreate`
+  - `incidents.deriveSeverity`
+  - `incidents.deriveSummary`
+  - `incidents.InMemoryRepository.Create`
+  - `incidents.Usecases.emitAlert`
+  - `[si severity=high|critical] alerts.Usecases.Create`
+- `GET /v1/incidents`
+  - `incidents.Handler.list`
+  - `handlers.ParseLimit`
+  - `handlers.ParseArchived`
+  - `incidents.Usecases.List`
+  - `incidents.InMemoryRepository.List`
+- `PATCH /v1/incidents/{id}`
+  - `incidents.Handler.updateByID`
+  - `incidents.Usecases.UpdateByID`
+  - `incidents.InMemoryRepository.GetByID`
+  - `incidents.InMemoryRepository.Update`
+- `POST /v1/incidents/{id}/archive`
+  - `incidents.Handler.archiveByID`
+  - `incidents.Usecases.ArchiveByID`
+  - `incidents.InMemoryRepository.Archive`
+- `POST /v1/incidents/{id}/restore`
+  - `incidents.Handler.restoreByID`
+  - `incidents.Usecases.RestoreByID`
+  - `incidents.InMemoryRepository.Restore`
+
+### Integracion actual con `data-plane/actions`
+
+Si `data-plane` corre con `NEXUS_CONTROL_WORKERS_URL`, hoy abre incidentes automaticamente en estos casos:
+
+- una accion creada queda `blocked`
+- una accion pendiente de approval es `rejected`
+- una accion falla durante `execute`
+
+La integracion actual es explicita pero no autoritativa:
+
+- `data-plane` sigue decidiendo aunque `control-workers` no este disponible
+- si la apertura del incidente falla, la transicion principal de `Action` no se revierte
+
+### Integracion actual con `alerts`
+
+Si `control-workers` crea un incidente con severidad suficiente, hoy abre alerts automaticamente asi:
+
+- `severity=critical` -> `channel=pagerduty`, `route=ops-p1`
+- `severity=high` -> `channel=slack`, `route=ops-p2`
+- `severity=medium` o `low` -> no abre alert automatico
+
+La integracion actual tambien es no autoritativa:
+
+- el incidente se crea aunque falle la apertura del alert
+- la falla de alerting no revierte la apertura del incidente
+
+### Limites actuales de `incidents`
+
+- el repo actual es en memoria
+- la apertura automatica hoy solo cubre `blocked_action`, `approval_rejected` y `execution_failed`
+- `approval_expired` todavia no se abre automaticamente desde `data-plane`
+- el alerting automatico hoy solo depende de `severity`
+- todavia no hay event bus ni ejecucion async
+
+## `/alerts` en `control-workers`
+
+`control-workers` usa `alerts` como outbox determinista de notificaciones operativas.
+
+### Endpoints actuales
+
+- `POST /v1/alerts`
+- `GET /v1/alerts`
+- `GET /v1/alerts/{id}`
+- `PATCH /v1/alerts/{id}`
+- `DELETE /v1/alerts/{id}`
+- `POST /v1/alerts/{id}/archive`
+- `POST /v1/alerts/{id}/restore`
+
+### Scope actual
+
+`source_kind` soportados:
+
+- `incident`
+
+`channel` soportados:
+
+- `slack`
+- `pagerduty`
+- `email`
+
+`status` soportados:
+
+- `pending`
+- `dispatched`
+- `suppressed`
+- `acknowledged`
+
+`severity` soportados:
+
+- `low`
+- `medium`
+- `high`
+- `critical`
+
+Campos actuales:
+
+- `id`
+- `source_kind`
+- `source_id`
+- `channel`
+- `route`
+- `severity`
+- `status`
+- `summary`
+- `body`
+- `details`
+- `archived_at`
+- `created_at`
+- `updated_at`
+
+### Comportamiento actual
+
+- `POST /v1/alerts` abre un alert nuevo
+- `status` default es `pending`
+- `PATCH /v1/alerts/{id}` hoy permite actualizar `status`, `summary`, `body` y `details`
+- `DELETE` hace hard delete
+- `archive` hace soft delete
+- `restore` restaura un alert archivado
+- `GET /v1/alerts` soporta filtros por `source_kind`, `channel`, `severity`, `status`, `archived` y `limit`
+- los alerts automaticos hoy se abren solo desde `incidents`
+
+### Flujo interno actual
+
+- `POST /v1/alerts`
+  - `alerts.Handler.create`
+  - `alerts.Usecases.Create`
+  - `alerts.normalizeCreate`
+  - `alerts.InMemoryRepository.Create`
+- `GET /v1/alerts`
+  - `alerts.Handler.list`
+  - `handlers.ParseLimit`
+  - `handlers.ParseArchived`
+  - `alerts.Usecases.List`
+  - `alerts.InMemoryRepository.List`
+- `PATCH /v1/alerts/{id}`
+  - `alerts.Handler.updateByID`
+  - `alerts.Usecases.UpdateByID`
+  - `alerts.InMemoryRepository.GetByID`
+  - `alerts.InMemoryRepository.Update`
+- `POST /v1/alerts/{id}/archive`
+  - `alerts.Handler.archiveByID`
+  - `alerts.Usecases.ArchiveByID`
+  - `alerts.InMemoryRepository.Archive`
+- `POST /v1/alerts/{id}/restore`
+  - `alerts.Handler.restoreByID`
+  - `alerts.Usecases.RestoreByID`
+  - `alerts.InMemoryRepository.Restore`
+
+### Limites actuales de `alerts`
+
+- el repo actual es en memoria
+- alerting todavia no entrega a Slack/PagerDuty reales
+- hoy funciona como outbox/registro determinista interno
+- routing y canales son fijos por severidad
+- todavia no hay playbooks ni dispatch async
 
 ## `/run`
 
@@ -218,6 +491,184 @@ Mapa actual:
 - `validateAndPrepare`
   Valida que la tool este en condiciones de ejecutarse. Sirve para frenar antes del upstream si la tool esta deshabilitada, si el tipo no es soportado o si el `input` no cumple el `input_schema`.
 
+## `/actions`
+
+`POST /v1/actions` es el primer slice del pivote de `v2` desde `run/tool` hacia `action/resource`.
+
+### Endpoints actuales
+
+- `POST /v1/actions`
+- `GET /v1/actions`
+- `GET /v1/actions/{id}`
+- `GET /v1/actions/{id}/risk`
+- `GET /v1/actions/{id}/evidence`
+- `POST /v1/actions/{id}/approve`
+- `POST /v1/actions/{id}/reject`
+- `POST /v1/actions/{id}/lease`
+- `POST /v1/actions/{id}/execute`
+
+### Scope actual
+
+- `action_type` soportados:
+  - `withdrawal`
+  - `treasury_transfer`
+  - `hot_to_cold_move`
+- `resource_type` soportados:
+  - `wallet`
+  - `treasury`
+  - `vault`
+- actores soportados:
+  - `user`
+  - `system`
+  - `agent`
+
+### Contrato actual de `POST /v1/actions`
+
+Body JSON:
+
+```json
+{
+  "action_type": "withdrawal",
+  "resource_id": "wallet_hot_usdc_1",
+  "resource_type": "wallet",
+  "source_system": "treasury-orchestrator",
+  "justification": "Daily settlement withdrawal",
+  "requested_by": {
+    "type": "system",
+    "id": "treasury-bot"
+  },
+  "proposed_by": {
+    "type": "agent",
+    "id": "treasury-agent"
+  },
+  "payload": {
+    "asset": "USDC",
+    "amount": "25000.00",
+    "network": "ethereum",
+    "destination_address": "0x123"
+  },
+  "metadata": {
+    "ticket_id": "CHG-1234"
+  }
+}
+```
+
+Comportamiento actual:
+
+- crea la accion
+- si `NEXUS_CONTROL_PLANE_URL` esta configurado, resuelve `resource_id` contra `control-plane /v1/resources/{id}`
+- si `NEXUS_CONTROL_PLANE_URL` esta configurado, carga action policies desde `control-plane /v1/policies`
+- valida el payload segun `action_type`
+- calcula riesgo determinista usando tambien la `criticality` del resource resuelto
+- genera evidencia determinista basica, incluyendo `resource_resolution` y `policy_decision`
+- evalua la decision con CEL sobre `action` y `resource`
+- si matchea una policy `deny`, deja la accion en `status=blocked` y `decision=deny`
+- si matchea una policy `allow` con `require_approval=true`, deja la accion en `status=pending_approval` y `decision=require_approval`
+- si matchea una policy `allow` sin approval, deja la accion en `status=approved` y `decision=allow`
+- si no matchea ninguna policy, cae al default actual de `pending_approval`
+- cuando corresponde, crea un bloque `approval` embebido con `status=pending`
+- si `NEXUS_CONTROL_WORKERS_URL` esta configurado y la accion queda `blocked`, abre `blocked_action` en `control-workers`
+- `approve` mueve la accion a `status=approved` y `decision=allow`
+- `reject` mueve la accion a `status=rejected` y `decision=deny`, y abre `approval_rejected` en `control-workers` si esta configurado
+- `lease` emite un lease efimero single-use y mueve la accion a `status=leased`
+- `execute` consume el lease, ejecuta un executor determinista y mueve la accion a `status=executed`
+- si `execute` falla y `NEXUS_CONTROL_WORKERS_URL` esta configurado, abre `execution_failed` en `control-workers`
+
+### Respuesta actual
+
+Status: `201 Created`
+
+Campos principales:
+
+- `id`
+- `action_type`
+- `status`
+- `decision`
+- `resource_id`
+- `resource_type`
+- `source_system`
+- `justification`
+- `requested_by`
+- `proposed_by`
+- `payload`
+- `metadata`
+- `risk`
+- `evidence_summary`
+- `approval`
+- `lease`
+- `execution`
+- `expires_at`
+- `created_at`
+- `updated_at`
+
+### Lectura actual
+
+- `GET /v1/actions` soporta `action_type`, `status` y `limit`
+- `GET /v1/actions/{id}` devuelve la accion completa
+- `GET /v1/actions/{id}/risk` devuelve solo el bloque de riesgo
+- `GET /v1/actions/{id}/evidence` devuelve los registros de evidencia
+- `POST /v1/actions/{id}/approve` requiere `decided_by` y `comment` opcional
+- `POST /v1/actions/{id}/reject` requiere `decided_by` y `comment` opcional
+- `POST /v1/actions/{id}/lease` no requiere body y devuelve la accion con `lease`
+- `POST /v1/actions/{id}/execute` requiere `lease_id` y `executed_by`
+
+### Flujo interno actual de `POST /v1/actions`
+
+1. `action.Handler.create`
+2. `handlers.DecodeJSON`
+3. `action.Usecases.Create`
+4. `action.validateActionType`
+5. `action.validateResourceType`
+6. `action.validateActor`
+7. `action.Usecases.resolveResource`
+8. `[si hay control-plane] action.ControlPlaneClient.GetByID`
+9. `action.Usecases.listPolicies`
+10. `[si hay control-plane] action.ControlPlaneClient.List`
+11. `action.evaluateAction`
+12. `action.normalizePayload`
+13. `action.riskFor`
+14. `action.buildEvidence`
+15. `action.evaluatePolicyDecision`
+16. `[si hay policy CEL] action.ActionPolicyEvaluator.Matches`
+17. `action.InMemoryRepository.Create`
+18. `[si hay control-workers y la accion queda blocked] action.Usecases.emitIncident`
+19. `[si hay control-workers] action.ControlWorkersClient.Create`
+20. `action.toActionResponse`
+
+### Flujo interno actual del lifecycle
+
+- `POST /v1/actions/{id}/approve`
+  - `action.Handler.decide`
+  - `action.Usecases.Approve`
+  - `action.InMemoryRepository.Decide`
+- `POST /v1/actions/{id}/reject`
+  - `action.Handler.decide`
+  - `action.Usecases.Reject`
+  - `action.InMemoryRepository.Decide`
+  - `[si hay control-workers] action.Usecases.emitIncident`
+  - `[si hay control-workers] action.ControlWorkersClient.Create`
+- `POST /v1/actions/{id}/lease`
+  - `action.Handler.issueLease`
+  - `action.Usecases.IssueLease`
+  - `action.InMemoryRepository.IssueLease`
+- `POST /v1/actions/{id}/execute`
+  - `action.Handler.execute`
+  - `action.Usecases.Execute`
+  - `action.DeterministicExecutor.Execute`
+  - `[si execute falla y hay control-workers] action.Usecases.emitIncident`
+  - `[si execute falla y hay control-workers] action.ControlWorkersClient.Create`
+  - `action.InMemoryRepository.ConsumeLeaseAndMarkExecuted`
+
+### Limites actuales de `actions`
+
+- el executor actual es determinista y no toca sistemas externos
+- `actions` todavia no reemplaza internamente a `/run`
+- si `NEXUS_CONTROL_PLANE_URL` no esta configurado, `actions` cae a un resource sintetico local y al default de approval manual
+- si `NEXUS_CONTROL_WORKERS_URL` no esta configurado, `actions` no abre incidentes automaticos
+- approval policy, quorum y break-glass todavia no existen en el agregado `Action`
+
+### Funciones restantes de `Usecases.Run`
+
 - `decide`
   Evalua policies de la tool antes de ejecutar. Sirve para permitir, bloquear por deny o cortar en pending approval creando `intent` y `approval` sin llegar al upstream.
 
@@ -352,9 +803,12 @@ Las expresiones pueden mirar:
 - `tool.method`
 - `tool.url`
 
-## `/policies`
+## `/policies` legacy de `data-plane`
 
-`v2` ya expone el CRUD completo de `policy` siguiendo la convencion global.
+`data-plane` todavia expone el CRUD completo de `policy` para el flujo legacy de `/run`.
+
+No es la superficie principal del producto nuevo.
+El flujo de `actions` ya consume las policies administradas por `control-plane`.
 
 ### Endpoints
 
@@ -401,12 +855,12 @@ Las expresiones pueden mirar:
 `GET /v1/policies` soporta:
 
 - `tool_name`
-- `include_archived=true|false`
+- `archived=true|false`
 
 Comportamiento actual:
 
 - por default no devuelve archivados
-- con `include_archived=true` devuelve tambien archivados
+- con `archived=true` devuelve archivados
 
 ### Persistencia actual
 
@@ -536,9 +990,9 @@ Body JSON:
 - acepta `X-Timeout-Ms` igual que `/run`
 - si ejecuta bien, marca el intent como `executed` y completa `executed_at`
 
-## `policy`
+## `policy` legacy de `data-plane`
 
-El paquete `internal/policy` ahora cubre dos cosas:
+El paquete `data-plane/internal/policy` cubre dos cosas del flujo legacy de `/run`:
 
 - CRUD de policies
 - decision previa a la ejecucion del upstream
@@ -772,3 +1226,163 @@ Config actual de `cmd/api`:
 - persistencia real de secrets
 - persistencia real de approvals e intents
 - quorum break-glass
+
+## `/resources`
+
+`control-plane` administra la fuente de verdad de los recursos protegidos que despues usan las acciones del `data-plane`.
+
+### Endpoints actuales
+
+- `POST /v1/resources`
+- `GET /v1/resources`
+- `GET /v1/resources/{id}`
+- `PATCH /v1/resources/{id}`
+- `DELETE /v1/resources/{id}`
+- `POST /v1/resources/{id}/archive`
+- `POST /v1/resources/{id}/restore`
+
+### Scope actual
+
+- `type` soportados:
+  - `wallet`
+  - `treasury`
+  - `vault`
+- `criticality` soportados:
+  - `low`
+  - `medium`
+  - `high`
+  - `critical`
+
+Campos actuales:
+
+- `id`
+- `type`
+- `name`
+- `environment`
+- `chain`
+- `labels`
+- `criticality`
+- `archived_at`
+- `created_at`
+- `updated_at`
+
+### Semantica CRUD actual
+
+- `DELETE /v1/resources/{id}` hace hard delete
+- `POST /v1/resources/{id}/archive` hace soft delete
+- `POST /v1/resources/{id}/restore` restaura un recurso archivado
+- `GET /v1/resources` oculta archivados por default
+- `PATCH /v1/resources/{id}` no permite modificar un recurso archivado
+
+### Flujo interno actual
+
+- `POST /v1/resources`
+  - `resources.Handler.create`
+  - `resources.Usecases.Create`
+  - `resources.normalizeCreate`
+  - `resources.InMemoryRepository.Create`
+- `GET /v1/resources`
+  - `resources.Handler.list`
+  - `handlers.ParseLimit`
+  - `handlers.ParseArchived`
+  - `resources.Usecases.List`
+  - `resources.InMemoryRepository.List`
+- `PATCH /v1/resources/{id}`
+  - `resources.Handler.updateByID`
+  - `resources.Usecases.UpdateByID`
+  - `resources.InMemoryRepository.Update`
+- `POST /v1/resources/{id}/archive`
+  - `resources.Handler.archiveByID`
+  - `resources.Usecases.ArchiveByID`
+  - `resources.InMemoryRepository.Archive`
+- `POST /v1/resources/{id}/restore`
+  - `resources.Handler.restoreByID`
+  - `resources.Usecases.RestoreByID`
+  - `resources.InMemoryRepository.Restore`
+
+### Limites actuales de `resources`
+
+- el repo actual es en memoria
+- todavia no existe ownership por tenant/org
+- `data-plane/actions` consume estos resources cuando corre con `NEXUS_CONTROL_PLANE_URL`
+- si `control-plane` no esta configurado, `actions` vuelve al fallback local sin fuente de verdad externa
+
+## `/policies` en `control-plane`
+
+`control-plane` administra las action policies que despues consume `data-plane/actions`.
+
+Aunque el path coincide con el policy engine legacy de `data-plane`, el dominio no es el mismo:
+
+- `control-plane /v1/policies` = action policies para `actions`
+- `data-plane /v1/policies` = tool policies legacy para `/run`
+
+### Endpoints actuales
+
+- `POST /v1/policies`
+- `GET /v1/policies`
+- `GET /v1/policies/{id}`
+- `PATCH /v1/policies/{id}`
+- `DELETE /v1/policies/{id}`
+- `POST /v1/policies/{id}/archive`
+- `POST /v1/policies/{id}/restore`
+
+### Scope actual
+
+Campos actuales:
+
+- `id`
+- `action_type`
+- `resource_type`
+- `effect`
+- `priority`
+- `expression`
+- `reason`
+- `require_approval`
+- `approval_ttl_seconds`
+- `enabled`
+- `archived_at`
+- `created_at`
+- `updated_at`
+
+### Semantica actual
+
+- `effect` soporta `allow` o `deny`
+- `expression` se valida con CEL al crear o actualizar
+- CEL ve dos variables: `action` y `resource`
+- `DELETE /v1/policies/{id}` hace hard delete
+- `POST /v1/policies/{id}/archive` hace soft delete
+- `POST /v1/policies/{id}/restore` restaura una policy archivada
+- `GET /v1/policies` soporta `action_type`, `resource_type` y `archived`
+- `data-plane/actions` usa first match wins sobre las policies ordenadas por `priority`
+
+### Flujo interno actual
+
+- `POST /v1/policies`
+  - `policies.Handler.create`
+  - `policies.Usecases.Create`
+  - `policies.Evaluator.Validate`
+  - `policies.InMemoryRepository.Create`
+- `GET /v1/policies`
+  - `policies.Handler.list`
+  - `policies.Usecases.List`
+  - `policies.InMemoryRepository.List`
+- `PATCH /v1/policies/{id}`
+  - `policies.Handler.patchByID`
+  - `policies.Usecases.UpdateByID`
+  - `policies.Evaluator.Validate`
+  - `policies.InMemoryRepository.GetByID`
+  - `policies.InMemoryRepository.Save`
+- `POST /v1/policies/{id}/archive`
+  - `policies.Handler.archiveByID`
+  - `policies.Usecases.ArchiveByID`
+  - `policies.InMemoryRepository.ArchiveByID`
+- `POST /v1/policies/{id}/restore`
+  - `policies.Handler.restoreByID`
+  - `policies.Usecases.RestoreByID`
+  - `policies.InMemoryRepository.RestoreByID`
+
+### Limites actuales de `policies`
+
+- el repo actual es en memoria
+- todavia no existe publicacion/versionado de policies
+- el legacy `/run` todavia sigue usando su policy engine propio dentro de `data-plane`
