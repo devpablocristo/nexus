@@ -16,7 +16,7 @@ COPY pkgs/go-pkg ./pkgs/go-pkg
 WORKDIR /src/control-workers
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nexus-control-workers ./cmd/api
 
-FROM alpine:3.21
+FROM alpine:3.23
 WORKDIR /app
 RUN apk add --no-cache ca-certificates wget
 
