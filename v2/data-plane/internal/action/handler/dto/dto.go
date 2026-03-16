@@ -60,16 +60,39 @@ type ListActionsResponse struct {
 }
 
 type RiskResponse struct {
-	Level   string               `json:"level"`
-	Score   int                  `json:"score"`
-	Summary string               `json:"summary"`
-	Factors []RiskFactorResponse `json:"factors"`
+	Level               string                    `json:"level"`
+	Score               int                       `json:"score"`
+	Summary             string                    `json:"summary"`
+	Profile             RiskProfileRefResponse    `json:"profile"`
+	RiskPressure        float64                   `json:"risk_pressure"`
+	SafetyPressure      float64                   `json:"safety_pressure"`
+	RawScore            float64                   `json:"raw_score"`
+	DecisionScore       float64                   `json:"decision_score"`
+	RecommendedDecision string                    `json:"recommended_decision"`
+	Factors             []RiskFactorResponse      `json:"factors"`
+	Amplifications      []RiskInteractionResponse `json:"amplifications"`
+	Attenuations        []RiskInteractionResponse `json:"attenuations"`
+}
+
+type RiskProfileRefResponse struct {
+	Name    string `json:"name"`
+	Version int    `json:"version"`
 }
 
 type RiskFactorResponse struct {
-	Code    string `json:"code"`
-	Summary string `json:"summary"`
-	Weight  int    `json:"weight"`
+	Code            string  `json:"code"`
+	Type            string  `json:"type"`
+	Active          bool    `json:"active"`
+	Weight          float64 `json:"weight"`
+	AppliedWeight   float64 `json:"applied_weight"`
+	Summary         string  `json:"summary"`
+	EvidenceQuality string  `json:"evidence_quality"`
+}
+
+type RiskInteractionResponse struct {
+	Factors    []string `json:"factors"`
+	Multiplier float64  `json:"multiplier"`
+	Summary    string   `json:"summary"`
 }
 
 type EvidenceSummary struct {

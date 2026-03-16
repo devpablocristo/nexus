@@ -27,10 +27,21 @@ type ListFilters struct {
 	Limit      int
 }
 
+type HistoryFilters struct {
+	ResourceID string
+	ActorID    string
+	Since      time.Time
+	Before     time.Time
+	Limit      int
+}
+
 // Repository stores actions.
 type Repository interface {
 	Create(ctx context.Context, item actiondomain.Action) (actiondomain.Action, error)
 	List(ctx context.Context, filters ListFilters) ([]actiondomain.Action, error)
+	ListHistory(ctx context.Context, filters HistoryFilters) ([]actiondomain.Action, error)
+	ListDistinctResourceIDs(ctx context.Context, since time.Time) ([]string, error)
+	ListDistinctActorIDs(ctx context.Context, since time.Time) ([]string, error)
 	GetByID(ctx context.Context, id uuid.UUID) (actiondomain.Action, error)
 	Decide(ctx context.Context, id uuid.UUID, status actiondomain.ApprovalStatus, decidedBy actiondomain.ActorRef, comment string, decidedAt time.Time) (actiondomain.Action, error)
 	IssueLease(ctx context.Context, id uuid.UUID, lease actiondomain.ExecutionLease) (actiondomain.Action, error)
@@ -102,6 +113,72 @@ func (r *InMemoryRepository) List(_ context.Context, filters ListFilters) ([]act
 		items = items[:filters.Limit]
 	}
 	return items, nil
+}
+
+func (r *InMemoryRepository) ListHistory(_ context.Context, filters HistoryFilters) ([]actiondomain.Action, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items := make([]actiondomain.Action, 0, len(r.items))
+	for _, item := range r.items {
+		if filters.ResourceID != "" && item.ResourceID != filters.ResourceID {
+			continue
+		}
+		if filters.ActorID != "" && item.ProposedBy.ID != filters.ActorID {
+			continue
+		}
+		if !filters.Since.IsZero() && item.CreatedAt.Before(filters.Since) {
+			continue
+		}
+		if !filters.Before.IsZero() && !item.CreatedAt.Before(filters.Before) {
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ID.String() > items[j].ID.String()
+		}
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+	if filters.Limit > 0 && len(items) > filters.Limit {
+		items = items[:filters.Limit]
+	}
+	return items, nil
+}
+
+func (r *InMemoryRepository) ListDistinctResourceIDs(_ context.Context, since time.Time) ([]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	seen := make(map[string]struct{}, len(r.items))
+	for _, item := range r.items {
+		if !since.IsZero() && item.CreatedAt.Before(since) {
+			continue
+		}
+		if item.ResourceID == "" {
+			continue
+		}
+		seen[item.ResourceID] = struct{}{}
+	}
+	return distinctKeys(seen), nil
+}
+
+func (r *InMemoryRepository) ListDistinctActorIDs(_ context.Context, since time.Time) ([]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	seen := make(map[string]struct{}, len(r.items))
+	for _, item := range r.items {
+		if !since.IsZero() && item.CreatedAt.Before(since) {
+			continue
+		}
+		if item.ProposedBy.ID == "" {
+			continue
+		}
+		seen[item.ProposedBy.ID] = struct{}{}
+	}
+	return distinctKeys(seen), nil
 }
 
 func (r *InMemoryRepository) GetByID(_ context.Context, id uuid.UUID) (actiondomain.Action, error) {
@@ -207,4 +284,13 @@ func (r *InMemoryRepository) ConsumeLeaseAndMarkExecuted(_ context.Context, id, 
 	item.UpdatedAt = execution.ExecutedAt
 	r.items[id] = item
 	return item, nil
+}
+
+func distinctKeys(values map[string]struct{}) []string {
+	items := make([]string, 0, len(values))
+	for value := range values {
+		items = append(items, value)
+	}
+	sort.Strings(items)
+	return items
 }

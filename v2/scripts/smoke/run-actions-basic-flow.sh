@@ -9,11 +9,11 @@ source "${SCRIPT_DIR}/../lib/common.sh"
 require_cmd curl
 require_cmd grep
 
-CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-18102}"
-DATA_PLANE_PORT="${DATA_PLANE_PORT:-18100}"
+CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-$(find_free_port 18100 18109)}"
+DATA_PLANE_PORT="${DATA_PLANE_PORT:-$(find_free_port 18110 18119)}"
 CONTROL_PLANE_URL="http://127.0.0.1:${CONTROL_PLANE_PORT}"
 BASE_URL="http://127.0.0.1:${DATA_PLANE_PORT}"
-READY_URL="${BASE_URL}/healthz"
+READY_URL="${BASE_URL}/readyz"
 ACTIONS_URL="${BASE_URL}/v1/actions"
 ADMIN_API_KEY="$(admin_api_key)"
 
@@ -78,7 +78,7 @@ JSON
 PORT="${CONTROL_PLANE_PORT}" "${SCRIPT_DIR}/../dev/run-control-plane.sh" &
 CONTROL_PLANE_PID=$!
 
-wait_for_http "${CONTROL_PLANE_URL}/healthz" 80 0.1
+wait_for_http "${CONTROL_PLANE_URL}/readyz" 80 0.1
 
 resource_body="$(create_resource)"
 resource_id="$(printf '%s' "${resource_body}" | json_get "id")"
@@ -122,6 +122,8 @@ approval_status="$(printf '%s' "${body}" | json_get "approval.status")"
 evidence_status="$(printf '%s' "${body}" | json_get "evidence_summary.status")"
 checks_total="$(printf '%s' "${body}" | json_get "evidence_summary.checks_total")"
 risk_score="$(printf '%s' "${body}" | json_get "risk.score")"
+risk_profile="$(printf '%s' "${body}" | json_get "risk.profile.name")"
+risk_recommended="$(printf '%s' "${body}" | json_get "risk.recommended_decision")"
 
 if [[ -z "${action_id}" ]]; then
   echo "missing action id" >&2
@@ -135,10 +137,14 @@ if [[ "${location}" != "/v1/actions/${action_id}" ]]; then
   exit 1
 fi
 
-if [[ "${decision}" != "allow" || "${run_status}" != "approved" || "${risk_level}" != "high" || -n "${approval_status}" || "${evidence_status}" != "passed" || "${checks_total}" != "3" || "${risk_score}" != "95" ]]; then
+if [[ "${decision}" != "allow" || "${run_status}" != "approved" || "${risk_level}" != "medium" || -n "${approval_status}" || "${evidence_status}" != "passed" || "${checks_total}" != "3" || "${risk_score}" != "30" || "${risk_profile}" != "balanced" || "${risk_recommended}" != "enhanced_log" ]]; then
   echo "unexpected response body" >&2
   echo "${body}" >&2
   exit 1
 fi
+
+metrics_body="$(fetch_metrics "${BASE_URL}" "${ADMIN_API_KEY}")"
+assert_metrics_contains "${metrics_body}" 'nexus_http_requests_total{method="POST",route="/v1/actions",status_code="201"} 1'
+assert_metrics_contains "${metrics_body}" 'nexus_actions_total{action_type="withdrawal",event="created"} 1'
 
 echo "actions smoke ok"

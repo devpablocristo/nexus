@@ -18,6 +18,7 @@ type CreateRequest struct {
 	Chain       string
 	Labels      map[string]string
 	Criticality resourcedomain.Criticality
+	IsCanary    bool
 }
 
 type UpdateRequest struct {
@@ -27,6 +28,7 @@ type UpdateRequest struct {
 	Chain       *string
 	Labels      map[string]string
 	Criticality *resourcedomain.Criticality
+	IsCanary    *bool
 }
 
 type ListRequest struct {
@@ -140,6 +142,10 @@ func (u *Usecases) UpdateByID(ctx context.Context, id uuid.UUID, req UpdateReque
 		}
 		current.Criticality = *req.Criticality
 	}
+	if req.IsCanary != nil {
+		current.IsCanary = *req.IsCanary
+		current.Labels = applyCanaryLabel(current.Labels, current.IsCanary)
+	}
 
 	updated, err := u.repo.Update(ctx, current)
 	if err != nil {
@@ -193,9 +199,23 @@ func normalizeCreate(req CreateRequest) (resourcedomain.ProtectedResource, error
 		Name:        name,
 		Environment: environment,
 		Chain:       chain,
-		Labels:      cloneLabels(req.Labels),
+		Labels:      applyCanaryLabel(cloneLabels(req.Labels), req.IsCanary),
 		Criticality: req.Criticality,
+		IsCanary:    req.IsCanary,
 	}, nil
+}
+
+func applyCanaryLabel(labels map[string]string, isCanary bool) map[string]string {
+	out := cloneLabels(labels)
+	if out == nil {
+		out = map[string]string{}
+	}
+	if isCanary {
+		out["_nexus_trap"] = "true"
+		return out
+	}
+	delete(out, "_nexus_trap")
+	return out
 }
 
 func validateType(value resourcedomain.ResourceType) error {

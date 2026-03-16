@@ -19,6 +19,8 @@ func TestUsecasesCreateAndList(t *testing.T) {
 		EventType:     "action_created",
 		SourceService: "data-plane",
 		ActionID:      "action-1",
+		IncidentID:    "incident-1",
+		AlertID:       "alert-1",
 		ResourceID:    "resource-1",
 		ResourceType:  "wallet",
 		Actor:         &sharedaudit.Actor{Type: "system", ID: "treasury-bot"},
@@ -34,10 +36,12 @@ func TestUsecasesCreateAndList(t *testing.T) {
 	}
 
 	items, err := uc.List(context.Background(), ListRequest{
-		ActionID:  "action-1",
-		EventType: "action_created",
-		ActorID:   "treasury-bot",
-		Limit:     10,
+		ActionID:   "action-1",
+		IncidentID: "incident-1",
+		AlertID:    "alert-1",
+		EventType:  "action_created",
+		ActorID:    "treasury-bot",
+		Limit:      10,
 	})
 	if err != nil {
 		t.Fatalf("List returned error: %v", err)
@@ -56,6 +60,9 @@ func TestUsecasesCreateAndList(t *testing.T) {
 	}
 	if got.Summary != "withdrawal created" {
 		t.Fatalf("unexpected audit record: %#v", got)
+	}
+	if got.IncidentID != "incident-1" || got.AlertID != "alert-1" {
+		t.Fatalf("unexpected correlation fields: %#v", got)
 	}
 }
 

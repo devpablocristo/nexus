@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 )
 
 func TestClientCreate(t *testing.T) {
@@ -23,6 +25,9 @@ func TestClientCreate(t *testing.T) {
 		if got, want := r.Header.Get("X-API-Key"), "audit-secret"; got != want {
 			t.Fatalf("unexpected api key header: got=%q want=%q", got, want)
 		}
+		if got, want := r.Header.Get(sharedobservability.RequestIDHeader), "req-123"; got != want {
+			t.Fatalf("unexpected request id header: got=%q want=%q", got, want)
+		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -31,10 +36,13 @@ func TestClientCreate(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, time.Second).WithAPIKey("audit-secret")
-	err := client.Create(context.Background(), WriteRequest{
+	ctx := sharedobservability.ContextWithRequestID(context.Background(), "req-123")
+	err := client.Create(ctx, WriteRequest{
 		EventType:     "action_created",
 		SourceService: "data-plane",
 		ActionID:      "action-1",
+		IncidentID:    "incident-1",
+		AlertID:       "alert-1",
 		ResourceID:    "resource-1",
 		ResourceType:  "wallet",
 		Actor:         &Actor{Type: "system", ID: "treasury-bot"},
@@ -48,6 +56,9 @@ func TestClientCreate(t *testing.T) {
 
 	if got.EventType != "action_created" || got.SourceService != "data-plane" || got.ActionID != "action-1" {
 		t.Fatalf("unexpected audit payload: %#v", got)
+	}
+	if got.IncidentID != "incident-1" || got.AlertID != "alert-1" {
+		t.Fatalf("unexpected correlation payload: %#v", got)
 	}
 }
 

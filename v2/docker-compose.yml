@@ -67,6 +67,62 @@ services:
       timeout: 3s
       retries: 30
 
+  nexus-data-plane-postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@data-plane-postgres:5432/nexus_data_plane?sslmode=disable"
+    depends_on:
+      data-plane-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9187/metrics >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nexus-control-plane-postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@control-plane-postgres:5432/nexus_control_plane?sslmode=disable"
+    depends_on:
+      control-plane-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9187/metrics >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nexus-control-workers-postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@control-workers-postgres:5432/nexus_control_workers?sslmode=disable"
+    depends_on:
+      control-workers-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9187/metrics >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nexus-audit-postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@audit-postgres:5432/nexus_audit?sslmode=disable"
+    depends_on:
+      audit-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9187/metrics >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   nexus-control-workers:
     build:
       context: .
@@ -74,10 +130,17 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8082"
-      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key},prometheus=${NEXUS_PROMETHEUS_API_KEY:-nexus-prometheus-dev-key}"
       NEXUS_CONTROL_PLANE_URL: "${NEXUS_CONTROL_PLANE_URL:-http://nexus-control-plane:8081}"
       NEXUS_CONTROL_PLANE_API_KEY: "${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key}"
       NEXUS_CONTROL_WORKERS_DATABASE_URL: "${NEXUS_CONTROL_WORKERS_DATABASE_URL:-postgres://postgres:postgres@control-workers-postgres:5432/nexus_control_workers?sslmode=disable}"
+      NEXUS_CONTROL_WORKERS_DB_MIN_CONNS: "${NEXUS_CONTROL_WORKERS_DB_MIN_CONNS:-1}"
+      NEXUS_CONTROL_WORKERS_DB_MAX_CONNS: "${NEXUS_CONTROL_WORKERS_DB_MAX_CONNS:-8}"
+      NEXUS_CONTROL_WORKERS_DB_MAX_CONN_LIFETIME: "${NEXUS_CONTROL_WORKERS_DB_MAX_CONN_LIFETIME:-30m}"
+      NEXUS_CONTROL_WORKERS_DB_MAX_CONN_IDLE_TIME: "${NEXUS_CONTROL_WORKERS_DB_MAX_CONN_IDLE_TIME:-5m}"
+      NEXUS_CONTROL_WORKERS_DB_HEALTH_CHECK_PERIOD: "${NEXUS_CONTROL_WORKERS_DB_HEALTH_CHECK_PERIOD:-30s}"
+      NEXUS_CONTROL_WORKERS_DB_CONNECT_TIMEOUT: "${NEXUS_CONTROL_WORKERS_DB_CONNECT_TIMEOUT:-5s}"
+      NEXUS_CONTROL_WORKERS_DB_STATEMENT_TIMEOUT: "${NEXUS_CONTROL_WORKERS_DB_STATEMENT_TIMEOUT:-5s}"
     ports:
       - "${NEXUS_CONTROL_WORKERS_PORT:-18083}:8082"
     depends_on:
@@ -86,7 +149,7 @@ services:
       nexus-control-plane:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/healthz >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/readyz >/dev/null 2>&1 || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -98,9 +161,23 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8081"
-      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key},control-workers=${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key}"
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},data-plane=${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key},control-workers=${NEXUS_CONTROL_WORKERS_SERVICE_API_KEY:-nexus-control-workers-service-dev-key},prometheus=${NEXUS_PROMETHEUS_API_KEY:-nexus-prometheus-dev-key}"
       NEXUS_CONTROL_PLANE_DATABASE_URL: "${NEXUS_CONTROL_PLANE_DATABASE_URL:-postgres://postgres:postgres@control-plane-postgres:5432/nexus_control_plane?sslmode=disable}"
       NEXUS_AUDIT_DATABASE_URL: "${NEXUS_AUDIT_DATABASE_URL:-postgres://postgres:postgres@audit-postgres:5432/nexus_audit?sslmode=disable}"
+      NEXUS_CONTROL_PLANE_DB_MIN_CONNS: "${NEXUS_CONTROL_PLANE_DB_MIN_CONNS:-1}"
+      NEXUS_CONTROL_PLANE_DB_MAX_CONNS: "${NEXUS_CONTROL_PLANE_DB_MAX_CONNS:-8}"
+      NEXUS_CONTROL_PLANE_DB_MAX_CONN_LIFETIME: "${NEXUS_CONTROL_PLANE_DB_MAX_CONN_LIFETIME:-30m}"
+      NEXUS_CONTROL_PLANE_DB_MAX_CONN_IDLE_TIME: "${NEXUS_CONTROL_PLANE_DB_MAX_CONN_IDLE_TIME:-5m}"
+      NEXUS_CONTROL_PLANE_DB_HEALTH_CHECK_PERIOD: "${NEXUS_CONTROL_PLANE_DB_HEALTH_CHECK_PERIOD:-30s}"
+      NEXUS_CONTROL_PLANE_DB_CONNECT_TIMEOUT: "${NEXUS_CONTROL_PLANE_DB_CONNECT_TIMEOUT:-5s}"
+      NEXUS_CONTROL_PLANE_DB_STATEMENT_TIMEOUT: "${NEXUS_CONTROL_PLANE_DB_STATEMENT_TIMEOUT:-5s}"
+      NEXUS_AUDIT_DB_MIN_CONNS: "${NEXUS_AUDIT_DB_MIN_CONNS:-1}"
+      NEXUS_AUDIT_DB_MAX_CONNS: "${NEXUS_AUDIT_DB_MAX_CONNS:-4}"
+      NEXUS_AUDIT_DB_MAX_CONN_LIFETIME: "${NEXUS_AUDIT_DB_MAX_CONN_LIFETIME:-30m}"
+      NEXUS_AUDIT_DB_MAX_CONN_IDLE_TIME: "${NEXUS_AUDIT_DB_MAX_CONN_IDLE_TIME:-5m}"
+      NEXUS_AUDIT_DB_HEALTH_CHECK_PERIOD: "${NEXUS_AUDIT_DB_HEALTH_CHECK_PERIOD:-30s}"
+      NEXUS_AUDIT_DB_CONNECT_TIMEOUT: "${NEXUS_AUDIT_DB_CONNECT_TIMEOUT:-5s}"
+      NEXUS_AUDIT_DB_STATEMENT_TIMEOUT: "${NEXUS_AUDIT_DB_STATEMENT_TIMEOUT:-5s}"
     ports:
       - "${NEXUS_CONTROL_PLANE_PORT:-18082}:8081"
     depends_on:
@@ -109,7 +186,7 @@ services:
       audit-postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/healthz >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/readyz >/dev/null 2>&1 || exit 1"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -120,12 +197,19 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
-      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
+      NEXUS_API_KEYS: "admin=${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key},prometheus=${NEXUS_PROMETHEUS_API_KEY:-nexus-prometheus-dev-key}"
       NEXUS_CONTROL_PLANE_URL: "${NEXUS_CONTROL_PLANE_URL:-http://nexus-control-plane:8081}"
       NEXUS_CONTROL_PLANE_API_KEY: "${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
       NEXUS_CONTROL_WORKERS_URL: "${NEXUS_CONTROL_WORKERS_URL:-http://nexus-control-workers:8082}"
       NEXUS_CONTROL_WORKERS_API_KEY: "${NEXUS_DATA_PLANE_SERVICE_API_KEY:-nexus-data-plane-service-dev-key}"
       NEXUS_DATA_PLANE_DATABASE_URL: "${NEXUS_DATA_PLANE_DATABASE_URL:-postgres://postgres:postgres@data-plane-postgres:5432/nexus_data_plane?sslmode=disable}"
+      NEXUS_DATA_PLANE_DB_MIN_CONNS: "${NEXUS_DATA_PLANE_DB_MIN_CONNS:-1}"
+      NEXUS_DATA_PLANE_DB_MAX_CONNS: "${NEXUS_DATA_PLANE_DB_MAX_CONNS:-8}"
+      NEXUS_DATA_PLANE_DB_MAX_CONN_LIFETIME: "${NEXUS_DATA_PLANE_DB_MAX_CONN_LIFETIME:-30m}"
+      NEXUS_DATA_PLANE_DB_MAX_CONN_IDLE_TIME: "${NEXUS_DATA_PLANE_DB_MAX_CONN_IDLE_TIME:-5m}"
+      NEXUS_DATA_PLANE_DB_HEALTH_CHECK_PERIOD: "${NEXUS_DATA_PLANE_DB_HEALTH_CHECK_PERIOD:-30s}"
+      NEXUS_DATA_PLANE_DB_CONNECT_TIMEOUT: "${NEXUS_DATA_PLANE_DB_CONNECT_TIMEOUT:-5s}"
+      NEXUS_DATA_PLANE_DB_STATEMENT_TIMEOUT: "${NEXUS_DATA_PLANE_DB_STATEMENT_TIMEOUT:-5s}"
     depends_on:
       data-plane-postgres:
         condition: service_healthy
@@ -136,8 +220,75 @@ services:
     ports:
       - "${NEXUS_HTTP_PORT:-18080}:8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1 || exit 1"]
       interval: 2s
+      timeout: 3s
+      retries: 30
+
+  nexus-prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    environment:
+      NEXUS_PROMETHEUS_API_KEY: "${NEXUS_PROMETHEUS_API_KEY:-nexus-prometheus-dev-key}"
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        printf '%s' "$${NEXUS_PROMETHEUS_API_KEY}" > /tmp/nexus_prometheus_api_key
+        exec /bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --web.console.libraries=/usr/share/prometheus/console_libraries \
+          --web.console.templates=/usr/share/prometheus/consoles
+    ports:
+      - "${NEXUS_PROMETHEUS_PORT:-19090}:9090"
+    volumes:
+      - ./ops/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/observability/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      nexus-data-plane:
+        condition: service_healthy
+      nexus-control-plane:
+        condition: service_healthy
+      nexus-control-workers:
+        condition: service_healthy
+      nexus-data-plane-postgres-exporter:
+        condition: service_healthy
+      nexus-control-plane-postgres-exporter:
+        condition: service_healthy
+      nexus-control-workers-postgres-exporter:
+        condition: service_healthy
+      nexus-audit-postgres-exporter:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/ready >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  nexus-grafana:
+    image: grafana/grafana:11.1.4
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: "${NEXUS_GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${NEXUS_GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_DEFAULT_THEME: "light"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "${NEXUS_GRAFANA_PORT:-13000}:3000"
+    volumes:
+      - ./ops/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./ops/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./ops/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      nexus-prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 5s
       timeout: 3s
       retries: 30
 
@@ -146,3 +297,5 @@ volumes:
   control-plane-postgres-data:
   control-workers-postgres-data:
   audit-postgres-data:
+  prometheus-data:
+  grafana-data:

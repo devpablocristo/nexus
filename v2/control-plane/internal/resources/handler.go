@@ -3,13 +3,13 @@ package resources
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/google/uuid"
 
 	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 	resourcedto "nexus/v2/control-plane/internal/resources/handler/dto"
 	resourcedomain "nexus/v2/control-plane/internal/resources/usecases/domain"
 	"nexus/v2/control-plane/internal/shared/actors"
@@ -71,6 +71,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		Chain:       req.Chain,
 		Labels:      req.Labels,
 		Criticality: resourcedomain.Criticality(req.Criticality),
+		IsCanary:    req.IsCanary,
 	})
 	if err != nil {
 		writeResourceUsecaseError(w, err)
@@ -162,6 +163,9 @@ func (h *Handler) updateByID(w http.ResponseWriter, r *http.Request) {
 	if req.Criticality != nil {
 		value := resourcedomain.Criticality(*req.Criticality)
 		updateReq.Criticality = &value
+	}
+	if req.IsCanary != nil {
+		updateReq.IsCanary = req.IsCanary
 	}
 
 	item, err := h.uc.UpdateByID(r.Context(), id, updateReq)
@@ -274,6 +278,7 @@ func toResourceResponse(item resourcedomain.ProtectedResource) resourcedto.Resou
 		Chain:       item.Chain,
 		Labels:      cloneLabels(item.Labels),
 		Criticality: string(item.Criticality),
+		IsCanary:    item.IsCanary,
 		ArchivedAt:  item.ArchivedAt,
 		CreatedAt:   item.CreatedAt,
 		UpdatedAt:   item.UpdatedAt,
@@ -307,7 +312,12 @@ func (h *Handler) emitAudit(ctx context.Context, actor *sharedaudit.Actor, event
 		Data:          cloneMap(data),
 		OccurredAt:    nowUTC(),
 	}); err != nil {
-		log.Printf("control-plane resource audit failed: resource_id=%s event_type=%s err=%v", item.ID, eventType, err)
+		sharedobservability.LoggerFromContext(ctx).Error(
+			"control-plane resource audit failed",
+			"resource_id", item.ID,
+			"event_type", eventType,
+			"error", err,
+		)
 	}
 }
 

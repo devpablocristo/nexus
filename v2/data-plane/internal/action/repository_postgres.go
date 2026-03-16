@@ -95,6 +95,103 @@ func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]a
 	return items, nil
 }
 
+func (r *PostgresRepository) ListHistory(ctx context.Context, filters HistoryFilters) ([]actiondomain.Action, error) {
+	query := `
+		SELECT id, type, status, decision, resource_id, resource_type, source_system, justification,
+		       requested_by, proposed_by, payload, metadata, risk, evidence, approval, lease, execution,
+		       expires_at, created_at, updated_at
+		FROM actions
+		WHERE ($1 = '' OR resource_id = $1)
+		  AND ($2 = '' OR proposed_by->>'id' = $2)
+		  AND ($3::timestamptz IS NULL OR created_at >= $3)
+		  AND ($4::timestamptz IS NULL OR created_at < $4)
+		ORDER BY created_at DESC, id DESC
+	`
+	args := []any{
+		filters.ResourceID,
+		filters.ActorID,
+		nullableTime(filters.Since),
+		nullableTime(filters.Before),
+	}
+	if filters.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", len(args)+1)
+		args = append(args, filters.Limit)
+	}
+
+	rows, err := r.db.Pool().Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list action history: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]actiondomain.Action, 0)
+	for rows.Next() {
+		item, err := scanAction(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate action history: %w", err)
+	}
+	return items, nil
+}
+
+func (r *PostgresRepository) ListDistinctResourceIDs(ctx context.Context, since time.Time) ([]string, error) {
+	rows, err := r.db.Pool().Query(ctx, `
+		SELECT DISTINCT resource_id
+		FROM actions
+		WHERE resource_id <> ''
+		  AND ($1::timestamptz IS NULL OR created_at >= $1)
+		ORDER BY resource_id ASC
+	`, nullableTime(since))
+	if err != nil {
+		return nil, fmt.Errorf("list distinct resource ids: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]string, 0)
+	for rows.Next() {
+		var resourceID string
+		if err := rows.Scan(&resourceID); err != nil {
+			return nil, fmt.Errorf("scan distinct resource id: %w", err)
+		}
+		items = append(items, resourceID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate distinct resource ids: %w", err)
+	}
+	return items, nil
+}
+
+func (r *PostgresRepository) ListDistinctActorIDs(ctx context.Context, since time.Time) ([]string, error) {
+	rows, err := r.db.Pool().Query(ctx, `
+		SELECT DISTINCT proposed_by->>'id'
+		FROM actions
+		WHERE COALESCE(proposed_by->>'id', '') <> ''
+		  AND ($1::timestamptz IS NULL OR created_at >= $1)
+		ORDER BY proposed_by->>'id' ASC
+	`, nullableTime(since))
+	if err != nil {
+		return nil, fmt.Errorf("list distinct actor ids: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]string, 0)
+	for rows.Next() {
+		var actorID string
+		if err := rows.Scan(&actorID); err != nil {
+			return nil, fmt.Errorf("scan distinct actor id: %w", err)
+		}
+		items = append(items, actorID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate distinct actor ids: %w", err)
+	}
+	return items, nil
+}
+
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (actiondomain.Action, error) {
 	row := r.db.Pool().QueryRow(ctx, `
 		SELECT id, type, status, decision, resource_id, resource_type, source_system, justification,

@@ -12,6 +12,8 @@ type AuditRecord struct {
 	EventType     string
 	SourceService string
 	ActionID      string
+	IncidentID    string
+	AlertID       string
 	ResourceID    string
 	ResourceType  string
 	Actor         *sharedaudit.Actor

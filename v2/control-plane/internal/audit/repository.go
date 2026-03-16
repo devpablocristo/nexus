@@ -17,6 +17,8 @@ var ErrNotFound = errors.New("audit record not found")
 
 type ListFilters struct {
 	ActionID   string
+	IncidentID string
+	AlertID    string
 	ResourceID string
 	ActorID    string
 	EventType  string
@@ -70,6 +72,12 @@ func (r *InMemoryRepository) List(_ context.Context, filters ListFilters) ([]aud
 	items := make([]auditdomain.AuditRecord, 0, len(r.items))
 	for _, item := range r.items {
 		if filters.ActionID != "" && item.ActionID != filters.ActionID {
+			continue
+		}
+		if filters.IncidentID != "" && item.IncidentID != filters.IncidentID {
+			continue
+		}
+		if filters.AlertID != "" && item.AlertID != filters.AlertID {
 			continue
 		}
 		if filters.ResourceID != "" && item.ResourceID != filters.ResourceID {

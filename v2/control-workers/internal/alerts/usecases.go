@@ -58,8 +58,9 @@ func newHTTPError(status int, code, message string) error {
 }
 
 type Usecases struct {
-	repo  Repository
-	audit AuditSink
+	repo    Repository
+	audit   AuditSink
+	metrics MetricsSink
 }
 
 func NewUsecases(repo Repository) *Usecases {
@@ -75,22 +76,38 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (alertdomain.A
 	if err != nil {
 		return alertdomain.Alert{}, err
 	}
+	if u.metrics != nil {
+		u.metrics.IncAlertCreated(string(created.Channel), string(created.Severity))
+	}
+	actionID := detailStringValue(created.Details, "action_id")
+	resourceID := detailStringValue(created.Details, "resource_id")
+	resourceType := detailStringValue(created.Details, "resource_type")
+	incidentID := ""
+	if created.SourceKind == alertdomain.SourceKindIncident {
+		incidentID = created.SourceID
+	}
 	u.emitAudit(ctx, sharedaudit.WriteRequest{
 		EventType:     "alert_created",
 		SourceService: "control-workers",
-		ActionID:      strings.TrimSpace(req.ActionID),
-		ResourceID:    strings.TrimSpace(req.ResourceID),
-		ResourceType:  strings.TrimSpace(req.ResourceType),
+		ActionID:      actionID,
+		IncidentID:    incidentID,
+		AlertID:       created.ID,
+		ResourceID:    resourceID,
+		ResourceType:  resourceType,
 		Actor:         &sharedaudit.Actor{Type: "system", ID: "control-workers"},
 		Summary:       "alert created",
 		Data: map[string]any{
-			"alert_id":    created.ID,
-			"source_kind": string(created.SourceKind),
-			"source_id":   created.SourceID,
-			"channel":     string(created.Channel),
-			"route":       created.Route,
-			"severity":    string(created.Severity),
-			"status":      string(created.Status),
+			"incident_id":   incidentID,
+			"action_id":     actionID,
+			"alert_id":      created.ID,
+			"source_kind":   string(created.SourceKind),
+			"source_id":     created.SourceID,
+			"resource_id":   resourceID,
+			"resource_type": resourceType,
+			"channel":       string(created.Channel),
+			"route":         created.Route,
+			"severity":      string(created.Severity),
+			"status":        string(created.Status),
 		},
 		OccurredAt: created.CreatedAt,
 	})
@@ -240,6 +257,22 @@ func normalizeCreate(req CreateRequest) (alertdomain.Alert, error) {
 	if body == "" {
 		return alertdomain.Alert{}, newHTTPError(http.StatusBadRequest, "VALIDATION", "body required")
 	}
+	details := cloneDetails(req.Details)
+	if details == nil {
+		details = make(map[string]any, 4)
+	}
+	if req.SourceKind == alertdomain.SourceKindIncident {
+		details["incident_id"] = sourceID
+	}
+	if actionID := strings.TrimSpace(req.ActionID); actionID != "" {
+		details["action_id"] = actionID
+	}
+	if resourceID := strings.TrimSpace(req.ResourceID); resourceID != "" {
+		details["resource_id"] = resourceID
+	}
+	if resourceType := strings.TrimSpace(req.ResourceType); resourceType != "" {
+		details["resource_type"] = resourceType
+	}
 
 	return alertdomain.Alert{
 		SourceKind: req.SourceKind,
@@ -250,7 +283,7 @@ func normalizeCreate(req CreateRequest) (alertdomain.Alert, error) {
 		Status:     status,
 		Summary:    summary,
 		Body:       body,
-		Details:    cloneDetails(req.Details),
+		Details:    details,
 	}, nil
 }
 
@@ -307,4 +340,19 @@ func mapRepoErr(err error) error {
 		return newHTTPError(http.StatusConflict, "NOT_ARCHIVED", "alert is not archived")
 	}
 	return err
+}
+
+func detailStringValue(details map[string]any, key string) string {
+	if len(details) == 0 {
+		return ""
+	}
+	raw, ok := details[key]
+	if !ok {
+		return ""
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }

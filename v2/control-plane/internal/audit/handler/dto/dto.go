@@ -11,6 +11,8 @@ type AuditResponse struct {
 	EventType     string             `json:"event_type"`
 	SourceService string             `json:"source_service"`
 	ActionID      string             `json:"action_id,omitempty"`
+	IncidentID    string             `json:"incident_id,omitempty"`
+	AlertID       string             `json:"alert_id,omitempty"`
 	ResourceID    string             `json:"resource_id,omitempty"`
 	ResourceType  string             `json:"resource_type,omitempty"`
 	Actor         *sharedaudit.Actor `json:"actor,omitempty"`

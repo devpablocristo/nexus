@@ -2,9 +2,9 @@ package action
 
 import (
 	"context"
-	"log"
 
 	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
@@ -23,13 +23,12 @@ func (u *Usecases) emitAudit(ctx context.Context, req sharedaudit.WriteRequest) 
 		return
 	}
 	if err := u.audit.Create(ctx, req); err != nil {
-		log.Printf(
-			"action audit sink failed: event_type=%s action_id=%s resource_id=%s err=%v payload=%+v",
-			req.EventType,
-			req.ActionID,
-			req.ResourceID,
-			err,
-			req,
+		sharedobservability.LoggerFromContext(ctx).Error(
+			"action audit sink failed",
+			"event_type", req.EventType,
+			"action_id", req.ActionID,
+			"resource_id", req.ResourceID,
+			"error", err,
 		)
 	}
 }

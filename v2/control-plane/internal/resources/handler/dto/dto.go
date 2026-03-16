@@ -9,6 +9,7 @@ type CreateResourceRequest struct {
 	Chain       string            `json:"chain"`
 	Labels      map[string]string `json:"labels"`
 	Criticality string            `json:"criticality"`
+	IsCanary    bool              `json:"is_canary"`
 }
 
 type UpdateResourceRequest struct {
@@ -18,6 +19,7 @@ type UpdateResourceRequest struct {
 	Chain       *string           `json:"chain,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
 	Criticality *string           `json:"criticality,omitempty"`
+	IsCanary    *bool             `json:"is_canary,omitempty"`
 }
 
 type ResourceResponse struct {
@@ -28,6 +30,7 @@ type ResourceResponse struct {
 	Chain       string            `json:"chain"`
 	Labels      map[string]string `json:"labels,omitempty"`
 	Criticality string            `json:"criticality"`
+	IsCanary    bool              `json:"is_canary"`
 	ArchivedAt  *time.Time        `json:"archived_at,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`

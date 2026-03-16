@@ -19,6 +19,14 @@ func (s *stubIncidentAuditSink) Create(_ context.Context, req sharedaudit.WriteR
 	return nil
 }
 
+type stubIncidentMetrics struct {
+	created []string
+}
+
+func (s *stubIncidentMetrics) IncIncidentCreated(trigger, severity string) {
+	s.created = append(s.created, trigger+":"+severity)
+}
+
 func TestUsecasesCreateDerivesSeverityAndSummary(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +57,9 @@ func TestUsecasesCreateDerivesSeverityAndSummary(t *testing.T) {
 	}
 	if item.Summary != "withdrawal failed during execution" {
 		t.Fatalf("unexpected summary: %s", item.Summary)
+	}
+	if item.Details["action_id"] != "action-1" || item.Details["resource_id"] != "wallet_hot_usdc_1" {
+		t.Fatalf("unexpected incident details: %#v", item.Details)
 	}
 }
 
@@ -128,6 +139,32 @@ func TestUsecasesCreateEmitsAudit(t *testing.T) {
 	}
 	if len(audits.items) != 1 || audits.items[0].EventType != "incident_created" {
 		t.Fatalf("unexpected audit payloads: %#v", audits.items)
+	}
+	if audits.items[0].IncidentID != item.ID || audits.items[0].ActionID != "action-1" {
+		t.Fatalf("unexpected audit correlation fields: %#v", audits.items)
+	}
+}
+
+func TestUsecasesCreateEmitsMetrics(t *testing.T) {
+	t.Parallel()
+
+	metrics := &stubIncidentMetrics{}
+	uc := NewUsecases(NewInMemoryRepository(nil)).WithMetrics(metrics)
+
+	_, err := uc.Create(context.Background(), CreateRequest{
+		SourceKind:   incidentdomain.SourceKindAction,
+		SourceID:     "action-1",
+		ActionType:   "withdrawal",
+		ResourceID:   "wallet_hot_usdc_1",
+		ResourceType: "wallet",
+		Trigger:      incidentdomain.TriggerBlockedAction,
+		RiskLevel:    incidentdomain.RiskLevelHigh,
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(metrics.created) != 1 || metrics.created[0] != "blocked_action:high" {
+		t.Fatalf("unexpected metrics payloads: %#v", metrics.created)
 	}
 }
 

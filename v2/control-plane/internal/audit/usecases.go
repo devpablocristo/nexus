@@ -17,6 +17,8 @@ type CreateRequest = sharedaudit.WriteRequest
 
 type ListRequest struct {
 	ActionID   string
+	IncidentID string
+	AlertID    string
 	ResourceID string
 	ActorID    string
 	EventType  string
@@ -68,6 +70,8 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (auditdomain.A
 		EventType:     eventType,
 		SourceService: sourceService,
 		ActionID:      trimOrEmpty(req.ActionID),
+		IncidentID:    trimOrEmpty(req.IncidentID),
+		AlertID:       trimOrEmpty(req.AlertID),
 		ResourceID:    trimOrEmpty(req.ResourceID),
 		ResourceType:  trimOrEmpty(req.ResourceType),
 		Actor:         req.Actor,
@@ -94,6 +98,8 @@ func (u *Usecases) List(ctx context.Context, req ListRequest) ([]auditdomain.Aud
 	}
 	return u.repo.List(ctx, ListFilters{
 		ActionID:   trimOrEmpty(req.ActionID),
+		IncidentID: trimOrEmpty(req.IncidentID),
+		AlertID:    trimOrEmpty(req.AlertID),
 		ResourceID: trimOrEmpty(req.ResourceID),
 		ActorID:    trimOrEmpty(req.ActorID),
 		EventType:  trimOrEmpty(req.EventType),

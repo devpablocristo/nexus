@@ -42,6 +42,9 @@ func TestIncidentEndpointsLifecycle(t *testing.T) {
 	if created.ID == "" || created.Status != "open" || created.Severity != "critical" {
 		t.Fatalf("unexpected created incident: %#v", created)
 	}
+	if created.ActionID != "action-1" {
+		t.Fatalf("unexpected created incident correlation fields: %#v", created)
+	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/incidents?trigger=execution_failed&status=open", nil)
 	listRec := httptest.NewRecorder()

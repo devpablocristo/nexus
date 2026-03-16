@@ -1,0 +1,71 @@
+# v2 es la unica linea activa. v1 queda solo como referencia temporal.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /v2/data-plane
+    schedule:
+      interval: weekly
+    groups:
+      go-mod:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directory: /v2/control-plane
+    schedule:
+      interval: weekly
+    groups:
+      go-mod:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directory: /v2/control-workers
+    schedule:
+      interval: weekly
+    groups:
+      go-mod:
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directory: /v2/pkgs/go-pkg
+    schedule:
+      interval: weekly
+    groups:
+      go-mod:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /v2/data-plane
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /v2/control-plane
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /v2/control-workers
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2

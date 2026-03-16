@@ -8,11 +8,11 @@ source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_cmd curl
 
-CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-18103}"
-DATA_PLANE_PORT="${DATA_PLANE_PORT:-18101}"
+CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-$(find_free_port 18140 18149)}"
+DATA_PLANE_PORT="${DATA_PLANE_PORT:-$(find_free_port 18150 18159)}"
 CONTROL_PLANE_URL="http://127.0.0.1:${CONTROL_PLANE_PORT}"
 BASE_URL="http://127.0.0.1:${DATA_PLANE_PORT}"
-READY_URL="${BASE_URL}/healthz"
+READY_URL="${BASE_URL}/readyz"
 ACTIONS_URL="${BASE_URL}/v1/actions"
 AUDIT_URL="${CONTROL_PLANE_URL}/v1/audit"
 ADMIN_API_KEY="$(admin_api_key)"
@@ -54,7 +54,7 @@ JSON
 PORT="${CONTROL_PLANE_PORT}" "${SCRIPT_DIR}/../dev/run-control-plane.sh" &
 CONTROL_PLANE_PID=$!
 
-wait_for_http "${CONTROL_PLANE_URL}/healthz" 80 0.1
+wait_for_http "${CONTROL_PLANE_URL}/readyz" 80 0.1
 
 resource_body="$(create_resource)"
 resource_id="$(printf '%s' "${resource_body}" | json_get "id")"
@@ -159,8 +159,10 @@ risk_body="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${ACTIONS_URL}/${action_
 risk_level="$(printf '%s' "${risk_body}" | json_get "level")"
 risk_score="$(printf '%s' "${risk_body}" | json_get "score")"
 risk_factor_count="$(printf '%s' "${risk_body}" | json_len "factors")"
+risk_profile="$(printf '%s' "${risk_body}" | json_get "profile.name")"
+risk_recommended="$(printf '%s' "${risk_body}" | json_get "recommended_decision")"
 
-if [[ "${risk_level}" != "high" || "${risk_score}" != "95" || "${risk_factor_count}" != "3" ]]; then
+if [[ "${risk_level}" != "medium" || "${risk_score}" != "30" || "${risk_factor_count}" != "2" || "${risk_profile}" != "balanced" || "${risk_recommended}" != "enhanced_log" ]]; then
   echo "unexpected risk response" >&2
   echo "${risk_body}" >&2
   exit 1

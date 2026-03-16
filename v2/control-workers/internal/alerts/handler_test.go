@@ -20,6 +20,9 @@ func TestAlertEndpointsLifecycle(t *testing.T) {
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/alerts", bytes.NewBufferString(`{
 		"source_kind":"incident",
 		"source_id":"incident-1",
+		"action_id":"action-1",
+		"resource_id":"wallet_hot_usdc_1",
+		"resource_type":"wallet",
 		"channel":"slack",
 		"route":"ops-p2",
 		"severity":"high",
@@ -40,6 +43,9 @@ func TestAlertEndpointsLifecycle(t *testing.T) {
 	}
 	if created.ID == "" || created.Status != "pending" {
 		t.Fatalf("unexpected created alert: %#v", created)
+	}
+	if created.IncidentID != "incident-1" || created.ActionID != "action-1" || created.ResourceID != "wallet_hot_usdc_1" || created.ResourceType != "wallet" {
+		t.Fatalf("unexpected created alert correlation fields: %#v", created)
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/alerts?channel=slack&status=pending", nil)

@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
+
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
 
@@ -24,6 +26,9 @@ func TestControlWorkersClientCreate(t *testing.T) {
 		if got, want := r.Header.Get("X-API-Key"), "control-workers-secret"; got != want {
 			t.Fatalf("unexpected api key header: got=%q want=%q", got, want)
 		}
+		if got, want := r.Header.Get(sharedobservability.RequestIDHeader), "req-123"; got != want {
+			t.Fatalf("unexpected request id header: got=%q want=%q", got, want)
+		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -33,7 +38,8 @@ func TestControlWorkersClientCreate(t *testing.T) {
 	defer server.Close()
 
 	client := NewControlWorkersClient(server.URL, 0).WithAPIKey("control-workers-secret")
-	err := client.Create(context.Background(), IncidentRequest{
+	ctx := sharedobservability.ContextWithRequestID(context.Background(), "req-123")
+	err := client.Create(ctx, IncidentRequest{
 		SourceID:     "action-1",
 		ActionType:   actiondomain.ActionTypeWithdrawal,
 		ResourceID:   "wallet_hot_usdc_1",

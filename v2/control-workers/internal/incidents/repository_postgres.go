@@ -77,11 +77,12 @@ func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]i
 		       status, summary, reason, details, archived_at, resolved_at, created_at, updated_at
 		FROM incidents
 		WHERE ($1 = '' OR source_kind = $1)
-		  AND ($2 = '' OR trigger = $2)
-		  AND ($3 = '' OR severity = $3)
-		  AND ($4 = '' OR status = $4)
+		  AND ($2 = '' OR resource_id = $2)
+		  AND ($3 = '' OR trigger = $3)
+		  AND ($4 = '' OR severity = $4)
+		  AND ($5 = '' OR status = $5)
 	`
-	args := []any{filters.SourceKind, filters.Trigger, filters.Severity, filters.Status}
+	args := []any{filters.SourceKind, filters.ResourceID, filters.Trigger, filters.Severity, filters.Status}
 	if filters.Archived != nil {
 		if *filters.Archived {
 			query += ` AND archived_at IS NOT NULL`

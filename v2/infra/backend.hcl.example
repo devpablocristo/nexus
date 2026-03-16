@@ -1,0 +1,6 @@
+bucket         = "replace-me-nexus-terraform-state"
+key            = "v2/staging/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "replace-me-nexus-terraform-locks"
+encrypt        = true
+

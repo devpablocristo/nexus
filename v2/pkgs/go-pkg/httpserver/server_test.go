@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -25,5 +26,13 @@ func TestNew(t *testing.T) {
 	}
 	if server.IdleTimeout != 60*time.Second {
 		t.Fatalf("unexpected idle timeout: %s", server.IdleTimeout)
+	}
+}
+
+func TestServeRejectsNilServer(t *testing.T) {
+	t.Parallel()
+
+	if err := Serve(context.Background(), nil, nil); err == nil {
+		t.Fatal("expected error for nil server")
 	}
 }

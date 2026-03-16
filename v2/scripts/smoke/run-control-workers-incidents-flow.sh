@@ -8,9 +8,9 @@ source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_cmd curl
 
-CONTROL_WORKERS_PORT="${CONTROL_WORKERS_PORT:-18130}"
+CONTROL_WORKERS_PORT="${CONTROL_WORKERS_PORT:-$(find_free_port 18130 18139)}"
 BASE_URL="http://127.0.0.1:${CONTROL_WORKERS_PORT}"
-READY_URL="${BASE_URL}/healthz"
+READY_URL="${BASE_URL}/readyz"
 INCIDENTS_URL="${BASE_URL}/v1/incidents"
 ALERTS_URL="${BASE_URL}/v1/alerts"
 ADMIN_API_KEY="$(admin_api_key)"
@@ -112,5 +112,10 @@ if [[ "${delete_status}" != "204" ]]; then
   echo "unexpected delete status: ${delete_status}" >&2
   exit 1
 fi
+
+metrics_body="$(fetch_metrics "${BASE_URL}" "${ADMIN_API_KEY}")"
+assert_metrics_contains "${metrics_body}" 'nexus_http_requests_total{method="POST",route="/v1/incidents",status_code="201"} 1'
+assert_metrics_contains "${metrics_body}" 'nexus_incidents_created_total{severity="critical",trigger="execution_failed"} 1'
+assert_metrics_contains "${metrics_body}" 'nexus_alerts_created_total{channel="pagerduty",severity="critical"} 1'
 
 echo "control-workers incidents and alerts smoke ok"

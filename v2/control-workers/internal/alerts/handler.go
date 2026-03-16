@@ -51,6 +51,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	item, err := h.uc.Create(r.Context(), CreateRequest{
 		SourceKind: alertdomain.SourceKind(req.SourceKind),
 		SourceID:   req.SourceID,
+		ActionID:   req.ActionID,
+		ResourceID: req.ResourceID,
+		ResourceType: req.ResourceType,
 		Channel:    alertdomain.Channel(req.Channel),
 		Route:      req.Route,
 		Severity:   alertdomain.Severity(req.Severity),
@@ -204,20 +207,43 @@ func writeAlertError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func toAlertResponse(item alertdomain.Alert) alertdto.AlertResponse {
-	return alertdto.AlertResponse{
-		ID:         item.ID,
-		SourceKind: string(item.SourceKind),
-		SourceID:   item.SourceID,
-		Channel:    string(item.Channel),
-		Route:      item.Route,
-		Severity:   string(item.Severity),
-		Status:     string(item.Status),
-		Summary:    item.Summary,
-		Body:       item.Body,
-		Details:    cloneDetails(item.Details),
-		Archived:   item.ArchivedAt != nil,
-		ArchivedAt: item.ArchivedAt,
-		CreatedAt:  item.CreatedAt,
-		UpdatedAt:  item.UpdatedAt,
+	incidentID := ""
+	if item.SourceKind == alertdomain.SourceKindIncident {
+		incidentID = item.SourceID
 	}
+	return alertdto.AlertResponse{
+		ID:           item.ID,
+		SourceKind:   string(item.SourceKind),
+		SourceID:     item.SourceID,
+		IncidentID:   incidentID,
+		ActionID:     detailString(item.Details, "action_id"),
+		ResourceID:   detailString(item.Details, "resource_id"),
+		ResourceType: detailString(item.Details, "resource_type"),
+		Channel:      string(item.Channel),
+		Route:        item.Route,
+		Severity:     string(item.Severity),
+		Status:       string(item.Status),
+		Summary:      item.Summary,
+		Body:         item.Body,
+		Details:      cloneDetails(item.Details),
+		Archived:     item.ArchivedAt != nil,
+		ArchivedAt:   item.ArchivedAt,
+		CreatedAt:    item.CreatedAt,
+		UpdatedAt:    item.UpdatedAt,
+	}
+}
+
+func detailString(details map[string]any, key string) string {
+	if len(details) == 0 {
+		return ""
+	}
+	raw, ok := details[key]
+	if !ok {
+		return ""
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return value
 }

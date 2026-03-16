@@ -8,18 +8,30 @@ import (
 
 	"github.com/google/uuid"
 
+	actionrisk "nexus/v2/data-plane/internal/action/risk"
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
 
 var ErrResourceNotFound = fmt.Errorf("resource not found")
 
-func evaluateAction(now time.Time, req CreateRequest, resource actiondomain.ProtectedResource, policies []ActionPolicy, evaluator actionPolicyEvaluator) (actiondomain.Action, error) {
+func evaluateAction(now time.Time, req CreateRequest, resource actiondomain.ProtectedResource, policies []ActionPolicy, evaluator actionPolicyEvaluator, riskContext actionrisk.Context) (actiondomain.Action, error) {
 	normalizedPayload, err := normalizePayload(req.ActionType, req.Payload)
 	if err != nil {
 		return actiondomain.Action{}, err
 	}
 
-	risk := riskFor(req.ActionType, resource)
+	risk, err := actionrisk.Evaluator{}.Evaluate(actionrisk.Input{
+		ActionType: req.ActionType,
+		Resource:   resource,
+		Actor:      req.ProposedBy,
+		Payload:    normalizedPayload,
+		Metadata:   cloneMap(req.Metadata),
+		Now:        now,
+		Context:    riskContext,
+	})
+	if err != nil {
+		return actiondomain.Action{}, err
+	}
 	evidence := buildEvidence(now, normalizedPayload, resource)
 	decision := evaluatePolicyDecision(req, resource, policies, evaluator)
 	evidence = append(evidence, actiondomain.EvidenceRecord{
@@ -114,49 +126,6 @@ func normalizePayload(actionType actiondomain.ActionType, raw json.RawMessage) (
 		return json.Marshal(payload)
 	default:
 		return nil, fmt.Errorf("unsupported action type: %s", actionType)
-	}
-}
-
-func riskFor(actionType actiondomain.ActionType, resource actiondomain.ProtectedResource) actiondomain.RiskAssessment {
-	resourceFactor := actiondomain.RiskFactor{
-		Code:    "resource_criticality",
-		Summary: "resource criticality is " + strings.ToLower(strings.TrimSpace(resource.Criticality)),
-		Weight:  criticalityWeight(resource.Criticality),
-	}
-	switch actionType {
-	case actiondomain.ActionTypeWithdrawal:
-		return actiondomain.RiskAssessment{
-			Level:   actiondomain.RiskLevelHigh,
-			Score:   80 + resourceFactor.Weight,
-			Summary: "withdrawal requires approval",
-			Factors: []actiondomain.RiskFactor{
-				{Code: "financial_outflow", Summary: "action moves funds out of the protected resource", Weight: 50},
-				{Code: "human_approval_required", Summary: "critical action requires manual review", Weight: 30},
-				resourceFactor,
-			},
-		}
-	case actiondomain.ActionTypeTreasuryTransfer:
-		return actiondomain.RiskAssessment{
-			Level:   actiondomain.RiskLevelHigh,
-			Score:   76 + resourceFactor.Weight,
-			Summary: "treasury transfer requires approval",
-			Factors: []actiondomain.RiskFactor{
-				{Code: "treasury_move", Summary: "action changes treasury balances", Weight: 46},
-				{Code: "human_approval_required", Summary: "critical action requires manual review", Weight: 30},
-				resourceFactor,
-			},
-		}
-	default:
-		return actiondomain.RiskAssessment{
-			Level:   actiondomain.RiskLevelHigh,
-			Score:   72 + resourceFactor.Weight,
-			Summary: "hot to cold wallet move requires approval",
-			Factors: []actiondomain.RiskFactor{
-				{Code: "wallet_relocation", Summary: "action relocates funds between custody tiers", Weight: 42},
-				{Code: "human_approval_required", Summary: "critical action requires manual review", Weight: 30},
-				resourceFactor,
-			},
-		}
 	}
 }
 
@@ -267,19 +236,6 @@ func approvalTTL(seconds int) time.Duration {
 		return 4 * time.Hour
 	}
 	return time.Duration(seconds) * time.Second
-}
-
-func criticalityWeight(value string) int {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "critical":
-		return 15
-	case "high":
-		return 10
-	case "medium":
-		return 5
-	default:
-		return 0
-	}
 }
 
 func firstNonEmpty(values ...string) string {

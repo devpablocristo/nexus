@@ -1,6 +1,0 @@
-{
-  "evenBetterToml.schema.associations": {
-    ".*\\.air\\.toml$": "${workspaceFolder}/.vscode/schemas/air-permissive.schema.json",
-    ".*\\.air-.*\\.toml$": "${workspaceFolder}/.vscode/schemas/air-permissive.schema.json"
-  }
-}

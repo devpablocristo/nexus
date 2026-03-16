@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose
 
-.PHONY: test qa milestone smoke e2e e2e-incidents smoke-control-plane smoke-control-workers smoke-all e2e-all acceptance up down logs status dev-up dev-down data-plane-dev control-plane-dev control-workers-dev
+.PHONY: test qa milestone smoke e2e e2e-incidents smoke-control-plane smoke-control-workers smoke-observability smoke-persistence smoke-db-restore smoke-all e2e-all acceptance up down logs status dev-up dev-down data-plane-dev control-plane-dev control-workers-dev
 
 test:
 	cd pkgs/go-pkg && go test ./...
@@ -28,11 +28,23 @@ smoke-control-plane:
 smoke-control-workers:
 	./scripts/smoke/run-control-workers-incidents-flow.sh
 
+smoke-observability:
+	./scripts/smoke/run-observability-stack.sh
+
+smoke-persistence:
+	./scripts/smoke/run-persistence-restart-flow.sh
+
+smoke-db-restore:
+	./scripts/smoke/run-postgres-backup-restore-flow.sh
+
 e2e:
 	./scripts/e2e/run-actions-read-flow.sh
 
 e2e-incidents:
 	./scripts/e2e/run-actions-incidents-flow.sh
+
+smoke-degradation:
+	./scripts/smoke/run-degradation-flow.sh
 
 smoke-all: smoke smoke-control-plane smoke-control-workers
 

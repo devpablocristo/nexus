@@ -63,9 +63,9 @@ func (r *PostgresRepository) Create(ctx context.Context, item resourcedomain.Pro
 
 	_, err = r.db.Pool().Exec(ctx, `
 		INSERT INTO protected_resources (
-			id, type, name, environment, chain, labels, criticality, archived_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-	`, id, item.Type, item.Name, item.Environment, item.Chain, payload, item.Criticality, item.ArchivedAt, item.CreatedAt, item.UpdatedAt)
+			id, type, name, environment, chain, labels, criticality, is_canary, archived_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	`, id, item.Type, item.Name, item.Environment, item.Chain, payload, item.Criticality, item.IsCanary, item.ArchivedAt, item.CreatedAt, item.UpdatedAt)
 	if err != nil {
 		return resourcedomain.ProtectedResource{}, fmt.Errorf("insert resource: %w", err)
 	}
@@ -77,7 +77,7 @@ func (r *PostgresRepository) Create(ctx context.Context, item resourcedomain.Pro
 func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]resourcedomain.ProtectedResource, error) {
 	query := strings.Builder{}
 	query.WriteString(`
-		SELECT id, type, name, environment, chain, labels, criticality, archived_at, created_at, updated_at
+		SELECT id, type, name, environment, chain, labels, criticality, is_canary, archived_at, created_at, updated_at
 		FROM protected_resources
 		WHERE 1=1
 	`)
@@ -129,7 +129,7 @@ func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]r
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (resourcedomain.ProtectedResource, error) {
 	row := r.db.Pool().QueryRow(ctx, `
-		SELECT id, type, name, environment, chain, labels, criticality, archived_at, created_at, updated_at
+		SELECT id, type, name, environment, chain, labels, criticality, is_canary, archived_at, created_at, updated_at
 		FROM protected_resources
 		WHERE id = $1
 	`, id)
@@ -166,10 +166,11 @@ func (r *PostgresRepository) Update(ctx context.Context, item resourcedomain.Pro
 			chain = $5,
 			labels = $6,
 			criticality = $7,
-			updated_at = $8
+			is_canary = $8,
+			updated_at = $9
 		WHERE id = $1 AND archived_at IS NULL
-		RETURNING id, type, name, environment, chain, labels, criticality, archived_at, created_at, updated_at
-	`, id, item.Type, item.Name, item.Environment, item.Chain, payload, item.Criticality, item.UpdatedAt)
+		RETURNING id, type, name, environment, chain, labels, criticality, is_canary, archived_at, created_at, updated_at
+	`, id, item.Type, item.Name, item.Environment, item.Chain, payload, item.Criticality, item.IsCanary, item.UpdatedAt)
 
 	updated, err := scanResource(row)
 	if err == nil {
@@ -206,7 +207,7 @@ func (r *PostgresRepository) Archive(ctx context.Context, id uuid.UUID, archived
 		SET archived_at = $2,
 			updated_at = $2
 		WHERE id = $1 AND archived_at IS NULL
-		RETURNING id, type, name, environment, chain, labels, criticality, archived_at, created_at, updated_at
+		RETURNING id, type, name, environment, chain, labels, criticality, is_canary, archived_at, created_at, updated_at
 	`, id, archivedAt)
 	item, err := scanResource(row)
 	if err == nil {
@@ -231,7 +232,7 @@ func (r *PostgresRepository) Restore(ctx context.Context, id uuid.UUID, restored
 		SET archived_at = NULL,
 			updated_at = $2
 		WHERE id = $1 AND archived_at IS NOT NULL
-		RETURNING id, type, name, environment, chain, labels, criticality, archived_at, created_at, updated_at
+		RETURNING id, type, name, environment, chain, labels, criticality, is_canary, archived_at, created_at, updated_at
 	`, id, restoredAt)
 	item, err := scanResource(row)
 	if err == nil {
@@ -263,11 +264,12 @@ func scanResource(row resourceScanRow) (resourcedomain.ProtectedResource, error)
 		chain        string
 		labelsRaw    []byte
 		criticality  string
+		isCanary     bool
 		archivedAt   *time.Time
 		createdAt    time.Time
 		updatedAt    time.Time
 	)
-	if err := row.Scan(&id, &resourceType, &name, &environment, &chain, &labelsRaw, &criticality, &archivedAt, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&id, &resourceType, &name, &environment, &chain, &labelsRaw, &criticality, &isCanary, &archivedAt, &createdAt, &updatedAt); err != nil {
 		return resourcedomain.ProtectedResource{}, fmt.Errorf("scan resource: %w", err)
 	}
 
@@ -286,6 +288,7 @@ func scanResource(row resourceScanRow) (resourcedomain.ProtectedResource, error)
 		Chain:       chain,
 		Labels:      labels,
 		Criticality: resourcedomain.Criticality(criticality),
+		IsCanary:    isCanary,
 		ArchivedAt:  archivedAt,
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,

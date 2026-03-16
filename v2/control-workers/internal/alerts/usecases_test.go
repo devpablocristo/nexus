@@ -17,16 +17,27 @@ func (s *stubAlertAuditSink) Create(_ context.Context, req sharedaudit.WriteRequ
 	return nil
 }
 
+type stubAlertMetrics struct {
+	created []string
+}
+
+func (s *stubAlertMetrics) IncAlertCreated(channel, severity string) {
+	s.created = append(s.created, channel+":"+severity)
+}
+
 func validCreateRequest() CreateRequest {
 	return CreateRequest{
-		SourceKind: alertdomain.SourceKindIncident,
-		SourceID:   "incident-1",
-		Channel:    alertdomain.ChannelSlack,
-		Route:      "ops-p2",
-		Severity:   alertdomain.SeverityHigh,
-		Summary:    "withdrawal blocked by Nexus",
-		Body:       "incident requires operator attention",
-		Details:    map[string]any{"incident_id": "incident-1"},
+		SourceKind:   alertdomain.SourceKindIncident,
+		SourceID:     "incident-1",
+		ActionID:     "action-1",
+		ResourceID:   "wallet_hot_usdc_1",
+		ResourceType: "wallet",
+		Channel:      alertdomain.ChannelSlack,
+		Route:        "ops-p2",
+		Severity:     alertdomain.SeverityHigh,
+		Summary:      "withdrawal blocked by Nexus",
+		Body:         "incident requires operator attention",
+		Details:      map[string]any{"incident_id": "incident-1"},
 	}
 }
 
@@ -41,6 +52,9 @@ func TestUsecasesCreate(t *testing.T) {
 	}
 	if item.ID == "" || item.Status != alertdomain.StatusPending {
 		t.Fatalf("unexpected created alert: %#v", item)
+	}
+	if item.Details["incident_id"] != "incident-1" || item.Details["action_id"] != "action-1" {
+		t.Fatalf("unexpected alert details: %#v", item.Details)
 	}
 }
 
@@ -108,6 +122,24 @@ func TestUsecasesCreateEmitsAudit(t *testing.T) {
 	}
 	if len(audits.items) != 1 || audits.items[0].EventType != "alert_created" {
 		t.Fatalf("unexpected audit payloads: %#v", audits.items)
+	}
+	if audits.items[0].IncidentID != "incident-1" || audits.items[0].AlertID != item.ID || audits.items[0].ActionID != "action-1" {
+		t.Fatalf("unexpected audit correlation fields: %#v", audits.items)
+	}
+}
+
+func TestUsecasesCreateEmitsMetrics(t *testing.T) {
+	t.Parallel()
+
+	metrics := &stubAlertMetrics{}
+	uc := NewUsecases(NewInMemoryRepository(nil)).WithMetrics(metrics)
+
+	_, err := uc.Create(context.Background(), validCreateRequest())
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(metrics.created) != 1 || metrics.created[0] != "slack:high" {
+		t.Fatalf("unexpected metrics payloads: %#v", metrics.created)
 	}
 }
 

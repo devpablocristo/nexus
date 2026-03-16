@@ -20,6 +20,36 @@ require_cmd() {
   fi
 }
 
+find_free_port() {
+  local start="${1:-18000}"
+  local end="${2:-18999}"
+
+  require_cmd python3
+
+  python3 - "${start}" "${end}" <<'PY'
+import random
+import socket
+import sys
+
+start = int(sys.argv[1])
+end = int(sys.argv[2])
+ports = list(range(start, end + 1))
+random.shuffle(ports)
+
+for port in ports:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            continue
+    print(port)
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
 json_get() {
   local path="$1"
 
@@ -98,6 +128,28 @@ wait_for_http() {
 
   echo "timed out waiting for ${url}" >&2
   return 1
+}
+
+fetch_metrics() {
+  local url="$1"
+  local api_key="$2"
+
+  require_cmd curl
+
+  curl -fsS -H "X-API-Key: ${api_key}" "${url}/metrics"
+}
+
+assert_metrics_contains() {
+  local metrics="$1"
+  local expected="$2"
+
+  require_cmd grep
+
+  if ! printf '%s' "${metrics}" | grep -F "${expected}" >/dev/null 2>&1; then
+    echo "expected metrics to contain: ${expected}" >&2
+    echo "${metrics}" >&2
+    return 1
+  fi
 }
 
 admin_api_key() {

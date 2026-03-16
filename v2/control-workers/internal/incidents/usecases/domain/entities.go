@@ -12,6 +12,7 @@ type Trigger string
 
 const (
 	TriggerBlockedAction    Trigger = "blocked_action"
+	TriggerCanaryTriggered  Trigger = "canary_triggered"
 	TriggerApprovalRejected Trigger = "approval_rejected"
 	TriggerApprovalExpired  Trigger = "approval_expired"
 	TriggerExecutionFailed  Trigger = "execution_failed"

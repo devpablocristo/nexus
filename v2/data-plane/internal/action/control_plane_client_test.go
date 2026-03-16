@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 )
 
 func TestControlPlaneClientGetByIDEscapesPath(t *testing.T) {
@@ -16,6 +18,9 @@ func TestControlPlaneClientGetByIDEscapesPath(t *testing.T) {
 		}
 		if got, want := r.Header.Get("X-API-Key"), "control-plane-secret"; got != want {
 			t.Fatalf("unexpected api key header: got=%q want=%q", got, want)
+		}
+		if got, want := r.Header.Get(sharedobservability.RequestIDHeader), "req-123"; got != want {
+			t.Fatalf("unexpected request id header: got=%q want=%q", got, want)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -31,7 +36,8 @@ func TestControlPlaneClientGetByIDEscapesPath(t *testing.T) {
 	defer server.Close()
 
 	client := NewControlPlaneClient(server.URL, 0).WithAPIKey("control-plane-secret")
-	resource, err := client.GetByID(context.Background(), "wallet/hot 1")
+	ctx := sharedobservability.ContextWithRequestID(context.Background(), "req-123")
+	resource, err := client.GetByID(ctx, "wallet/hot 1")
 	if err != nil {
 		t.Fatalf("GetByID returned error: %v", err)
 	}

@@ -3,13 +3,13 @@ package policies
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/google/uuid"
 
 	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
 	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 	policydto "nexus/v2/control-plane/internal/policies/handler/dto"
 	policydomain "nexus/v2/control-plane/internal/policies/usecases/domain"
 	"nexus/v2/control-plane/internal/shared/actors"
@@ -290,7 +290,12 @@ func (h *Handler) emitAudit(ctx context.Context, actor *sharedaudit.Actor, event
 		Data:          clonePolicyMap(data, item),
 		OccurredAt:    item.UpdatedAt,
 	}); err != nil {
-		log.Printf("control-plane policy audit failed: policy_id=%s event_type=%s err=%v", item.ID, eventType, err)
+		sharedobservability.LoggerFromContext(ctx).Error(
+			"control-plane policy audit failed",
+			"policy_id", item.ID,
+			"event_type", eventType,
+			"error", err,
+		)
 	}
 }
 

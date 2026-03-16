@@ -13,20 +13,29 @@ import (
 )
 
 type Config struct {
-	AuditDatabaseURL        string
-	ControlPlaneDatabaseURL string
+	AuditDatabaseURL           string
+	ControlPlaneDatabaseURL    string
+	AuditPostgresConfig        sharedpostgres.Config
+	ControlPlanePostgresConfig sharedpostgres.Config
 }
 
 func NewServer(cfg Config) (http.Handler, func(), error) {
 	auditRepo := audit.Repository(audit.NewInMemoryRepository(nil))
 	cleanups := make([]func(), 0, 2)
+	readinessChecks := make([]sharedhandlers.ReadinessCheck, 0, 2)
 	if strings.TrimSpace(cfg.AuditDatabaseURL) != "" {
-		postgresRepo, postgresCleanup, err := audit.NewPostgresRepository(context.Background(), cfg.AuditDatabaseURL)
+		db, err := sharedpostgres.OpenWithConfig(context.Background(), cfg.AuditDatabaseURL, cfg.AuditPostgresConfig)
 		if err != nil {
 			return nil, nil, err
 		}
+		postgresRepo, err := audit.NewPostgresRepositoryWithDB(context.Background(), db)
+		if err != nil {
+			db.Close()
+			return nil, nil, err
+		}
 		auditRepo = postgresRepo
-		cleanups = append(cleanups, postgresCleanup)
+		cleanups = append(cleanups, db.Close)
+		readinessChecks = append(readinessChecks, db.Ping)
 	}
 	auditUC := audit.NewUsecases(auditRepo)
 	auditSink := audit.NewSinkAdapter(auditUC)
@@ -34,7 +43,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	resourceRepo := resources.Repository(resources.NewInMemoryRepository(nil))
 	policyRepo := policies.Repository(policies.NewInMemoryRepository(nil))
 	if strings.TrimSpace(cfg.ControlPlaneDatabaseURL) != "" {
-		db, err := sharedpostgres.Open(context.Background(), cfg.ControlPlaneDatabaseURL)
+		db, err := sharedpostgres.OpenWithConfig(context.Background(), cfg.ControlPlaneDatabaseURL, cfg.ControlPlanePostgresConfig)
 		if err != nil {
 			cleanupCleanups(cleanups)
 			return nil, nil, err
@@ -54,11 +63,12 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		resourceRepo = resourcePostgresRepo
 		policyRepo = policyPostgresRepo
 		cleanups = append(cleanups, db.Close)
+		readinessChecks = append(readinessChecks, db.Ping)
 	}
 	resourceUC := resources.NewUsecases(resourceRepo)
 	policyUC := policies.NewUsecases(policyRepo, policies.NewEvaluator())
 	mux := http.NewServeMux()
-	sharedhandlers.RegisterHealthEndpoints(mux)
+	sharedhandlers.RegisterHealthEndpoints(mux, sharedhandlers.ComposeReadinessChecks(readinessChecks...))
 	audit.NewHandler(auditUC).Register(mux)
 	resources.NewHandler(resourceUC).WithAuditSink(auditSink).Register(mux)
 	policies.NewHandler(policyUC).WithAuditSink(auditSink).Register(mux)

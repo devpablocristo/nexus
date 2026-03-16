@@ -22,6 +22,8 @@ func TestAuditEndpoints(t *testing.T) {
 		"event_type":"action_created",
 		"source_service":"data-plane",
 		"action_id":"action-1",
+		"incident_id":"incident-1",
+		"alert_id":"alert-1",
 		"resource_id":"resource-1",
 		"resource_type":"wallet",
 		"actor":{"type":"system","id":"treasury-bot"},
@@ -42,8 +44,11 @@ func TestAuditEndpoints(t *testing.T) {
 	if created.ID == "" || created.EventType != "action_created" {
 		t.Fatalf("unexpected created audit record: %#v", created)
 	}
+	if created.IncidentID != "incident-1" || created.AlertID != "alert-1" {
+		t.Fatalf("unexpected created correlation fields: %#v", created)
+	}
 
-	listReq := httptest.NewRequest(http.MethodGet, "/v1/audit?action_id=action-1&actor_id=treasury-bot&event_type=action_created&from="+created.OccurredAt.Add(-time.Minute).Format(time.RFC3339)+"&to="+created.OccurredAt.Add(time.Minute).Format(time.RFC3339), nil)
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/audit?action_id=action-1&incident_id=incident-1&alert_id=alert-1&actor_id=treasury-bot&event_type=action_created&from="+created.OccurredAt.Add(-time.Minute).Format(time.RFC3339)+"&to="+created.OccurredAt.Add(time.Minute).Format(time.RFC3339), nil)
 	listRec := httptest.NewRecorder()
 	mux.ServeHTTP(listRec, listReq)
 	if listRec.Code != http.StatusOK {
@@ -56,6 +61,9 @@ func TestAuditEndpoints(t *testing.T) {
 	}
 	if len(listed.Items) != 1 || listed.Items[0].ID != created.ID {
 		t.Fatalf("unexpected list response: %#v", listed)
+	}
+	if listed.Items[0].IncidentID != "incident-1" || listed.Items[0].AlertID != "alert-1" {
+		t.Fatalf("unexpected list correlation fields: %#v", listed)
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/audit/"+created.ID, nil)

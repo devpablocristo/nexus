@@ -2,8 +2,11 @@ package action
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -26,12 +29,19 @@ type actionUsecase interface {
 
 // Handler exposes the /v1/actions API.
 type Handler struct {
-	uc actionUsecase
+	uc          actionUsecase
+	idempotency IdempotencyStore
 }
 
 // NewHandler builds an action handler.
 func NewHandler(uc actionUsecase) *Handler {
 	return &Handler{uc: uc}
+}
+
+// WithIdempotency sets the idempotency store for the handler.
+func (h *Handler) WithIdempotency(store IdempotencyStore) *Handler {
+	h.idempotency = store
+	return h
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -51,6 +61,21 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	if err := sharedhandlers.DecodeJSON(r, &req); err != nil {
 		writeActionError(w, http.StatusBadRequest, "INVALID_JSON", "invalid json")
 		return
+	}
+
+	// Idempotency check: if Idempotency-Key header is present and store is configured,
+	// return cached response if the key was already used.
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey != "" && h.idempotency != nil {
+		entry, err := h.idempotency.Get(r.Context(), idempotencyKey)
+		if err == nil && entry != nil {
+			w.Header().Set("X-Idempotency-Replay", "true")
+			w.Header().Set("Location", "/v1/actions/"+entry.ActionID)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(entry.StatusCode)
+			_, _ = w.Write(entry.Response)
+			return
+		}
 	}
 
 	created, err := h.uc.Create(r.Context(), CreateRequest{
@@ -75,8 +100,23 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := toActionResponse(created)
+	statusCode := http.StatusCreated
+
+	// Store idempotency entry for successful creation.
+	if idempotencyKey != "" && h.idempotency != nil {
+		if respBytes, marshalErr := json.Marshal(resp); marshalErr == nil {
+			_ = h.idempotency.Set(r.Context(), idempotencyKey, IdempotencyEntry{
+				ActionID:   created.ID.String(),
+				StatusCode: statusCode,
+				Response:   respBytes,
+				ExpiresAt:  time.Now().UTC().Add(defaultIdempotencyTTL),
+			})
+		}
+	}
+
 	w.Header().Set("Location", "/v1/actions/"+created.ID.String())
-	sharedhandlers.WriteJSON(w, http.StatusCreated, toActionResponse(created))
+	sharedhandlers.WriteJSON(w, statusCode, resp)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -288,16 +328,42 @@ func toActionResponse(item actiondomain.Action) actiondto.ActionResponse {
 
 func toRiskResponse(item actiondomain.RiskAssessment) actiondto.RiskResponse {
 	resp := actiondto.RiskResponse{
-		Level:   string(item.Level),
-		Score:   item.Score,
-		Summary: item.Summary,
-		Factors: make([]actiondto.RiskFactorResponse, 0, len(item.Factors)),
+		Level:               string(item.Level),
+		Score:               item.Score,
+		Summary:             item.Summary,
+		Profile:             actiondto.RiskProfileRefResponse{Name: item.Profile.Name, Version: item.Profile.Version},
+		RiskPressure:        item.RiskPressure,
+		SafetyPressure:      item.SafetyPressure,
+		RawScore:            item.RawScore,
+		DecisionScore:       item.DecisionScore,
+		RecommendedDecision: string(item.RecommendedDecision),
+		Factors:             make([]actiondto.RiskFactorResponse, 0, len(item.Factors)),
+		Amplifications:      make([]actiondto.RiskInteractionResponse, 0, len(item.Amplifications)),
+		Attenuations:        make([]actiondto.RiskInteractionResponse, 0, len(item.Attenuations)),
 	}
 	for _, factor := range item.Factors {
 		resp.Factors = append(resp.Factors, actiondto.RiskFactorResponse{
-			Code:    factor.Code,
-			Summary: factor.Summary,
-			Weight:  factor.Weight,
+			Code:            factor.Code,
+			Type:            string(factor.Type),
+			Active:          factor.Active,
+			Weight:          factor.Weight,
+			AppliedWeight:   factor.AppliedWeight,
+			Summary:         factor.Summary,
+			EvidenceQuality: string(factor.EvidenceQuality),
+		})
+	}
+	for _, amplification := range item.Amplifications {
+		resp.Amplifications = append(resp.Amplifications, actiondto.RiskInteractionResponse{
+			Factors:    append([]string(nil), amplification.Factors...),
+			Multiplier: amplification.Multiplier,
+			Summary:    amplification.Summary,
+		})
+	}
+	for _, attenuation := range item.Attenuations {
+		resp.Attenuations = append(resp.Attenuations, actiondto.RiskInteractionResponse{
+			Factors:    append([]string(nil), attenuation.Factors...),
+			Multiplier: attenuation.Multiplier,
+			Summary:    attenuation.Summary,
 		})
 	}
 	return resp

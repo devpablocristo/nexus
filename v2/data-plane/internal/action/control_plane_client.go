@@ -11,6 +11,7 @@ import (
 	"time"
 
 	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
@@ -70,6 +71,7 @@ func (c *ControlPlaneClient) GetByID(ctx context.Context, resourceID string) (ac
 		return actiondomain.ProtectedResource{}, fmt.Errorf("build control-plane resource request: %w", err)
 	}
 	sharedapikey.Apply(req, c.apiKey)
+	sharedobservability.ApplyRequestID(req, ctx)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -127,6 +129,7 @@ func (c *ControlPlaneClient) List(ctx context.Context, actionType, resourceType 
 		return nil, fmt.Errorf("build control-plane policy request: %w", err)
 	}
 	sharedapikey.Apply(req, c.apiKey)
+	sharedobservability.ApplyRequestID(req, ctx)
 
 	resp, err := c.client.Do(req)
 	if err != nil {

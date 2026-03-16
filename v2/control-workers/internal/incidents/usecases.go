@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
 	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 	"github.com/google/uuid"
 
 	"nexus/v2/control-workers/internal/alerts"
@@ -38,6 +38,7 @@ type UpdateRequest struct {
 
 type ListRequest struct {
 	SourceKind string
+	ResourceID string
 	Trigger    string
 	Severity   string
 	Status     string
@@ -60,9 +61,10 @@ func newHTTPError(status int, code, message string) error {
 }
 
 type Usecases struct {
-	repo   Repository
-	alerts alerts.Sink
-	audit  AuditSink
+	repo    Repository
+	alerts  alerts.Sink
+	audit   AuditSink
+	metrics MetricsSink
 }
 
 func NewUsecases(repo Repository) *Usecases {
@@ -83,15 +85,20 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (incidentdomai
 	if err != nil {
 		return incidentdomain.Incident{}, err
 	}
+	if u.metrics != nil {
+		u.metrics.IncIncidentCreated(string(created.Trigger), string(created.Severity))
+	}
 	u.emitAudit(ctx, sharedaudit.WriteRequest{
 		EventType:     "incident_created",
 		SourceService: "control-workers",
 		ActionID:      created.SourceID,
+		IncidentID:    created.ID,
 		ResourceID:    created.ResourceID,
 		ResourceType:  created.ResourceType,
 		Actor:         &sharedaudit.Actor{Type: "system", ID: "control-workers"},
 		Summary:       "incident created",
 		Data: map[string]any{
+			"action_id":   created.SourceID,
 			"incident_id": created.ID,
 			"trigger":     string(created.Trigger),
 			"severity":    string(created.Severity),
@@ -113,6 +120,7 @@ func (u *Usecases) List(ctx context.Context, req ListRequest) ([]incidentdomain.
 
 	filters := ListFilters{
 		SourceKind: strings.TrimSpace(req.SourceKind),
+		ResourceID: strings.TrimSpace(req.ResourceID),
 		Trigger:    strings.TrimSpace(req.Trigger),
 		Severity:   strings.TrimSpace(req.Severity),
 		Status:     strings.TrimSpace(req.Status),
@@ -244,6 +252,15 @@ func normalizeCreate(req CreateRequest) (incidentdomain.Incident, error) {
 	if summary == "" {
 		summary = deriveSummary(req.Trigger, actionType)
 	}
+	details := cloneDetails(req.Details)
+	if details == nil {
+		details = make(map[string]any, 4)
+	}
+	if req.SourceKind == incidentdomain.SourceKindAction {
+		details["action_id"] = sourceID
+	}
+	details["resource_id"] = resourceID
+	details["resource_type"] = resourceType
 
 	return incidentdomain.Incident{
 		SourceKind:   req.SourceKind,
@@ -257,7 +274,7 @@ func normalizeCreate(req CreateRequest) (incidentdomain.Incident, error) {
 		Status:       incidentdomain.StatusOpen,
 		Summary:      summary,
 		Reason:       strings.TrimSpace(req.Reason),
-		Details:      cloneDetails(req.Details),
+		Details:      details,
 	}, nil
 }
 
@@ -278,6 +295,8 @@ func deriveSummary(trigger incidentdomain.Trigger, actionType string) string {
 
 func deriveSeverity(trigger incidentdomain.Trigger, riskLevel incidentdomain.RiskLevel) incidentdomain.Severity {
 	switch trigger {
+	case incidentdomain.TriggerCanaryTriggered:
+		return incidentdomain.SeverityCritical
 	case incidentdomain.TriggerExecutionFailed:
 		if riskLevel == incidentdomain.RiskLevelHigh || riskLevel == incidentdomain.RiskLevelCritical {
 			return incidentdomain.SeverityCritical
@@ -321,6 +340,7 @@ func (u *Usecases) emitAlert(ctx context.Context, item incidentdomain.Incident) 
 		Body:         alertBody(item),
 		Details: map[string]any{
 			"incident_id":     item.ID,
+			"action_id":       item.SourceID,
 			"trigger":         string(item.Trigger),
 			"resource_id":     item.ResourceID,
 			"resource_type":   item.ResourceType,
@@ -328,7 +348,12 @@ func (u *Usecases) emitAlert(ctx context.Context, item incidentdomain.Incident) 
 			"incident_status": string(item.Status),
 		},
 	}); err != nil {
-		log.Printf("control-workers alert sink failed: incident_id=%s severity=%s err=%v", item.ID, item.Severity, err)
+		sharedobservability.LoggerFromContext(ctx).Error(
+			"control-workers alert sink failed",
+			"incident_id", item.ID,
+			"severity", item.Severity,
+			"error", err,
+		)
 	}
 }
 
@@ -361,7 +386,7 @@ func validateSourceKind(value incidentdomain.SourceKind) error {
 
 func validateTrigger(value incidentdomain.Trigger) error {
 	switch value {
-	case incidentdomain.TriggerBlockedAction, incidentdomain.TriggerApprovalRejected, incidentdomain.TriggerApprovalExpired, incidentdomain.TriggerExecutionFailed:
+	case incidentdomain.TriggerBlockedAction, incidentdomain.TriggerCanaryTriggered, incidentdomain.TriggerApprovalRejected, incidentdomain.TriggerApprovalExpired, incidentdomain.TriggerExecutionFailed:
 		return nil
 	default:
 		return newHTTPError(http.StatusBadRequest, "VALIDATION", "unsupported trigger")

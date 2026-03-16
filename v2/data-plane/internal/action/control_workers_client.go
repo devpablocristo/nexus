@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 )
 
 type ControlWorkersClient struct {
@@ -65,6 +67,7 @@ func (c *ControlWorkersClient) Create(ctx context.Context, req IncidentRequest) 
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	sharedapikey.Apply(httpReq, c.apiKey)
+	sharedobservability.ApplyRequestID(httpReq, ctx)
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
@@ -77,4 +80,47 @@ func (c *ControlWorkersClient) Create(ctx context.Context, req IncidentRequest) 
 		return fmt.Errorf("control-workers incident returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	return nil
+}
+
+func (c *ControlWorkersClient) CountOpenByResource(ctx context.Context, resourceID string) (int, error) {
+	if c.baseURL == "" || strings.TrimSpace(resourceID) == "" {
+		return 0, nil
+	}
+
+	endpoint, err := url.Parse(c.baseURL + "/v1/incidents")
+	if err != nil {
+		return 0, fmt.Errorf("build control-workers incidents url: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("resource_id", resourceID)
+	query.Set("status", "open")
+	query.Set("archived", "false")
+	query.Set("limit", "50")
+	endpoint.RawQuery = query.Encode()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return 0, fmt.Errorf("build control-workers incident list request: %w", err)
+	}
+	sharedapikey.Apply(httpReq, c.apiKey)
+	sharedobservability.ApplyRequestID(httpReq, ctx)
+
+	resp, err := c.client.Do(httpReq)
+	if err != nil {
+		return 0, fmt.Errorf("list control-workers incidents: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("control-workers incident list returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	var payload struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("decode control-workers incidents: %w", err)
+	}
+	return len(payload.Items), nil
 }

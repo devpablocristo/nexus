@@ -3,8 +3,9 @@ package action
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
+
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
@@ -54,8 +55,19 @@ func (u *Usecases) emitIncident(ctx context.Context, item actiondomain.Action, t
 		Reason:       strings.TrimSpace(reason),
 		Details:      cloneMap(details),
 	}
+	if req.Details == nil {
+		req.Details = make(map[string]any, 4)
+	}
+	req.Details["action_id"] = item.ID.String()
+	req.Details["resource_id"] = item.ResourceID
+	req.Details["resource_type"] = string(item.ResourceType)
 	if err := u.incidents.Create(ctx, req); err != nil {
-		log.Printf("action incident sink failed: action_id=%s trigger=%s err=%v", item.ID, trigger, err)
+		sharedobservability.LoggerFromContext(ctx).Error(
+			"action incident sink failed",
+			"action_id", item.ID.String(),
+			"trigger", string(trigger),
+			"error", err,
+		)
 	}
 }
 

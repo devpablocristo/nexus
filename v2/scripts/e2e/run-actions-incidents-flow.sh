@@ -8,9 +8,9 @@ source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_cmd curl
 
-CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-18104}"
-CONTROL_WORKERS_PORT="${CONTROL_WORKERS_PORT:-18105}"
-DATA_PLANE_PORT="${DATA_PLANE_PORT:-18106}"
+CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-$(find_free_port 18160 18169)}"
+CONTROL_WORKERS_PORT="${CONTROL_WORKERS_PORT:-$(find_free_port 18170 18179)}"
+DATA_PLANE_PORT="${DATA_PLANE_PORT:-$(find_free_port 18180 18189)}"
 CONTROL_PLANE_URL="http://127.0.0.1:${CONTROL_PLANE_PORT}"
 CONTROL_WORKERS_URL="http://127.0.0.1:${CONTROL_WORKERS_PORT}"
 DATA_PLANE_URL="http://127.0.0.1:${DATA_PLANE_PORT}"
@@ -127,8 +127,8 @@ CONTROL_PLANE_PID=$!
 PORT="${CONTROL_WORKERS_PORT}" NEXUS_CONTROL_PLANE_URL="${CONTROL_PLANE_URL}" "${SCRIPT_DIR}/../dev/run-control-workers.sh" &
 CONTROL_WORKERS_PID=$!
 
-wait_for_http "${CONTROL_PLANE_URL}/healthz" 80 0.1
-wait_for_http "${CONTROL_WORKERS_URL}/healthz" 80 0.1
+wait_for_http "${CONTROL_PLANE_URL}/readyz" 80 0.1
+wait_for_http "${CONTROL_WORKERS_URL}/readyz" 80 0.1
 
 resource_body="$(create_resource)"
 resource_id="$(printf '%s' "${resource_body}" | json_get "id")"
@@ -157,7 +157,7 @@ fi
 PORT="${DATA_PLANE_PORT}" NEXUS_CONTROL_PLANE_URL="${CONTROL_PLANE_URL}" NEXUS_CONTROL_WORKERS_URL="${CONTROL_WORKERS_URL}" "${SCRIPT_DIR}/../dev/run-data-plane.sh" &
 DATA_PLANE_PID=$!
 
-wait_for_http "${DATA_PLANE_URL}/healthz" 80 0.1
+wait_for_http "${DATA_PLANE_URL}/readyz" 80 0.1
 
 blocked_action_body="$(create_blocked_action "${resource_id}")"
 blocked_action_id="$(printf '%s' "${blocked_action_body}" | json_get "id")"
@@ -171,9 +171,11 @@ fi
 
 blocked_incidents="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${CONTROL_WORKERS_URL}/v1/incidents?trigger=blocked_action&status=open")"
 blocked_count="$(printf '%s' "${blocked_incidents}" | json_len "items")"
+blocked_incident_id="$(printf '%s' "${blocked_incidents}" | json_get "items.0.id")"
 blocked_source_id="$(printf '%s' "${blocked_incidents}" | json_get "items.0.source_id")"
+blocked_incident_action_id="$(printf '%s' "${blocked_incidents}" | json_get "items.0.action_id")"
 blocked_reason="$(printf '%s' "${blocked_incidents}" | json_get "items.0.reason")"
-if [[ "${blocked_count}" != "1" || "${blocked_source_id}" != "${blocked_action_id}" || "${blocked_reason}" != "production withdrawals blocked by operator policy" ]]; then
+if [[ "${blocked_count}" != "1" || "${blocked_source_id}" != "${blocked_action_id}" || "${blocked_incident_action_id}" != "${blocked_action_id}" || "${blocked_reason}" != "production withdrawals blocked by operator policy" ]]; then
   echo "unexpected blocked incidents response" >&2
   echo "${blocked_incidents}" >&2
   exit 1
@@ -181,9 +183,7 @@ fi
 
 blocked_alerts="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${ALERTS_URL}?channel=slack&status=pending&limit=10")"
 blocked_alert_count="$(printf '%s' "${blocked_alerts}" | json_len "items")"
-blocked_alert_source_id="$(printf '%s' "${blocked_alerts}" | json_get "items.0.source_id")"
-blocked_alert_route="$(printf '%s' "${blocked_alerts}" | json_get "items.0.route")"
-if [[ "${blocked_alert_count}" != "1" || "${blocked_alert_source_id}" != "$(printf '%s' "${blocked_incidents}" | json_get "items.0.id")" || "${blocked_alert_route}" != "ops-p2" ]]; then
+if [[ "${blocked_alert_count}" != "0" ]]; then
   echo "unexpected blocked alerts response" >&2
   echo "${blocked_alerts}" >&2
   exit 1
@@ -191,9 +191,18 @@ fi
 
 blocked_audit="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${AUDIT_URL}?action_id=${blocked_action_id}&event_type=incident_created")"
 blocked_audit_count="$(printf '%s' "${blocked_audit}" | json_len "items")"
-if [[ "${blocked_audit_count}" != "1" ]]; then
+blocked_audit_incident_id="$(printf '%s' "${blocked_audit}" | json_get "items.0.incident_id")"
+if [[ "${blocked_audit_count}" != "1" || "${blocked_audit_incident_id}" != "${blocked_incident_id}" ]]; then
   echo "unexpected blocked audit response" >&2
   echo "${blocked_audit}" >&2
+  exit 1
+fi
+
+blocked_alert_audit="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${AUDIT_URL}?incident_id=${blocked_incident_id}&event_type=alert_created")"
+blocked_alert_audit_count="$(printf '%s' "${blocked_alert_audit}" | json_len "items")"
+if [[ "${blocked_alert_audit_count}" != "0" ]]; then
+  echo "unexpected blocked alert audit response" >&2
+  echo "${blocked_alert_audit}" >&2
   exit 1
 fi
 
@@ -217,9 +226,11 @@ fi
 
 rejected_incidents="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${CONTROL_WORKERS_URL}/v1/incidents?trigger=approval_rejected&status=open")"
 rejected_count="$(printf '%s' "${rejected_incidents}" | json_len "items")"
+rejected_incident_id="$(printf '%s' "${rejected_incidents}" | json_get "items.0.id")"
 rejected_source_id="$(printf '%s' "${rejected_incidents}" | json_get "items.0.source_id")"
+rejected_incident_action_id="$(printf '%s' "${rejected_incidents}" | json_get "items.0.action_id")"
 rejected_reason="$(printf '%s' "${rejected_incidents}" | json_get "items.0.reason")"
-if [[ "${rejected_count}" != "1" || "${rejected_source_id}" != "${review_action_id}" || "${rejected_reason}" != "manual rejection after treasury review" ]]; then
+if [[ "${rejected_count}" != "1" || "${rejected_source_id}" != "${review_action_id}" || "${rejected_incident_action_id}" != "${review_action_id}" || "${rejected_reason}" != "manual rejection after treasury review" ]]; then
   echo "unexpected rejected incidents response" >&2
   echo "${rejected_incidents}" >&2
   exit 1
@@ -227,8 +238,7 @@ fi
 
 rejected_alerts="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${ALERTS_URL}?channel=slack&status=pending&limit=10")"
 rejected_alert_count="$(printf '%s' "${rejected_alerts}" | json_len "items")"
-rejected_alert_source_id="$(printf '%s' "${rejected_alerts}" | json_get "items.0.source_id")"
-if [[ "${rejected_alert_count}" != "2" || "${rejected_alert_source_id}" != "$(printf '%s' "${rejected_incidents}" | json_get "items.0.id")" ]]; then
+if [[ "${rejected_alert_count}" != "0" ]]; then
   echo "unexpected rejected alerts response" >&2
   echo "${rejected_alerts}" >&2
   exit 1
@@ -236,7 +246,7 @@ fi
 
 rejected_audit="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${AUDIT_URL}?action_id=${review_action_id}&event_type=alert_created")"
 rejected_audit_count="$(printf '%s' "${rejected_audit}" | json_len "items")"
-if [[ "${rejected_audit_count}" != "1" ]]; then
+if [[ "${rejected_audit_count}" != "0" ]]; then
   echo "unexpected rejected audit response" >&2
   echo "${rejected_audit}" >&2
   exit 1

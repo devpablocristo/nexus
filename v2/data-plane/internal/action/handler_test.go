@@ -87,7 +87,7 @@ func TestActionLifecycleEndpoints(t *testing.T) {
 	if err := json.NewDecoder(riskRec.Body).Decode(&risk); err != nil {
 		t.Fatalf("decode risk response: %v", err)
 	}
-	if risk.Level != "high" {
+	if risk.Level != "medium" || risk.Score != 20 || risk.RecommendedDecision != "enhanced_log" {
 		t.Fatalf("unexpected risk response: %#v", risk)
 	}
 

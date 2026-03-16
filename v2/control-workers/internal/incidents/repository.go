@@ -19,6 +19,7 @@ var ErrNotArchived = errors.New("incident not archived")
 
 type ListFilters struct {
 	SourceKind string
+	ResourceID string
 	Trigger    string
 	Severity   string
 	Status     string
@@ -73,6 +74,9 @@ func (r *InMemoryRepository) List(_ context.Context, filters ListFilters) ([]inc
 	items := make([]incidentdomain.Incident, 0, len(r.items))
 	for _, item := range r.items {
 		if filters.SourceKind != "" && string(item.SourceKind) != filters.SourceKind {
+			continue
+		}
+		if filters.ResourceID != "" && item.ResourceID != filters.ResourceID {
 			continue
 		}
 		if filters.Trigger != "" && string(item.Trigger) != filters.Trigger {

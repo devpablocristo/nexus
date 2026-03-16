@@ -9,8 +9,10 @@ import (
 	"time"
 
 	sharedaudit "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/audit"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 	"github.com/google/uuid"
 
+	actionrisk "nexus/v2/data-plane/internal/action/risk"
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
 
@@ -65,6 +67,8 @@ type Usecases struct {
 	policyEvaluator actionPolicyEvaluator
 	incidents       IncidentSink
 	audit           AuditSink
+	metrics         MetricsSink
+	riskContext     RiskContextProvider
 }
 
 // NewUsecases builds action use cases.
@@ -73,6 +77,7 @@ func NewUsecases(repo Repository) *Usecases {
 		repo:            repo,
 		executor:        NewDeterministicExecutor(),
 		policyEvaluator: NewActionPolicyEvaluator(),
+		riskContext:     NewHistoricalRiskContextProvider(repo, NewInMemoryRiskBaselineStore()),
 	}
 }
 
@@ -90,6 +95,11 @@ func (u *Usecases) WithResourceResolver(resolver ResourceResolver) *Usecases {
 
 func (u *Usecases) WithPolicySource(source PolicySource) *Usecases {
 	u.policies = source
+	return u
+}
+
+func (u *Usecases) WithRiskContextProvider(provider RiskContextProvider) *Usecases {
+	u.riskContext = provider
 	return u
 }
 
@@ -131,7 +141,16 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 		return actiondomain.Action{}, err
 	}
 
-	action, err := evaluateAction(nowUTC(), req, resource, policies, u.policyEvaluator)
+	now := nowUTC()
+	riskContext := actionrisk.Context{Now: now}
+	if u.riskContext != nil {
+		riskContext, err = u.riskContext.ContextFor(ctx, req, resource, now)
+		if err != nil {
+			return actiondomain.Action{}, err
+		}
+	}
+
+	action, err := evaluateAction(now, req, resource, policies, u.policyEvaluator, riskContext)
 	if err != nil {
 		var httpErr httpError
 		if errors.As(err, &httpErr) {
@@ -149,6 +168,9 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 	created, err := u.repo.Create(ctx, action)
 	if err != nil {
 		return actiondomain.Action{}, err
+	}
+	if u.metrics != nil {
+		u.metrics.IncActionCreated(string(created.Type))
 	}
 	if created.Approval != nil {
 		created.Approval.ActionID = created.ID
@@ -174,6 +196,9 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 		OccurredAt: created.CreatedAt,
 	})
 	if created.Status == actiondomain.ActionStatusBlocked {
+		if u.metrics != nil {
+			u.metrics.IncActionBlocked(string(created.Type))
+		}
 		u.emitAudit(ctx, sharedaudit.WriteRequest{
 			EventType:     "action_blocked",
 			SourceService: "data-plane",
@@ -195,6 +220,15 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 			"status":        string(created.Status),
 			"source_system": created.SourceSystem,
 		})
+	}
+	if u.riskContext != nil {
+		if err := u.riskContext.ObserveAction(ctx, created); err != nil {
+			sharedobservability.LoggerFromContext(ctx).Error(
+				"risk context observe action failed",
+				"action_id", created.ID.String(),
+				"error", err,
+			)
+		}
 	}
 	return created, nil
 }
@@ -267,6 +301,9 @@ func (u *Usecases) Approve(ctx context.Context, id uuid.UUID, req DecideRequest)
 	updated, err := u.repo.Decide(ctx, id, actiondomain.ApprovalStatusApproved, req.DecidedBy, strings.TrimSpace(req.Comment), nowUTC())
 	if err != nil {
 		return actiondomain.Action{}, mapRepoErr(err)
+	}
+	if u.metrics != nil {
+		u.metrics.IncActionApproved(string(updated.Type))
 	}
 	u.emitAudit(ctx, sharedaudit.WriteRequest{
 		EventType:     "action_approved",
@@ -436,6 +473,9 @@ func (u *Usecases) Execute(ctx context.Context, id uuid.UUID, req ExecuteRequest
 	updated, err := u.repo.ConsumeLeaseAndMarkExecuted(ctx, id, req.LeaseID, execution)
 	if err != nil {
 		return actiondomain.Action{}, mapRepoErr(err)
+	}
+	if u.metrics != nil {
+		u.metrics.IncActionExecuted(string(updated.Type))
 	}
 	u.emitAudit(ctx, sharedaudit.WriteRequest{
 		EventType:     "action_executed",

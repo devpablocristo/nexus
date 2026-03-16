@@ -33,6 +33,29 @@ func (s *stubAuditSink) Create(_ context.Context, req sharedaudit.WriteRequest) 
 	return s.err
 }
 
+type stubActionMetrics struct {
+	created  []string
+	blocked  []string
+	approved []string
+	executed []string
+}
+
+func (s *stubActionMetrics) IncActionCreated(actionType string) {
+	s.created = append(s.created, actionType)
+}
+
+func (s *stubActionMetrics) IncActionBlocked(actionType string) {
+	s.blocked = append(s.blocked, actionType)
+}
+
+func (s *stubActionMetrics) IncActionApproved(actionType string) {
+	s.approved = append(s.approved, actionType)
+}
+
+func (s *stubActionMetrics) IncActionExecuted(actionType string) {
+	s.executed = append(s.executed, actionType)
+}
+
 type stubExecutor struct {
 	result map[string]any
 	err    error
@@ -108,7 +131,7 @@ func TestUsecasesCreate(t *testing.T) {
 	if action.Approval == nil || action.Approval.Status != actiondomain.ApprovalStatusPending {
 		t.Fatalf("unexpected approval: %#v", action.Approval)
 	}
-	if action.Risk.Level != actiondomain.RiskLevelHigh {
+	if action.Risk.Level != actiondomain.RiskLevelMedium || action.Risk.Score != 20 {
 		t.Fatalf("unexpected risk: %#v", action.Risk)
 	}
 	if len(action.Evidence) == 0 {
@@ -186,8 +209,14 @@ func TestUsecasesCreateUsesResolvedResourceAndPolicy(t *testing.T) {
 	if got := action.Approval.ExpiresAt.Sub(action.CreatedAt); got != 10*time.Minute {
 		t.Fatalf("unexpected approval ttl: %s", got)
 	}
-	if action.Risk.Score != 95 {
+	if action.Risk.Score != 30 {
 		t.Fatalf("unexpected risk score: %d", action.Risk.Score)
+	}
+	if action.Risk.Profile.Name != "balanced" || action.Risk.Profile.Version != 1 {
+		t.Fatalf("unexpected risk profile: %#v", action.Risk.Profile)
+	}
+	if action.Risk.RecommendedDecision != actiondomain.RiskDecisionEnhancedLog {
+		t.Fatalf("unexpected recommended decision: %s", action.Risk.RecommendedDecision)
 	}
 	if len(action.Evidence) != 3 {
 		t.Fatalf("unexpected evidence count: %d", len(action.Evidence))
@@ -201,6 +230,7 @@ func TestUsecasesCreateCanBlockWithPolicy(t *testing.T) {
 	t.Parallel()
 
 	incidents := &stubIncidentSink{}
+	metrics := &stubActionMetrics{}
 	uc := NewUsecases(NewInMemoryRepository(nil)).
 		WithResourceResolver(stubResourceResolver{
 			resource: actiondomain.ProtectedResource{
@@ -224,7 +254,8 @@ func TestUsecasesCreateCanBlockWithPolicy(t *testing.T) {
 				},
 			},
 		}).
-		WithIncidentSink(incidents)
+		WithIncidentSink(incidents).
+		WithMetrics(metrics)
 
 	action, err := uc.Create(context.Background(), validCreateRequest())
 	if err != nil {
@@ -244,6 +275,12 @@ func TestUsecasesCreateCanBlockWithPolicy(t *testing.T) {
 	}
 	if incidents.items[0].Trigger != IncidentTriggerBlockedAction || incidents.items[0].SourceID != action.ID.String() {
 		t.Fatalf("unexpected incident request: %#v", incidents.items[0])
+	}
+	if len(metrics.created) != 1 || metrics.created[0] != "withdrawal" {
+		t.Fatalf("unexpected created metrics: %#v", metrics.created)
+	}
+	if len(metrics.blocked) != 1 || metrics.blocked[0] != "withdrawal" {
+		t.Fatalf("unexpected blocked metrics: %#v", metrics.blocked)
 	}
 }
 
@@ -517,7 +554,8 @@ func TestUsecasesCreateRejectsResourceTypeMismatchFromResolver(t *testing.T) {
 func TestUsecasesApproveLeaseExecuteLifecycle(t *testing.T) {
 	t.Parallel()
 
-	uc := NewUsecases(NewInMemoryRepository(nil))
+	metrics := &stubActionMetrics{}
+	uc := NewUsecases(NewInMemoryRepository(nil)).WithMetrics(metrics)
 
 	created, err := uc.Create(context.Background(), validCreateRequest())
 	if err != nil {
@@ -555,6 +593,15 @@ func TestUsecasesApproveLeaseExecuteLifecycle(t *testing.T) {
 	}
 	if executed.Lease == nil || executed.Lease.Status != actiondomain.LeaseStatusUsed {
 		t.Fatalf("expected used lease after execution: %#v", executed.Lease)
+	}
+	if len(metrics.created) != 1 || metrics.created[0] != "withdrawal" {
+		t.Fatalf("unexpected created metrics: %#v", metrics.created)
+	}
+	if len(metrics.approved) != 1 || metrics.approved[0] != "withdrawal" {
+		t.Fatalf("unexpected approved metrics: %#v", metrics.approved)
+	}
+	if len(metrics.executed) != 1 || metrics.executed[0] != "withdrawal" {
+		t.Fatalf("unexpected executed metrics: %#v", metrics.executed)
 	}
 }
 

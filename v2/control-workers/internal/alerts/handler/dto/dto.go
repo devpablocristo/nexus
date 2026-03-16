@@ -5,6 +5,9 @@ import "time"
 type CreateAlertRequest struct {
 	SourceKind string         `json:"source_kind"`
 	SourceID   string         `json:"source_id"`
+	ActionID   string         `json:"action_id,omitempty"`
+	ResourceID string         `json:"resource_id,omitempty"`
+	ResourceType string       `json:"resource_type,omitempty"`
 	Channel    string         `json:"channel"`
 	Route      string         `json:"route"`
 	Severity   string         `json:"severity"`
@@ -25,6 +28,10 @@ type AlertResponse struct {
 	ID         string         `json:"id"`
 	SourceKind string         `json:"source_kind"`
 	SourceID   string         `json:"source_id"`
+	IncidentID string         `json:"incident_id,omitempty"`
+	ActionID   string         `json:"action_id,omitempty"`
+	ResourceID string         `json:"resource_id,omitempty"`
+	ResourceType string       `json:"resource_type,omitempty"`
 	Channel    string         `json:"channel"`
 	Route      string         `json:"route"`
 	Severity   string         `json:"severity"`

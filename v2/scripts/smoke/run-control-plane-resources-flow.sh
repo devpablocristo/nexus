@@ -8,9 +8,9 @@ source "${SCRIPT_DIR}/../lib/common.sh"
 
 require_cmd curl
 
-CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-18120}"
+CONTROL_PLANE_PORT="${CONTROL_PLANE_PORT:-$(find_free_port 18120 18129)}"
 BASE_URL="http://127.0.0.1:${CONTROL_PLANE_PORT}"
-READY_URL="${BASE_URL}/healthz"
+READY_URL="${BASE_URL}/readyz"
 RESOURCES_URL="${BASE_URL}/v1/resources"
 POLICIES_URL="${BASE_URL}/v1/policies"
 AUDIT_URL="${BASE_URL}/v1/audit"
@@ -161,5 +161,9 @@ if [[ "${policy_audit_count}" != "1" ]]; then
   echo "${policy_audit_body}" >&2
   exit 1
 fi
+
+metrics_body="$(fetch_metrics "${BASE_URL}" "${ADMIN_API_KEY}")"
+assert_metrics_contains "${metrics_body}" 'nexus_http_requests_total{method="POST",route="/v1/resources",status_code="201"} 1'
+assert_metrics_contains "${metrics_body}" 'nexus_http_requests_total{method="POST",route="/v1/policies",status_code="201"} 1'
 
 echo "control-plane resources and policies smoke ok"

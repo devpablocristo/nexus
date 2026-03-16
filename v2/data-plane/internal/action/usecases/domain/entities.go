@@ -73,6 +73,41 @@ const (
 	RiskLevelCritical RiskLevel = "critical"
 )
 
+// RiskDecision is the graded recommendation produced by the risk evaluator.
+type RiskDecision string
+
+const (
+	RiskDecisionAllow           RiskDecision = "allow"
+	RiskDecisionEnhancedLog     RiskDecision = "enhanced_log"
+	RiskDecisionAdditionalAuth  RiskDecision = "additional_auth"
+	RiskDecisionRequireApproval RiskDecision = "require_approval"
+	RiskDecisionDeny            RiskDecision = "deny"
+)
+
+// EvidenceQuality describes how trustworthy a factor input was.
+type EvidenceQuality string
+
+const (
+	EvidenceQualityObserved EvidenceQuality = "observed"
+	EvidenceQualityInferred EvidenceQuality = "inferred"
+	EvidenceQualityMissing  EvidenceQuality = "missing"
+	EvidenceQualityStale    EvidenceQuality = "stale"
+)
+
+// RiskFactorType separates pro-risk and anti-risk contributions.
+type RiskFactorType string
+
+const (
+	RiskFactorTypePro  RiskFactorType = "pro"
+	RiskFactorTypeAnti RiskFactorType = "anti"
+)
+
+// RiskProfileRef identifies the immutable risk profile used for evaluation.
+type RiskProfileRef struct {
+	Name    string
+	Version int
+}
+
 // EvidenceStatus summarizes whether a deterministic check passed.
 type EvidenceStatus string
 
@@ -126,17 +161,36 @@ type Action struct {
 
 // RiskAssessment is the deterministic risk output attached to an action.
 type RiskAssessment struct {
-	Level   RiskLevel
-	Score   int
-	Summary string
-	Factors []RiskFactor
+	Level               RiskLevel
+	Score               int
+	Summary             string
+	Profile             RiskProfileRef
+	RiskPressure        float64
+	SafetyPressure      float64
+	RawScore            float64
+	DecisionScore       float64
+	RecommendedDecision RiskDecision
+	Factors             []RiskFactor
+	Amplifications      []RiskInteraction
+	Attenuations        []RiskInteraction
 }
 
 // RiskFactor explains why the risk landed where it did.
 type RiskFactor struct {
-	Code    string
-	Summary string
-	Weight  int
+	Code            string
+	Type            RiskFactorType
+	Active          bool
+	Weight          float64
+	AppliedWeight   float64
+	Summary         string
+	EvidenceQuality EvidenceQuality
+}
+
+// RiskInteraction explains a multi-factor amplification or attenuation.
+type RiskInteraction struct {
+	Factors    []string
+	Multiplier float64
+	Summary    string
 }
 
 // EvidenceRecord stores one deterministic validation or evidence item.

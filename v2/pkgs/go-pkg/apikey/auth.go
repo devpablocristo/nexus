@@ -74,7 +74,8 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), principalContextKey, principal)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		*r = *r.WithContext(ctx)
+		next.ServeHTTP(w, r)
 	})
 }
 

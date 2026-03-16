@@ -1,0 +1,15 @@
+environment                    = "staging"
+aws_region                     = "us-east-1"
+availability_zones             = ["us-east-1a", "us-east-1b"]
+allowed_ingress_cidrs          = ["0.0.0.0/0"]
+enable_https                   = false
+data_plane_listener_port       = 80
+control_plane_listener_port    = 8081
+database_instance_class        = "db.t4g.micro"
+database_backup_retention_days = 7
+database_multi_az              = false
+database_deletion_protection   = false
+
+tags = {
+  Tier = "staging"
+}

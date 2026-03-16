@@ -21,6 +21,7 @@ type Policy struct {
 	Reason             string
 	RequireApproval    bool
 	ApprovalTTLSeconds int
+	IsTrap             bool
 	Enabled            bool
 	ArchivedAt         *time.Time
 	CreatedAt          time.Time

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
+	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 )
 
 // Actor describes who triggered the audited event.
@@ -24,6 +25,8 @@ type WriteRequest struct {
 	EventType     string         `json:"event_type"`
 	SourceService string         `json:"source_service"`
 	ActionID      string         `json:"action_id,omitempty"`
+	IncidentID    string         `json:"incident_id,omitempty"`
+	AlertID       string         `json:"alert_id,omitempty"`
 	ResourceID    string         `json:"resource_id,omitempty"`
 	ResourceType  string         `json:"resource_type,omitempty"`
 	Actor         *Actor         `json:"actor,omitempty"`
@@ -76,6 +79,7 @@ func (c *Client) Create(ctx context.Context, req WriteRequest) error {
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	sharedapikey.Apply(httpReq, c.apiKey)
+	sharedobservability.ApplyRequestID(httpReq, ctx)
 
 	resp, err := c.client.Do(httpReq)
 	if err != nil {

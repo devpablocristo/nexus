@@ -30,6 +30,7 @@ type ProtectedResource struct {
 	Chain       string
 	Labels      map[string]string
 	Criticality Criticality
+	IsCanary    bool
 	ArchivedAt  *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

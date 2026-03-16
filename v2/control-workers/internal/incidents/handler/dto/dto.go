@@ -26,6 +26,7 @@ type IncidentResponse struct {
 	ID           string         `json:"id"`
 	SourceKind   string         `json:"source_kind"`
 	SourceID     string         `json:"source_id"`
+	ActionID     string         `json:"action_id,omitempty"`
 	ActionType   string         `json:"action_type"`
 	ResourceID   string         `json:"resource_id"`
 	ResourceType string         `json:"resource_type"`

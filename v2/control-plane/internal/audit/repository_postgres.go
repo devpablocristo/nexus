@@ -29,11 +29,19 @@ func NewPostgresRepository(ctx context.Context, databaseURL string) (*PostgresRe
 	if err != nil {
 		return nil, nil, fmt.Errorf("open audit postgres database: %w", err)
 	}
-	if err := sharedpostgres.MigrateUp(ctx, db, "control-plane/audit", migrationFiles, "migrations"); err != nil {
+	repo, err := NewPostgresRepositoryWithDB(ctx, db)
+	if err != nil {
 		db.Close()
 		return nil, nil, err
 	}
-	return &PostgresRepository{db: db}, db.Close, nil
+	return repo, db.Close, nil
+}
+
+func NewPostgresRepositoryWithDB(ctx context.Context, db *sharedpostgres.DB) (*PostgresRepository, error) {
+	if err := sharedpostgres.MigrateUp(ctx, db, "control-plane/audit", migrationFiles, "migrations"); err != nil {
+		return nil, err
+	}
+	return &PostgresRepository{db: db}, nil
 }
 
 func (r *PostgresRepository) Create(ctx context.Context, item auditdomain.AuditRecord) (auditdomain.AuditRecord, error) {
@@ -64,6 +72,14 @@ func (r *PostgresRepository) Create(ctx context.Context, item auditdomain.AuditR
 	if item.ActionID != "" {
 		actionID = item.ActionID
 	}
+	var incidentID any
+	if item.IncidentID != "" {
+		incidentID = item.IncidentID
+	}
+	var alertID any
+	if item.AlertID != "" {
+		alertID = item.AlertID
+	}
 	var resourceID any
 	if item.ResourceID != "" {
 		resourceID = item.ResourceID
@@ -75,11 +91,11 @@ func (r *PostgresRepository) Create(ctx context.Context, item auditdomain.AuditR
 
 	_, err = r.db.Pool().Exec(ctx, `
 		INSERT INTO audit_records (
-			id, event_type, source_service, action_id, resource_id, resource_type,
+			id, event_type, source_service, action_id, incident_id, alert_id, resource_id, resource_type,
 			actor_type, actor_id, summary, data, occurred_at, created_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 	`,
-		id, item.EventType, item.SourceService, actionID, resourceID, resourceType,
+		id, item.EventType, item.SourceService, actionID, incidentID, alertID, resourceID, resourceType,
 		actorType, actorID, item.Summary, payload, item.OccurredAt, item.CreatedAt,
 	)
 	if err != nil {
@@ -94,7 +110,7 @@ func (r *PostgresRepository) Create(ctx context.Context, item auditdomain.AuditR
 func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]auditdomain.AuditRecord, error) {
 	query := strings.Builder{}
 	query.WriteString(`
-		SELECT id, event_type, source_service, action_id, resource_id, resource_type,
+		SELECT id, event_type, source_service, action_id, incident_id, alert_id, resource_id, resource_type,
 		       actor_type, actor_id, summary, data, occurred_at, created_at
 		FROM audit_records
 		WHERE 1=1
@@ -108,6 +124,12 @@ func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]a
 
 	if filters.ActionID != "" {
 		addClause("action_id =", filters.ActionID)
+	}
+	if filters.IncidentID != "" {
+		addClause("incident_id =", filters.IncidentID)
+	}
+	if filters.AlertID != "" {
+		addClause("alert_id =", filters.AlertID)
 	}
 	if filters.ResourceID != "" {
 		addClause("resource_id =", filters.ResourceID)
@@ -154,7 +176,7 @@ func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]a
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (auditdomain.AuditRecord, error) {
 	row := r.db.Pool().QueryRow(ctx, `
-		SELECT id, event_type, source_service, action_id, resource_id, resource_type,
+		SELECT id, event_type, source_service, action_id, incident_id, alert_id, resource_id, resource_type,
 		       actor_type, actor_id, summary, data, occurred_at, created_at
 		FROM audit_records
 		WHERE id = $1
@@ -179,6 +201,8 @@ func scanAuditRecord(row scanRow) (auditdomain.AuditRecord, error) {
 		eventType     string
 		sourceService string
 		actionID      *string
+		incidentID    *string
+		alertID       *string
 		resourceID    *string
 		resourceType  *string
 		actorType     *string
@@ -189,7 +213,7 @@ func scanAuditRecord(row scanRow) (auditdomain.AuditRecord, error) {
 		createdAt     time.Time
 	)
 	if err := row.Scan(
-		&id, &eventType, &sourceService, &actionID, &resourceID, &resourceType,
+		&id, &eventType, &sourceService, &actionID, &incidentID, &alertID, &resourceID, &resourceType,
 		&actorType, &actorID, &summary, &dataRaw, &occurredAt, &createdAt,
 	); err != nil {
 		return auditdomain.AuditRecord{}, fmt.Errorf("scan audit record: %w", err)
@@ -225,6 +249,12 @@ func scanAuditRecord(row scanRow) (auditdomain.AuditRecord, error) {
 	}
 	if actionID != nil {
 		item.ActionID = *actionID
+	}
+	if incidentID != nil {
+		item.IncidentID = *incidentID
+	}
+	if alertID != nil {
+		item.AlertID = *alertID
 	}
 	if resourceID != nil {
 		item.ResourceID = *resourceID

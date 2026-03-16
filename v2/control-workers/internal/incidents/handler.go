@@ -82,6 +82,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 
 	items, err := h.uc.List(r.Context(), ListRequest{
 		SourceKind: r.URL.Query().Get("source_kind"),
+		ResourceID: r.URL.Query().Get("resource_id"),
 		Trigger:    r.URL.Query().Get("trigger"),
 		Severity:   r.URL.Query().Get("severity"),
 		Status:     r.URL.Query().Get("status"),
@@ -204,10 +205,15 @@ func writeIncidentError(w http.ResponseWriter, status int, code, message string)
 }
 
 func toIncidentResponse(item incidentdomain.Incident) incidentdto.IncidentResponse {
+	actionID := ""
+	if item.SourceKind == incidentdomain.SourceKindAction {
+		actionID = item.SourceID
+	}
 	return incidentdto.IncidentResponse{
 		ID:           item.ID,
 		SourceKind:   string(item.SourceKind),
 		SourceID:     item.SourceID,
+		ActionID:     actionID,
 		ActionType:   item.ActionType,
 		ResourceID:   item.ResourceID,
 		ResourceType: item.ResourceType,

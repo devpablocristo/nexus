@@ -40,6 +40,9 @@ func TestCreateIncidentOpensAlertForHighSeverity(t *testing.T) {
 	if alertsList[0].SourceID != created.ID || alertsList[0].Channel != alertdomain.ChannelSlack {
 		t.Fatalf("unexpected alert: %#v", alertsList[0])
 	}
+	if alertsList[0].Details["incident_id"] != created.ID || alertsList[0].Details["action_id"] != "action-1" {
+		t.Fatalf("unexpected alert correlation details: %#v", alertsList[0].Details)
+	}
 }
 
 func TestCreateIncidentSkipsAlertForMediumSeverity(t *testing.T) {

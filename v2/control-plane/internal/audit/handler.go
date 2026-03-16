@@ -67,6 +67,8 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.uc.List(r.Context(), ListRequest{
 		ActionID:   r.URL.Query().Get("action_id"),
+		IncidentID: r.URL.Query().Get("incident_id"),
+		AlertID:    r.URL.Query().Get("alert_id"),
 		ResourceID: r.URL.Query().Get("resource_id"),
 		ActorID:    r.URL.Query().Get("actor_id"),
 		EventType:  r.URL.Query().Get("event_type"),
@@ -135,6 +137,8 @@ func toAuditResponse(item auditdomain.AuditRecord) auditdto.AuditResponse {
 		EventType:     item.EventType,
 		SourceService: item.SourceService,
 		ActionID:      item.ActionID,
+		IncidentID:    item.IncidentID,
+		AlertID:       item.AlertID,
 		ResourceID:    item.ResourceID,
 		ResourceType:  item.ResourceType,
 		Actor:         item.Actor,
