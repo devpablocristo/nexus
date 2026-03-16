@@ -3,6 +3,7 @@ package risk
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	actiondomain "nexus/v2/data-plane/internal/action/usecases/domain"
 )
@@ -61,11 +62,11 @@ func TestEvaluatorEvaluate(t *testing.T) {
 				}),
 			},
 			wantLevel:          actiondomain.RiskLevelLow,
-			wantScore:          5,
+			wantScore:          10,
 			wantDecision:       actiondomain.RiskDecisionAllow,
-			wantRiskPressure:   0.05,
+			wantRiskPressure:   0.10,
 			wantSafetyPressure: 0,
-			wantActiveFactors:  1,
+			wantActiveFactors:  2,
 		},
 		{
 			name: "critical resource keeps full cold-start amount weight",
@@ -129,6 +130,97 @@ func TestEvaluatorEvaluate(t *testing.T) {
 				t.Fatalf("Evaluate() active factor count = %d, want %d", active, tt.wantActiveFactors)
 			}
 		})
+	}
+}
+
+func TestEvaluatorEvaluateAmplifiesSuspiciousCombination(t *testing.T) {
+	t.Parallel()
+
+	ctx := Context{
+		ResourceBaselines: map[Metric]Baseline{
+			MetricAvgTxAmount: {
+				ScopeType:  ScopeTypeResource,
+				ScopeID:    "wallet_hot_usdc_1",
+				Metric:     MetricAvgTxAmount,
+				Avg:        100,
+				Stddev:     10,
+				P95:        120,
+				SampleSize: 30,
+				WindowDays: 30,
+				ComputedAt: time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		ActorBaselines: map[Metric]Baseline{
+			MetricActions30mCount: {
+				ScopeType:  ScopeTypeActor,
+				ScopeID:    "treasury-agent",
+				Metric:     MetricActions30mCount,
+				Avg:        1,
+				Stddev:     0.2,
+				P95:        1,
+				SampleSize: 20,
+				WindowDays: 30,
+				ComputedAt: time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC),
+			},
+			MetricTypicalHours: {
+				ScopeType:  ScopeTypeActor,
+				ScopeID:    "treasury-agent",
+				Metric:     MetricTypicalHours,
+				Avg:        10,
+				Stddev:     1,
+				P95:        11,
+				SampleSize: 20,
+				WindowDays: 30,
+				ComputedAt: time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		RecentActorCount30: 5,
+		OpenIncidentCount:  2,
+	}
+
+	got, err := (Evaluator{}).Evaluate(Input{
+		ActionType: actiondomain.ActionTypeWithdrawal,
+		Resource: actiondomain.ProtectedResource{
+			ID:          "wallet_hot_usdc_1",
+			Type:        actiondomain.ResourceTypeWallet,
+			Criticality: "high",
+		},
+		Actor: actiondomain.ActorRef{Type: actiondomain.ActorTypeAgent, ID: "treasury-agent"},
+		Payload: mustRawJSON(t, map[string]any{
+			"asset":               "USDC",
+			"amount":              "1000.00",
+			"network":             "ethereum",
+			"destination_address": "0xnewdest",
+		}),
+		Now:     time.Date(2026, 3, 16, 3, 0, 0, 0, time.UTC),
+		Context: ctx,
+	})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if got.RecommendedDecision != actiondomain.RiskDecisionDeny {
+		t.Fatalf("Evaluate() recommended decision = %s, want %s", got.RecommendedDecision, actiondomain.RiskDecisionDeny)
+	}
+	if got.Score != 100 {
+		t.Fatalf("Evaluate() score = %d, want 100", got.Score)
+	}
+	if len(got.Amplifications) != 3 {
+		t.Fatalf("Evaluate() amplifications = %#v, want 3 active combinations", got.Amplifications)
+	}
+}
+
+func TestApplyHysteresisKeepsPreviousDecisionNearBoundary(t *testing.T) {
+	t.Parallel()
+
+	previous := actiondomain.RiskDecisionRequireApproval
+	got := applyHysteresis(
+		actiondomain.RiskDecisionAdditionalAuth,
+		&previous,
+		[4]float64{0.20, 0.40, 0.60, 0.80},
+		0.59,
+	)
+	if got != actiondomain.RiskDecisionRequireApproval {
+		t.Fatalf("applyHysteresis() = %s, want %s", got, actiondomain.RiskDecisionRequireApproval)
 	}
 }
 

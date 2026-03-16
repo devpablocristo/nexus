@@ -39,7 +39,7 @@ func evaluateAction(now time.Time, req CreateRequest, resource actiondomain.Prot
 		Kind:      "policy_decision",
 		Status:    actiondomain.EvidenceStatusPassed,
 		Summary:   decision.summary,
-		Details:   map[string]any{"effect": string(decision.effect), "require_approval": decision.requireApproval, "matched_policy_id": decision.policyID},
+		Details:   map[string]any{"effect": string(decision.effect), "require_approval": decision.requireApproval, "matched_policy_id": decision.policyID, "is_trap": decision.isTrap},
 		CreatedAt: now,
 	})
 
@@ -156,6 +156,7 @@ type evaluatedDecision struct {
 	approvalTTL     time.Duration
 	summary         string
 	policyID        string
+	isTrap          bool
 }
 
 func evaluatePolicyDecision(req CreateRequest, resource actiondomain.ProtectedResource, policies []ActionPolicy, evaluator actionPolicyEvaluator) evaluatedDecision {
@@ -209,6 +210,7 @@ func evaluatePolicyDecision(req CreateRequest, resource actiondomain.ProtectedRe
 				approvalTTL: 0,
 				summary:     firstNonEmpty(policy.Reason, "matching deny policy blocked the action"),
 				policyID:    policy.ID,
+				isTrap:      policy.IsTrap,
 			}
 		}
 		if policy.RequireApproval {
@@ -218,6 +220,7 @@ func evaluatePolicyDecision(req CreateRequest, resource actiondomain.ProtectedRe
 				approvalTTL:     approvalTTL(policy.ApprovalTTLSeconds),
 				summary:         firstNonEmpty(policy.Reason, "matching allow policy requires approval"),
 				policyID:        policy.ID,
+				isTrap:          policy.IsTrap,
 			}
 		}
 		return evaluatedDecision{
@@ -225,6 +228,7 @@ func evaluatePolicyDecision(req CreateRequest, resource actiondomain.ProtectedRe
 			approvalTTL: 0,
 			summary:     firstNonEmpty(policy.Reason, "matching allow policy approved the action"),
 			policyID:    policy.ID,
+			isTrap:      policy.IsTrap,
 		}
 	}
 

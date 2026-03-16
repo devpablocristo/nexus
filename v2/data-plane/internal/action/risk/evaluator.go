@@ -71,10 +71,6 @@ func (Evaluator) Evaluate(input Input) (actiondomain.RiskAssessment, error) {
 		return actiondomain.RiskAssessment{}, err
 	}
 	profile := balancedProfile()
-	now := input.Now
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
 
 	factors := evaluateFactors(profile, input.Resource, signals, input.Context)
 	riskPressure, safetyPressure := accumulatePressures(factors)
@@ -209,7 +205,12 @@ func evaluateFactors(profile profile, resource actiondomain.ProtectedResource, s
 		evidenceQualityFromActive(actorDeviationActive, actiondomain.EvidenceQualityObserved, actiondomain.EvidenceQualityInferred),
 	)
 
-	withinBaselineActive := !(amountAnomaly.Active || velocitySpike.Active || newDestination.Active || offHours.Active || actorDeviation.Active || recentIncident.Active)
+	withinBaselineActive := !amountAnomaly.Active &&
+		!velocitySpike.Active &&
+		!newDestination.Active &&
+		!offHours.Active &&
+		!actorDeviation.Active &&
+		!recentIncident.Active
 	withinBaseline := newFactor(
 		factorWithinBaseline,
 		actiondomain.RiskFactorTypeAnti,

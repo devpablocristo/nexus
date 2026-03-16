@@ -26,14 +26,15 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 
 	ctx := context.Background()
 	created, err := repo.Create(ctx, policydomain.Policy{
-		ActionType:         "withdrawal",
-		ResourceType:       "wallet",
+		ActionType:         "*",
+		ResourceType:       "*",
 		Effect:             policydomain.EffectAllow,
 		Priority:           10,
-		Expression:         `action.action_type == "withdrawal" && resource.type == "wallet"`,
+		Expression:         `resource.labels["_nexus_trap"] == "true"`,
 		Reason:             "withdrawals from wallets require approval",
 		RequireApproval:    true,
 		ApprovalTTLSeconds: 600,
+		IsTrap:             true,
 		Enabled:            true,
 	})
 	if err != nil {
@@ -46,6 +47,9 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 	}
 	if len(items) == 0 {
 		t.Fatal("expected created policy in list")
+	}
+	if !items[0].IsTrap {
+		t.Fatalf("expected trap policy in list: %#v", items[0])
 	}
 
 	created.Reason = "updated"

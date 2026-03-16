@@ -206,7 +206,10 @@ For AWS Secrets Manager:
 2. Check evidence: `GET /v1/actions/{id}/evidence` shows which checks passed/failed
 3. Check policies: `GET /v1/policies?action_type=<type>&resource_type=<type>` shows matching policies
 4. Check policy expressions: CEL expressions are in the `expression` field
-5. If cache is stale (graceful degradation active): check data-plane logs for `control-plane unavailable, using cached` warnings
+5. If cache is stale (graceful degradation active):
+   - check data-plane logs for `control-plane unavailable, using cached` warnings (includes `cache_age`, `expires_at`, `version`)
+   - check audit records for `"degraded_context": true` in the `data` field — this means the decision was made with cached (potentially stale) data
+   - degradation tracking is per-request via `DegradationCollector` in context (no false positives between concurrent requests)
 
 ### Database restore
 

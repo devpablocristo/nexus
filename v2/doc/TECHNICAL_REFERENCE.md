@@ -60,27 +60,49 @@ Patron esperado:
 
 ## Estado actual de Fase 1A
 
-El primer slice de `Fase 1A` ya esta activo en `data-plane/internal/action/risk`.
+`Fase 1A` ya esta activa en runtime sobre `data-plane/internal/action/risk` y `control-plane`.
 
 - reemplaza el scoring fijo anterior por un evaluator dedicado
+- separa `risk_pressure` y `safety_pressure`
+- aplica amplificaciones y atenuaciones con cap conservador
+- usa hysteresis en bordes de decision
+- calcula contexto historico desde PostgreSQL:
+  - baselines por `resource`
+  - baselines por `actor`
+  - `known destinations` con decay
+  - incidentes abiertos para `recent_incident`
+- soporta canaries via:
+  - `control-plane/resources.is_canary`
+  - label interna `_nexus_trap`
+  - trap policy builtin `is_trap=true`
+  - incidente `canary_triggered` y alert `critical`
 - hoy corre con un `RiskProfile` builtin:
   - `name=balanced`
   - `version=1`
-- hoy NO usa todavia:
-  - baselines historicos
-  - amplificaciones
-  - atenuaciones
-  - canaries
-  - `RiskProfile` administrado desde `control-plane`
+- la administracion versionada de `RiskProfile` desde `control-plane` todavia no existe
 
 ### Factores activos hoy
 
 - `amount_anomaly`
   - en cold start usa peso reducido `0.05`
   - excepto si `resource.criticality == critical`, donde mantiene `0.15`
+- `velocity_spike`
 - `new_destination`
   - se activa en `withdrawal` cuando hay `destination_address`
   - en cold start se trata como destino nuevo
+- `off_hours`
+- `actor_deviation`
+- `recent_incident`
+- `known_destination`
+- `within_baseline`
+- `business_hours`
+- `verified_actor`
+
+Factores adicionales de `1A`:
+
+- cada factor expone `evidence_quality`
+- `typical_hours` tiene peso bajo y no domina solo
+- la confidence de baseline es saturante por metrica, no lineal
 
 ### Salida actual de riesgo
 
@@ -103,7 +125,23 @@ La `recommended_decision` de riesgo es informativa por ahora.
 
 - todavia NO reemplaza el decision lifecycle de `actions`
 - `allow / deny / require_approval` sigue saliendo de policy evaluation
-- el evaluator de 1A en este slice mejora explicabilidad y base de scoring
+- el evaluator de `1A` mejora explicabilidad, scoring contextual y deteccion de reconocimiento
+
+### Canaries y trap policies
+
+`control-plane` agrega una trap policy builtin:
+
+- `action_type="*"`
+- `resource_type="*"`
+- `expression=resource.labels["_nexus_trap"] == "true"`
+- `is_trap=true`
+
+Cuando una accion matchea esa policy:
+
+- la accion queda `blocked`
+- el incidente usa `trigger=canary_triggered`
+- la severidad sube a `critical`
+- `control-workers` enruta la alerta como `ops-p1`
 
 ## Idempotencia
 
@@ -120,11 +158,19 @@ El `data-plane` cachea resources y policies del `control-plane` localmente.
 
 - soft TTL: 30s (refresca si el upstream esta disponible)
 - hard TTL: 15m para resources, 5m para policies
-- si el `control-plane` no responde y el cache esta dentro del hard TTL: usa cache, marca la decision como `degraded_context` en logs
+- si el `control-plane` no responde y el cache esta dentro del hard TTL: usa cache
 - si el cache expiro o no existe: fail closed (deny)
-- cada entry de cache incluye version, fetched_at
+- cada entry de cache incluye version, fetched_at, expires_at
 
-Esto permite que el `data-plane` siga decidiendo si el `control-plane` tiene un downtime breve.
+Tracking de degradacion per-request:
+
+- al inicio de cada `Create()`, se inyecta un `DegradationCollector` en el `context.Context`
+- si un caching resolver sirve de cache stale (upstream fallo), marca `resourceDegraded` o `policiesDegraded` en el collector del context
+- al emitir audit de `action_created`, si el collector indica degradacion, se agrega `"degraded_context": true` al campo `Data` del audit record
+- el collector es request-local (no hay estado compartido entre requests concurrentes)
+- implementacion: `cache.go` (WithDegradationCollector, DegradationFromContext) + `usecases.go` (inyeccion y lectura)
+
+Esto permite que el `data-plane` siga decidiendo si el `control-plane` tiene un downtime breve, y que el audit trail refleje fielmente cuando una decision se tomo con datos de cache.
 
 ## Observabilidad minima actual
 

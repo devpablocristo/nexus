@@ -45,3 +45,43 @@ func TestControlPlaneClientGetByIDEscapesPath(t *testing.T) {
 		t.Fatalf("unexpected resource id: %q", resource.ID)
 	}
 }
+
+func TestControlPlaneClientListPoliciesIncludesTrapFlag(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.URL.Query().Get("action_type"), "withdrawal"; got != want {
+			t.Fatalf("unexpected action_type query: got=%q want=%q", got, want)
+		}
+		if got, want := r.URL.Query().Get("resource_type"), "wallet"; got != want {
+			t.Fatalf("unexpected resource_type query: got=%q want=%q", got, want)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"items":[
+				{
+					"id":"policy_canary_trap",
+					"action_type":"*",
+					"resource_type":"*",
+					"effect":"deny",
+					"priority":-1000,
+					"expression":"resource.labels[\"_nexus_trap\"] == \"true\"",
+					"reason":"canary resource should never receive actions",
+					"require_approval":false,
+					"approval_ttl_seconds":0,
+					"is_trap":true,
+					"enabled":true
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	items, err := NewControlPlaneClient(server.URL, 0).List(context.Background(), "withdrawal", "wallet")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(items) != 1 || !items[0].IsTrap {
+		t.Fatalf("unexpected policies: %#v", items)
+	}
+}

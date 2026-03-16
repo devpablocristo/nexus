@@ -20,6 +20,7 @@ type CreateRequest struct {
 	Reason             string
 	RequireApproval    bool
 	ApprovalTTLSeconds int
+	IsTrap             bool
 	Enabled            *bool
 }
 
@@ -38,6 +39,7 @@ type PolicyPatch struct {
 	Reason             *string
 	RequireApproval    *bool
 	ApprovalTTLSeconds *int
+	IsTrap             *bool
 	Enabled            *bool
 }
 
@@ -62,8 +64,46 @@ type Usecases struct {
 	validator CELValidator
 }
 
+const (
+	canaryTrapPolicyActionType   = "*"
+	canaryTrapPolicyResourceType = "*"
+	canaryTrapPolicyExpression   = `resource.labels["_nexus_trap"] == "true"`
+	canaryTrapPolicyReason       = "canary resource should never receive actions"
+	canaryTrapPolicyPriority     = -1000
+)
+
 func NewUsecases(repo Repository, validator CELValidator) *Usecases {
 	return &Usecases{repo: repo, validator: validator}
+}
+
+func (u *Usecases) EnsureCanaryTrapPolicy(ctx context.Context) error {
+	defaultArchived := false
+	items, err := u.List(ctx, ListRequest{Archived: &defaultArchived})
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if !item.IsTrap {
+			continue
+		}
+		if item.ActionType == canaryTrapPolicyActionType &&
+			item.ResourceType == canaryTrapPolicyResourceType &&
+			item.Expression == canaryTrapPolicyExpression {
+			return nil
+		}
+	}
+	_, err = u.Create(ctx, CreateRequest{
+		ActionType:         canaryTrapPolicyActionType,
+		ResourceType:       canaryTrapPolicyResourceType,
+		Effect:             string(policydomain.EffectDeny),
+		Priority:           canaryTrapPolicyPriority,
+		Expression:         canaryTrapPolicyExpression,
+		Reason:             canaryTrapPolicyReason,
+		RequireApproval:    false,
+		ApprovalTTLSeconds: 0,
+		IsTrap:             true,
+	})
+	return err
 }
 
 func (u *Usecases) Create(ctx context.Context, req CreateRequest) (policydomain.Policy, error) {
@@ -103,6 +143,7 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (policydomain.
 		Reason:             req.Reason,
 		RequireApproval:    req.RequireApproval,
 		ApprovalTTLSeconds: normalizeApprovalTTL(req.RequireApproval, req.ApprovalTTLSeconds),
+		IsTrap:             req.IsTrap,
 		Enabled:            enabled,
 	})
 }
@@ -169,6 +210,9 @@ func (u *Usecases) UpdateByID(ctx context.Context, id uuid.UUID, patch PolicyPat
 	}
 	if patch.Enabled != nil {
 		item.Enabled = *patch.Enabled
+	}
+	if patch.IsTrap != nil {
+		item.IsTrap = *patch.IsTrap
 	}
 	if item.RequireApproval && item.Effect != policydomain.EffectAllow {
 		return policydomain.Policy{}, newHTTPError(http.StatusBadRequest, "VALIDATION", "approval requires effect allow")

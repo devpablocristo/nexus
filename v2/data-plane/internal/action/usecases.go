@@ -93,6 +93,8 @@ func (u *Usecases) WithResourceResolver(resolver ResourceResolver) *Usecases {
 	return u
 }
 
+
+
 func (u *Usecases) WithPolicySource(source PolicySource) *Usecases {
 	u.policies = source
 	return u
@@ -104,6 +106,7 @@ func (u *Usecases) WithRiskContextProvider(provider RiskContextProvider) *Usecas
 }
 
 func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.Action, error) {
+	ctx = WithDegradationCollector(ctx)
 	if req.ActionType == "" {
 		return actiondomain.Action{}, newHTTPError(http.StatusBadRequest, "VALIDATION", "action_type required")
 	}
@@ -178,6 +181,16 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 	for idx := range created.Evidence {
 		created.Evidence[idx].ActionID = created.ID
 	}
+	auditData := map[string]any{
+		"action_type": string(created.Type),
+		"decision":    string(created.Decision),
+		"status":      string(created.Status),
+		"risk_level":  string(created.Risk.Level),
+		"risk_score":  created.Risk.Score,
+	}
+	if d := DegradationFromContext(ctx); d != nil && d.IsDegraded() {
+		auditData["degraded_context"] = true
+	}
 	u.emitAudit(ctx, sharedaudit.WriteRequest{
 		EventType:     "action_created",
 		SourceService: "data-plane",
@@ -186,18 +199,18 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 		ResourceType:  string(created.ResourceType),
 		Actor:         actionAuditActor(created.ProposedBy),
 		Summary:       "action created",
-		Data: map[string]any{
-			"action_type": string(created.Type),
-			"decision":    string(created.Decision),
-			"status":      string(created.Status),
-			"risk_level":  string(created.Risk.Level),
-			"risk_score":  created.Risk.Score,
-		},
-		OccurredAt: created.CreatedAt,
+		Data:          auditData,
+		OccurredAt:    created.CreatedAt,
 	})
 	if created.Status == actiondomain.ActionStatusBlocked {
 		if u.metrics != nil {
 			u.metrics.IncActionBlocked(string(created.Type))
+		}
+		trigger := IncidentTriggerBlockedAction
+		reason := blockedIncidentReason(created)
+		if actionMatchedTrapPolicy(created) {
+			trigger = IncidentTriggerCanaryTriggered
+			reason = canaryIncidentReason(created)
 		}
 		u.emitAudit(ctx, sharedaudit.WriteRequest{
 			EventType:     "action_blocked",
@@ -215,10 +228,11 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 			},
 			OccurredAt: created.UpdatedAt,
 		})
-		u.emitIncident(ctx, created, IncidentTriggerBlockedAction, blockedIncidentReason(created), map[string]any{
+		u.emitIncident(ctx, created, trigger, reason, map[string]any{
 			"decision":      string(created.Decision),
 			"status":        string(created.Status),
 			"source_system": created.SourceSystem,
+			"is_trap":       actionMatchedTrapPolicy(created),
 		})
 	}
 	if u.riskContext != nil {
@@ -231,6 +245,21 @@ func (u *Usecases) Create(ctx context.Context, req CreateRequest) (actiondomain.
 		}
 	}
 	return created, nil
+}
+
+func actionMatchedTrapPolicy(item actiondomain.Action) bool {
+	for _, evidence := range item.Evidence {
+		if evidence.Kind != "policy_decision" || evidence.Details == nil {
+			continue
+		}
+		switch typed := evidence.Details["is_trap"].(type) {
+		case bool:
+			return typed
+		case string:
+			return strings.EqualFold(strings.TrimSpace(typed), "true")
+		}
+	}
+	return false
 }
 
 func (u *Usecases) List(ctx context.Context, req ListRequest) ([]actiondomain.Action, error) {

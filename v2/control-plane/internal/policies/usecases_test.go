@@ -39,3 +39,26 @@ func TestUsecasesPolicyLifecycle(t *testing.T) {
 		t.Fatalf("unexpected list response: %#v", items)
 	}
 }
+
+func TestUsecasesEnsureCanaryTrapPolicy(t *testing.T) {
+	t.Parallel()
+
+	uc := NewUsecases(NewInMemoryRepository(nil), NewEvaluator())
+	if err := uc.EnsureCanaryTrapPolicy(context.Background()); err != nil {
+		t.Fatalf("EnsureCanaryTrapPolicy returned error: %v", err)
+	}
+
+	items, err := uc.List(context.Background(), ListRequest{
+		ActionType:   "withdrawal",
+		ResourceType: "wallet",
+	})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("unexpected list response: %#v", items)
+	}
+	if !items[0].IsTrap || items[0].Expression != `resource.labels["_nexus_trap"] == "true"` {
+		t.Fatalf("unexpected canary trap policy: %#v", items[0])
+	}
+}

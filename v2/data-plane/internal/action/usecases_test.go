@@ -284,6 +284,58 @@ func TestUsecasesCreateCanBlockWithPolicy(t *testing.T) {
 	}
 }
 
+func TestUsecasesCreateTrapPolicyTriggersCanaryIncident(t *testing.T) {
+	t.Parallel()
+
+	incidents := &stubIncidentSink{}
+	uc := NewUsecases(NewInMemoryRepository(nil)).
+		WithResourceResolver(stubResourceResolver{
+			resource: actiondomain.ProtectedResource{
+				ID:          "wallet_canary_1",
+				Type:        actiondomain.ResourceTypeWallet,
+				Environment: "prod",
+				Criticality: "low",
+				Labels:      map[string]string{"_nexus_trap": "true"},
+			},
+		}).
+		WithPolicySource(&stubPolicySource{
+			items: []ActionPolicy{
+				{
+					ID:           "policy_canary_trap",
+					ActionType:   "*",
+					ResourceType: "*",
+					Effect:       "deny",
+					Priority:     -1000,
+					Expression:   `resource.labels["_nexus_trap"] == "true"`,
+					Reason:       "canary resource should never receive actions",
+					IsTrap:       true,
+					Enabled:      true,
+				},
+			},
+		}).
+		WithIncidentSink(incidents)
+
+	req := validCreateRequest()
+	req.ResourceID = "wallet_canary_1"
+
+	action, err := uc.Create(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if action.Status != actiondomain.ActionStatusBlocked {
+		t.Fatalf("unexpected action status: %s", action.Status)
+	}
+	if len(incidents.items) != 1 {
+		t.Fatalf("expected one incident, got %d", len(incidents.items))
+	}
+	if incidents.items[0].Trigger != IncidentTriggerCanaryTriggered {
+		t.Fatalf("unexpected incident trigger: %#v", incidents.items[0])
+	}
+	if got := incidents.items[0].Details["is_trap"]; got != true {
+		t.Fatalf("unexpected incident details: %#v", incidents.items[0].Details)
+	}
+}
+
 func TestUsecasesCreateCanAllowWithoutApproval(t *testing.T) {
 	t.Parallel()
 

@@ -32,6 +32,7 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 		Chain:       "ethereum",
 		Labels:      map[string]string{"tier": "hot"},
 		Criticality: resourcedomain.CriticalityCritical,
+		IsCanary:    true,
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -48,6 +49,9 @@ func TestPostgresRepositoryLifecycle(t *testing.T) {
 	}
 	if len(items) == 0 {
 		t.Fatal("expected created resource in list")
+	}
+	if !items[0].IsCanary {
+		t.Fatalf("expected stored canary resource: %#v", items[0])
 	}
 
 	created.Name = "wallet hot usdc primary"

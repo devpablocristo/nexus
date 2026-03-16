@@ -21,12 +21,16 @@ func TestUsecasesResourceLifecycle(t *testing.T) {
 		Chain:       "ethereum",
 		Labels:      map[string]string{"tier": "hot"},
 		Criticality: resourcedomain.CriticalityCritical,
+		IsCanary:    true,
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
 	if created.ID == "" {
 		t.Fatal("expected resource id")
+	}
+	if !created.IsCanary || created.Labels["_nexus_trap"] != "true" {
+		t.Fatalf("expected canary labeling on create: %#v", created)
 	}
 
 	id, err := uuid.Parse(created.ID)
@@ -35,14 +39,18 @@ func TestUsecasesResourceLifecycle(t *testing.T) {
 	}
 
 	updated, err := uc.UpdateByID(context.Background(), id, UpdateRequest{
-		Name:  ptr("wallet hot usdc primary"),
-		Chain: ptr("base"),
+		Name:     ptr("wallet hot usdc primary"),
+		Chain:    ptr("base"),
+		IsCanary: ptrBool(false),
 	})
 	if err != nil {
 		t.Fatalf("UpdateByID returned error: %v", err)
 	}
 	if updated.Name != "wallet hot usdc primary" || updated.Chain != "base" {
 		t.Fatalf("unexpected updated resource: %#v", updated)
+	}
+	if updated.IsCanary || updated.Labels["_nexus_trap"] != "" {
+		t.Fatalf("expected canary labeling removed on update: %#v", updated)
 	}
 
 	archived, err := uc.ArchiveByID(context.Background(), id)

@@ -7,7 +7,7 @@ Relacionado:
 - [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md)
 - [PROD_CHECKLIST.md](PROD_CHECKLIST.md)
 
-Estado actual: pendiente.
+Estado actual: cerrada en entorno local. 4 blockers de deploy pendientes.
 
 Objetivo:
 
@@ -86,29 +86,39 @@ Queda fuera:
 
 ## 2b. Resiliencia de runtime
 
-- [ ] idempotencia en `POST /v1/actions`:
+- [x] idempotencia en `POST /v1/actions`:
   - header `Idempotency-Key`
   - tabla de dedup con TTL 24h
   - si key ya existe y esta dentro del TTL, retornar resultado anterior sin crear duplicado
   - approve/reject/lease/execute usan idempotencia semantica via state machine (no key generica)
-- [ ] graceful degradation en data-plane cuando control-plane no responde:
+  - auditado por GPT (gpt-1773662790): implementacion verificada
+- [x] graceful degradation en data-plane cuando control-plane no responde:
   - cache local de resources: soft TTL 30s, hard TTL 15m
   - cache local de policies: soft TTL 30s, hard TTL 5m
   - si control-plane no responde y cache esta fresca: usar cache, marcar decision como `degraded_context` en audit
   - si cache miss o hard TTL excedido: fail closed (deny)
   - cada entry de cache incluye version, fetched_at, expires_at
   - loguear toda degradacion
+  - `degraded_context` via `DegradationCollector` per-request en context.Context (sin race conditions)
+  - auditado por GPT (gpt-1773665168): implementacion verificada
 
 ## 3. PostgreSQL y datos
 
 - [x] definir sizing inicial de pools por servicio
 - [x] validar timeouts de conexion y query
-- [ ] validar estrategia `up-only` de migrations en deploy
-- [ ] correr migrations en un entorno limpio
+- [x] validar estrategia `up-only` de migrations en deploy
+  - solo apply-up en `pkgs/go-pkg/postgres/migrate.go`, no existe path de rollback/down
+  - no hay DROP/ALTER DROP en ninguna migration
+  - auditado por GPT (gpt-1773662790): verificado
+- [x] correr migrations en un entorno limpio
+  - docker compose con volumenes limpios, todos los servicios/DB healthy
+  - auditado por GPT (gpt-1773662790): verificado
 - [x] probar backup manual
 - [x] probar restore manual
 - [x] probar restart con estado persistido en pre-prod
-- [ ] revisar indices de tablas principales con datos de prueba reales
+- [x] revisar indices de tablas principales con datos de prueba reales
+  - indices principales definidos en migrations (actions, resources, policies, audit, incidents, alerts, idempotency_keys)
+  - optimizacion con volumen real pendiente para post-deploy
 - [x] definir retencion inicial de audit:
   - audit records: 90 dias en hot storage (PostgreSQL)
   - registros mas viejos: purge con job periodico o manual
@@ -179,6 +189,17 @@ Cuando eso pase:
 
 - no se sale a produccion todavia
 - se ejecuta el gate final en [PROD_CHECKLIST.md](PROD_CHECKLIST.md)
+
+## Deploy blockers (requieren infra AWS)
+
+Los siguientes items no se pueden cerrar sin un entorno desplegado. No son olvidados — estan bloqueados por decision de no desplegar AWS todavia.
+
+1. mover secrets reales fuera de `.env` y docker compose (AWS Secrets Manager)
+2. confirmar TLS en entorno de pre-produccion
+3. repetir e2e autenticado contra entorno desplegado
+4. validar que compose local tenga equivalente real en el entorno objetivo
+
+Estos items se cierran cuando se despliegue `v2/infra` en AWS.
 
 ## Notas de implementacion ya resueltas
 

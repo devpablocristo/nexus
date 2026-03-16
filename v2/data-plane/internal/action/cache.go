@@ -31,6 +31,7 @@ func DefaultCacheConfig() CacheConfig {
 type cacheEntry[T any] struct {
 	value     T
 	fetchedAt time.Time
+	expiresAt time.Time
 	version   int64
 }
 
@@ -40,6 +41,32 @@ func (e cacheEntry[T]) isStale(softTTL time.Duration) bool {
 
 func (e cacheEntry[T]) isExpired(hardTTL time.Duration) bool {
 	return time.Since(e.fetchedAt) > hardTTL
+}
+
+// degradationKey is the context key for per-request degradation tracking.
+type degradationKey struct{}
+
+// DegradationCollector tracks degradation flags for a single request.
+// It is stored in context.Context and is request-local (no shared state).
+type DegradationCollector struct {
+	resourceDegraded bool
+	policiesDegraded bool
+}
+
+// IsDegraded returns true if either resource or policy resolution used stale cache.
+func (d *DegradationCollector) IsDegraded() bool {
+	return d.resourceDegraded || d.policiesDegraded
+}
+
+// WithDegradationCollector returns a new context with a fresh DegradationCollector.
+func WithDegradationCollector(ctx context.Context) context.Context {
+	return context.WithValue(ctx, degradationKey{}, &DegradationCollector{})
+}
+
+// DegradationFromContext extracts the DegradationCollector from context, or nil.
+func DegradationFromContext(ctx context.Context) *DegradationCollector {
+	d, _ := ctx.Value(degradationKey{}).(*DegradationCollector)
+	return d
 }
 
 // CachingResourceResolver wraps a ResourceResolver with an in-memory cache
@@ -78,11 +105,13 @@ func (c *CachingResourceResolver) GetByID(ctx context.Context, resourceID string
 	// Try upstream.
 	resource, err := c.upstream.GetByID(ctx, resourceID)
 	if err == nil {
+		now := time.Now().UTC()
 		c.mu.Lock()
 		c.version++
 		c.entries[resourceID] = cacheEntry[actiondomain.ProtectedResource]{
 			value:     resource,
-			fetchedAt: time.Now().UTC(),
+			fetchedAt: now,
+			expiresAt: now.Add(c.config.ResourceHardTTL),
 			version:   c.version,
 		}
 		c.mu.Unlock()
@@ -94,8 +123,13 @@ func (c *CachingResourceResolver) GetByID(ctx context.Context, resourceID string
 		c.logger.WarnContext(ctx, "control-plane unavailable, using cached resource",
 			"resource_id", resourceID,
 			"cache_age", time.Since(entry.fetchedAt).String(),
+			"expires_at", entry.expiresAt.Format(time.RFC3339),
+			"version", entry.version,
 			"error", err.Error(),
 		)
+		if d := DegradationFromContext(ctx); d != nil {
+			d.resourceDegraded = true
+		}
 		return entry.value, nil
 	}
 
@@ -145,11 +179,13 @@ func (c *CachingPolicySource) List(ctx context.Context, actionType, resourceType
 	// Try upstream.
 	policies, err := c.upstream.List(ctx, actionType, resourceType)
 	if err == nil {
+		now := time.Now().UTC()
 		c.mu.Lock()
 		c.version++
 		c.entries[key] = cacheEntry[[]ActionPolicy]{
 			value:     policies,
-			fetchedAt: time.Now().UTC(),
+			fetchedAt: now,
+			expiresAt: now.Add(c.config.PolicyHardTTL),
 			version:   c.version,
 		}
 		c.mu.Unlock()
@@ -162,8 +198,13 @@ func (c *CachingPolicySource) List(ctx context.Context, actionType, resourceType
 			"action_type", actionType,
 			"resource_type", resourceType,
 			"cache_age", time.Since(entry.fetchedAt).String(),
+			"expires_at", entry.expiresAt.Format(time.RFC3339),
+			"version", entry.version,
 			"error", err.Error(),
 		)
+		if d := DegradationFromContext(ctx); d != nil {
+			d.policiesDegraded = true
+		}
 		return entry.value, nil
 	}
 

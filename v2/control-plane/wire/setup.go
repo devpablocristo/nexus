@@ -67,6 +67,10 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	}
 	resourceUC := resources.NewUsecases(resourceRepo)
 	policyUC := policies.NewUsecases(policyRepo, policies.NewEvaluator())
+	if err := policyUC.EnsureCanaryTrapPolicy(context.Background()); err != nil {
+		cleanupCleanups(cleanups)
+		return nil, nil, err
+	}
 	mux := http.NewServeMux()
 	sharedhandlers.RegisterHealthEndpoints(mux, sharedhandlers.ComposeReadinessChecks(readinessChecks...))
 	audit.NewHandler(auditUC).Register(mux)

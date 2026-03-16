@@ -57,9 +57,9 @@ La metafora biologica es un framework interno de pensamiento. En Fases 1-2, el p
 
 ---
 
-## Fase 0: Hardening (en curso)
+## Fase 0: Hardening (cerrada en entorno local)
 
-Estado: en curso.
+Estado: cerrada en entorno local. 4 deploy blockers pendientes (secrets, TLS, e2e contra deploy, compose vs target).
 Prerequisito: MVP cerrado.
 Entregable: sistema listo para produccion.
 
@@ -76,9 +76,14 @@ Exit criteria: [PROD_CHECKLIST.md](PROD_CHECKLIST.md) completo y firmado.
 
 ## Fase 1A: Risk scoring + canaries
 
-Estado: diseno cerrado.
+Estado: implementada en runtime actual.
 Prerequisito: Fase 0 cerrada.
 Entregable: risk scoring multi-factor con respuesta graduada y deteccion de reconocimiento.
+
+Nota de implementacion actual:
+
+- `v2` ya corre `risk_pressure` / `safety_pressure`, hysteresis, baselines, known destinations, trap policies y `canary_triggered`
+- `RiskProfile` todavia vive como preset builtin `balanced/v1`; la administracion versionada desde `control-plane` sigue pendiente como refinamiento
 
 ### 1A.1 Risk scoring multi-factor (cascada)
 
@@ -686,6 +691,13 @@ Prerequisito: 5-10 clientes crypto pagando + Fases 1-2 en produccion.
 | 4 | Adaptive layer | Anticuerpos, fingerprinting, tolerancia | Fases 1-3 + volumen | Pendiente |
 | 5 | Multi-instance | Deteccion colectiva distribuida | Clientes en produccion | Pendiente |
 | 6 | Generalization | Nuevas verticales y enterprise | 5-10 clientes crypto | Pendiente |
+
+A marzo de 2026:
+
+- Fase 0: cerrada en entorno local (4 deploy blockers pendientes)
+- `1A` ya esta implementada en runtime en `v2` (RiskProfile CRUD pendiente para 1B)
+- `1B` y `1C` siguen con diseno cerrado, no implementadas
+- graceful degradation usa `DegradationCollector` per-request via context (auditado por GPT)
 
 ## Que se vende en cada fase
 

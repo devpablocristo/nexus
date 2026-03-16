@@ -213,12 +213,24 @@ Hoy el centro de producto y de dominio de `v2` es:
 La direccion principal de producto es `action/resource/policy/approval/lease`.
 El eje anterior `run/tool` ya fue retirado de la superficie publica de `v2`.
 
-Capacidades agregadas post-MVP (Fase 0):
+Capacidades agregadas post-MVP (Fase 0 — hardening):
 
 - idempotencia en `POST /v1/actions` via header `Idempotency-Key`
 - graceful degradation en `data-plane` con cache local de resources y policies
 - si `control-plane` no esta disponible, `data-plane` usa cache con TTL
 - si el cache expiro o no existe, `data-plane` hace fail closed (deny)
+- marcado de `degraded_context` en audit via `DegradationCollector` per-request en context
+
+Capacidades agregadas post-MVP (Fase 1A — ya implementada en runtime):
+
+- risk scoring multi-factor con cascada: factores pro-riesgo y anti-riesgo con amplificacion no-lineal
+- 5 niveles de decision graduada: allow, enhanced_log, additional_auth, require_approval, deny
+- baselines estadisticas por recurso y actor: daily_action_count, avg_amount, typical_hours
+- known destinations con decay exponencial y confidence
+- canary resources via label interno `_nexus_trap` y trap policies con `is_trap=true`
+- hysteresis: el risk score actual se mezcla con el anterior para evitar oscilaciones
+- cold start conservador: recursos nuevos arrancan con mas friccion
+- `RiskProfile` versionado (builtin `balanced/v1`; CRUD desde control-plane pendiente para 1B)
 
 El roadmap post-MVP esta documentado en [ROADMAP.md](ROADMAP.md).
 La guia operativa esta documentada en [OPS.md](OPS.md).

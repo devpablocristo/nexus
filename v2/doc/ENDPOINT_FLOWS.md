@@ -262,6 +262,11 @@ Nota:
 - `resources.writeResourceError`
 - `handlers.WriteJSON`
 
+Notas:
+
+- si `is_canary=true`, `control-plane` agrega la label interna `_nexus_trap=true`
+- esa marca se persiste en `resources` y no requiere una policy por recurso
+
 ### `control-plane GET /v1/resources`
 
 - `resources.Handler.Register`
@@ -358,6 +363,11 @@ Nota:
 - `policies.writePolicyError`
 - `handlers.WriteJSON`
 
+Notas:
+
+- `control-plane` garantiza una trap policy builtin `is_trap=true`
+- el listado por `action_type` y `resource_type` tambien devuelve wildcard policies (`*`)
+
 ### `control-plane GET /v1/policies`
 
 - `policies.Handler.Register`
@@ -444,20 +454,25 @@ Nota:
 - `[si key existe y valido] retorna respuesta cacheada con X-Idempotency-Replay: true`
 - `handlers.DecodeJSON`
 - `action.Usecases.Create`
+- `action.WithDegradationCollector(ctx)` — crea collector per-request en context
 - `action.validateActionType`
 - `action.validateResourceType`
 - `action.validateActor`
 - `action.Usecases.resolveResource`
 - `[si hay control-plane] action.CachingResourceResolver.GetByID (cache + fallback)`
+- `[si upstream fallo y cache valido] DegradationFromContext(ctx).resourceDegraded = true`
 - `action.Usecases.listPolicies`
 - `[si hay control-plane] action.CachingPolicySource.List (cache + fallback)`
+- `[si upstream fallo y cache valido] DegradationFromContext(ctx).policiesDegraded = true`
 - `action.evaluateAction`
 - `action.normalizePayload`
 - `action.riskFor`
+- `action.HistoricalRiskContextProvider.ContextFor` — provee baselines, known_destinations, incident context
 - `action.buildEvidence`
 - `action.evaluatePolicyDecision`
 - `[si hay policy CEL] action.ActionPolicyEvaluator.Matches`
 - `action.InMemoryRepository.Create` o `action.PostgresRepository.Create`
+- `[si DegradationFromContext(ctx).IsDegraded()] auditData["degraded_context"] = true`
 - `[si hay control-plane] action.Usecases.emitAudit`
 - `[si hay control-plane] audit.Client.Create`
 - `[si hay control-workers y la accion queda blocked] action.Usecases.emitIncident`
@@ -467,6 +482,13 @@ Nota:
 - `action.writeActionUsecaseError`
 - `action.writeActionError`
 - `handlers.WriteJSON`
+
+Notas:
+
+- el evaluator de riesgo usa baselines por `resource` y `actor`, destinos conocidos e incidentes abiertos
+- si matchea una policy con `is_trap=true`, el incidente emitido usa `trigger=canary_triggered`
+- `recommended_decision` sigue siendo informativa; el lifecycle real lo decide policy evaluation
+- si la decision se tomo con datos de cache (control-plane no disponible), el audit record incluye `degraded_context: true`
 
 ### `data-plane GET /v1/actions`
 
@@ -523,6 +545,12 @@ Respuesta actual:
 - `factors`
 - `amplifications`
 - `attenuations`
+
+Notas:
+
+- `profile` hoy es builtin `balanced/v1`
+- `factors` devuelve los 10 factores de `1A`, activos o inactivos
+- `evidence_quality` sale por factor y explica si la evidencia fue observada, inferida, missing o stale
 
 ### `data-plane GET /v1/actions/{id}/evidence`
 

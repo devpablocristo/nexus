@@ -30,6 +30,7 @@ type ActionPolicy struct {
 	Reason             string
 	RequireApproval    bool
 	ApprovalTTLSeconds int
+	IsTrap             bool
 	Enabled            bool
 }
 
@@ -153,6 +154,7 @@ func (c *ControlPlaneClient) List(ctx context.Context, actionType, resourceType 
 			Reason             string `json:"reason"`
 			RequireApproval    bool   `json:"require_approval"`
 			ApprovalTTLSeconds int    `json:"approval_ttl_seconds"`
+			IsTrap             bool   `json:"is_trap"`
 			Enabled            bool   `json:"enabled"`
 		} `json:"items"`
 	}
@@ -172,6 +174,7 @@ func (c *ControlPlaneClient) List(ctx context.Context, actionType, resourceType 
 			Reason:             item.Reason,
 			RequireApproval:    item.RequireApproval,
 			ApprovalTTLSeconds: item.ApprovalTTLSeconds,
+			IsTrap:             item.IsTrap,
 			Enabled:            item.Enabled,
 		})
 	}

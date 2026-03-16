@@ -70,6 +70,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		Reason:             req.Reason,
 		RequireApproval:    req.RequireApproval,
 		ApprovalTTLSeconds: req.ApprovalTTLSeconds,
+		IsTrap:             req.IsTrap,
 		Enabled:            req.Enabled,
 	})
 	if err != nil {
@@ -80,6 +81,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	h.emitAudit(r.Context(), actor, "policy_created", item, map[string]any{
 		"effect":           string(item.Effect),
 		"require_approval": item.RequireApproval,
+		"is_trap":          item.IsTrap,
 		"enabled":          item.Enabled,
 	})
 	sharedhandlers.WriteJSON(w, http.StatusCreated, toPolicyResponse(item))
@@ -143,6 +145,7 @@ func (h *Handler) patchByID(w http.ResponseWriter, r *http.Request) {
 		Reason:             req.Reason,
 		RequireApproval:    req.RequireApproval,
 		ApprovalTTLSeconds: req.ApprovalTTLSeconds,
+		IsTrap:             req.IsTrap,
 		Enabled:            req.Enabled,
 	})
 	if err != nil {
@@ -152,6 +155,7 @@ func (h *Handler) patchByID(w http.ResponseWriter, r *http.Request) {
 	h.emitAudit(r.Context(), actor, "policy_updated", item, map[string]any{
 		"effect":           string(item.Effect),
 		"require_approval": item.RequireApproval,
+		"is_trap":          item.IsTrap,
 		"enabled":          item.Enabled,
 	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(item))
@@ -241,6 +245,7 @@ func toPolicyResponse(item policydomain.Policy) policydto.PolicyResponse {
 		Reason:             item.Reason,
 		RequireApproval:    item.RequireApproval,
 		ApprovalTTLSeconds: item.ApprovalTTLSeconds,
+		IsTrap:             item.IsTrap,
 		Enabled:            item.Enabled,
 		Archived:           item.ArchivedAt != nil,
 		ArchivedAt:         item.ArchivedAt,
@@ -317,7 +322,7 @@ func policyAuditSummary(eventType string) string {
 }
 
 func clonePolicyMap(data map[string]any, item policydomain.Policy) map[string]any {
-	out := make(map[string]any, len(data)+4)
+	out := make(map[string]any, len(data)+5)
 	for key, value := range data {
 		out[key] = value
 	}
@@ -325,5 +330,6 @@ func clonePolicyMap(data map[string]any, item policydomain.Policy) map[string]an
 	out["action_type"] = item.ActionType
 	out["resource_type"] = item.ResourceType
 	out["priority"] = item.Priority
+	out["is_trap"] = item.IsTrap
 	return out
 }

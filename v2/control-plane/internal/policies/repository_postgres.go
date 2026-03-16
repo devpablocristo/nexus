@@ -53,11 +53,11 @@ func (r *PostgresRepository) Create(ctx context.Context, item policydomain.Polic
 	_, err := r.db.Pool().Exec(ctx, `
 		INSERT INTO action_policies (
 			id, action_type, resource_type, effect, priority, expression, reason,
-			require_approval, approval_ttl_seconds, enabled, archived_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			require_approval, approval_ttl_seconds, is_trap, enabled, archived_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 	`,
 		id, item.ActionType, item.ResourceType, item.Effect, item.Priority, item.Expression, item.Reason,
-		item.RequireApproval, item.ApprovalTTLSeconds, item.Enabled, item.ArchivedAt, item.CreatedAt, item.UpdatedAt,
+		item.RequireApproval, item.ApprovalTTLSeconds, item.IsTrap, item.Enabled, item.ArchivedAt, item.CreatedAt, item.UpdatedAt,
 	)
 	if err != nil {
 		return policydomain.Policy{}, fmt.Errorf("insert policy: %w", err)
@@ -68,10 +68,10 @@ func (r *PostgresRepository) Create(ctx context.Context, item policydomain.Polic
 func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]policydomain.Policy, error) {
 	query := `
 		SELECT id, action_type, resource_type, effect, priority, expression, reason,
-		       require_approval, approval_ttl_seconds, enabled, archived_at, created_at, updated_at
+		       require_approval, approval_ttl_seconds, is_trap, enabled, archived_at, created_at, updated_at
 		FROM action_policies
-		WHERE ($1 = '' OR action_type = $1)
-		  AND ($2 = '' OR resource_type = $2)
+		WHERE ($1 = '' OR action_type = $1 OR action_type = '*')
+		  AND ($2 = '' OR resource_type = $2 OR resource_type = '*')
 	`
 	args := []any{filters.ActionType, filters.ResourceType}
 	if filters.Archived != nil {
@@ -106,7 +106,7 @@ func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]p
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (policydomain.Policy, error) {
 	row := r.db.Pool().QueryRow(ctx, `
 		SELECT id, action_type, resource_type, effect, priority, expression, reason,
-		       require_approval, approval_ttl_seconds, enabled, archived_at, created_at, updated_at
+		       require_approval, approval_ttl_seconds, is_trap, enabled, archived_at, created_at, updated_at
 		FROM action_policies
 		WHERE id = $1
 	`, id)
@@ -137,14 +137,15 @@ func (r *PostgresRepository) Save(ctx context.Context, item policydomain.Policy)
 			reason = $7,
 			require_approval = $8,
 			approval_ttl_seconds = $9,
-			enabled = $10,
-			updated_at = $11
+			is_trap = $10,
+			enabled = $11,
+			updated_at = $12
 		WHERE id = $1 AND archived_at IS NULL
 		RETURNING id, action_type, resource_type, effect, priority, expression, reason,
-		          require_approval, approval_ttl_seconds, enabled, archived_at, created_at, updated_at
+		          require_approval, approval_ttl_seconds, is_trap, enabled, archived_at, created_at, updated_at
 	`,
 		id, item.ActionType, item.ResourceType, item.Effect, item.Priority, item.Expression, item.Reason,
-		item.RequireApproval, item.ApprovalTTLSeconds, item.Enabled, item.UpdatedAt,
+		item.RequireApproval, item.ApprovalTTLSeconds, item.IsTrap, item.Enabled, item.UpdatedAt,
 	)
 	updated, err := scanPolicy(row)
 	if err == nil {
@@ -183,7 +184,7 @@ func (r *PostgresRepository) ArchiveByID(ctx context.Context, id uuid.UUID) (pol
 			updated_at = $2
 		WHERE id = $1 AND archived_at IS NULL
 		RETURNING id, action_type, resource_type, effect, priority, expression, reason,
-		          require_approval, approval_ttl_seconds, enabled, archived_at, created_at, updated_at
+		          require_approval, approval_ttl_seconds, is_trap, enabled, archived_at, created_at, updated_at
 	`, id, now)
 	item, err := scanPolicy(row)
 	if err == nil {
@@ -211,7 +212,7 @@ func (r *PostgresRepository) RestoreByID(ctx context.Context, id uuid.UUID) (pol
 			updated_at = $2
 		WHERE id = $1 AND archived_at IS NOT NULL
 		RETURNING id, action_type, resource_type, effect, priority, expression, reason,
-		          require_approval, approval_ttl_seconds, enabled, archived_at, created_at, updated_at
+		          require_approval, approval_ttl_seconds, is_trap, enabled, archived_at, created_at, updated_at
 	`, id, now)
 	item, err := scanPolicy(row)
 	if err == nil {
@@ -246,6 +247,7 @@ func scanPolicy(row policyScanRow) (policydomain.Policy, error) {
 		reason             string
 		requireApproval    bool
 		approvalTTLSeconds int
+		isTrap             bool
 		enabled            bool
 		archivedAt         *time.Time
 		createdAt          time.Time
@@ -253,7 +255,7 @@ func scanPolicy(row policyScanRow) (policydomain.Policy, error) {
 	)
 	if err := row.Scan(
 		&id, &actionType, &resourceType, &effect, &priority, &expression, &reason,
-		&requireApproval, &approvalTTLSeconds, &enabled, &archivedAt, &createdAt, &updatedAt,
+		&requireApproval, &approvalTTLSeconds, &isTrap, &enabled, &archivedAt, &createdAt, &updatedAt,
 	); err != nil {
 		return policydomain.Policy{}, fmt.Errorf("scan policy: %w", err)
 	}
@@ -268,6 +270,7 @@ func scanPolicy(row policyScanRow) (policydomain.Policy, error) {
 		Reason:             reason,
 		RequireApproval:    requireApproval,
 		ApprovalTTLSeconds: approvalTTLSeconds,
+		IsTrap:             isTrap,
 		Enabled:            enabled,
 		ArchivedAt:         archivedAt,
 		CreatedAt:          createdAt,

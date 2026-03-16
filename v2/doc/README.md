@@ -2,6 +2,8 @@
 
 Documentacion principal de `v2`.
 
+Estado actual: MVP cerrado + Fase 0 cerrada en entorno local (4 deploy blockers pendientes) + Fase 1A implementada en runtime (cascada multi-factor, canaries, baselines).
+
 Orden recomendado de lectura:
 
 1. [DEFINITION.md](DEFINITION.md)

@@ -159,10 +159,12 @@ risk_body="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${ACTIONS_URL}/${action_
 risk_level="$(printf '%s' "${risk_body}" | json_get "level")"
 risk_score="$(printf '%s' "${risk_body}" | json_get "score")"
 risk_factor_count="$(printf '%s' "${risk_body}" | json_len "factors")"
+risk_factor_0_active="$(printf '%s' "${risk_body}" | json_get "factors.0.active")"
+risk_factor_2_active="$(printf '%s' "${risk_body}" | json_get "factors.2.active")"
 risk_profile="$(printf '%s' "${risk_body}" | json_get "profile.name")"
 risk_recommended="$(printf '%s' "${risk_body}" | json_get "recommended_decision")"
 
-if [[ "${risk_level}" != "medium" || "${risk_score}" != "30" || "${risk_factor_count}" != "2" || "${risk_profile}" != "balanced" || "${risk_recommended}" != "enhanced_log" ]]; then
+if [[ "${risk_level}" != "medium" || "${risk_score}" != "30" || "${risk_factor_count}" != "10" || "${risk_factor_0_active}" != "true" || "${risk_factor_2_active}" != "true" || "${risk_profile}" != "balanced" || "${risk_recommended}" != "enhanced_log" ]]; then
   echo "unexpected risk response" >&2
   echo "${risk_body}" >&2
   exit 1

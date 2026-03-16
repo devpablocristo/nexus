@@ -38,6 +38,20 @@ create_resource() {
 JSON
 }
 
+create_canary_resource() {
+  curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" -H 'Content-Type: application/json' -X POST "${CONTROL_PLANE_URL}/v1/resources" -d @- <<'JSON'
+{
+  "type": "wallet",
+  "name": "wallet canary 1",
+  "environment": "prod",
+  "chain": "ethereum",
+  "labels": {"tier": "trap"},
+  "criticality": "low",
+  "is_canary": true
+}
+JSON
+}
+
 create_deny_policy() {
   curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" -H 'Content-Type: application/json' -X POST "${CONTROL_PLANE_URL}/v1/policies" -d @- <<'JSON'
 {
@@ -111,6 +125,28 @@ create_review_action() {
 JSON
 }
 
+create_canary_action() {
+  local resource_id="$1"
+
+  curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" -H 'Content-Type: application/json' -X POST "${DATA_PLANE_URL}/v1/actions" -d @- <<JSON
+{
+  "action_type": "withdrawal",
+  "resource_id": "${resource_id}",
+  "resource_type": "wallet",
+  "source_system": "treasury-orchestrator",
+  "justification": "canary trap test",
+  "requested_by": {"type": "system", "id": "treasury-bot"},
+  "proposed_by": {"type": "agent", "id": "treasury-agent"},
+  "payload": {
+    "asset": "USDC",
+    "amount": "1.00",
+    "network": "ethereum",
+    "destination_address": "0xcanary"
+  }
+}
+JSON
+}
+
 reject_action() {
   local action_id="$1"
 
@@ -135,6 +171,15 @@ resource_id="$(printf '%s' "${resource_body}" | json_get "id")"
 if [[ -z "${resource_id}" ]]; then
   echo "failed to create resource" >&2
   echo "${resource_body}" >&2
+  exit 1
+fi
+
+canary_resource_body="$(create_canary_resource)"
+canary_resource_id="$(printf '%s' "${canary_resource_body}" | json_get "id")"
+canary_is_flagged="$(printf '%s' "${canary_resource_body}" | json_get "is_canary")"
+if [[ -z "${canary_resource_id}" || "${canary_is_flagged}" != "true" ]]; then
+  echo "failed to create canary resource" >&2
+  echo "${canary_resource_body}" >&2
   exit 1
 fi
 
@@ -236,19 +281,44 @@ if [[ "${rejected_count}" != "1" || "${rejected_source_id}" != "${review_action_
   exit 1
 fi
 
-rejected_alerts="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${ALERTS_URL}?channel=slack&status=pending&limit=10")"
-rejected_alert_count="$(printf '%s' "${rejected_alerts}" | json_len "items")"
-if [[ "${rejected_alert_count}" != "0" ]]; then
-  echo "unexpected rejected alerts response" >&2
-  echo "${rejected_alerts}" >&2
+rejected_audit="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${AUDIT_URL}?action_id=${review_action_id}&event_type=alert_created")"
+rejected_audit_count="$(printf '%s' "${rejected_audit}" | json_len "items")"
+rejected_audit_route="$(printf '%s' "${rejected_audit}" | json_get "items.0.data.route")"
+if [[ "${rejected_audit_count}" != "1" || "${rejected_audit_route}" != "ops-p1" ]]; then
+  echo "unexpected rejected audit response" >&2
+  echo "${rejected_audit}" >&2
   exit 1
 fi
 
-rejected_audit="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${AUDIT_URL}?action_id=${review_action_id}&event_type=alert_created")"
-rejected_audit_count="$(printf '%s' "${rejected_audit}" | json_len "items")"
-if [[ "${rejected_audit_count}" != "0" ]]; then
-  echo "unexpected rejected audit response" >&2
-  echo "${rejected_audit}" >&2
+canary_action_body="$(create_canary_action "${canary_resource_id}")"
+canary_action_id="$(printf '%s' "${canary_action_body}" | json_get "id")"
+canary_status="$(printf '%s' "${canary_action_body}" | json_get "status")"
+canary_decision="$(printf '%s' "${canary_action_body}" | json_get "decision")"
+canary_trap="$(printf '%s' "${canary_action_body}" | json_get "risk.recommended_decision")"
+if [[ -z "${canary_action_id}" || "${canary_status}" != "blocked" || "${canary_decision}" != "deny" || -z "${canary_trap}" ]]; then
+  echo "unexpected canary action response" >&2
+  echo "${canary_action_body}" >&2
+  exit 1
+fi
+
+canary_incidents="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${CONTROL_WORKERS_URL}/v1/incidents?trigger=canary_triggered&resource_id=${canary_resource_id}&status=open")"
+canary_count="$(printf '%s' "${canary_incidents}" | json_len "items")"
+canary_incident_id="$(printf '%s' "${canary_incidents}" | json_get "items.0.id")"
+canary_severity="$(printf '%s' "${canary_incidents}" | json_get "items.0.severity")"
+canary_incident_action_id="$(printf '%s' "${canary_incidents}" | json_get "items.0.action_id")"
+if [[ "${canary_count}" != "1" || "${canary_severity}" != "critical" || "${canary_incident_action_id}" != "${canary_action_id}" ]]; then
+  echo "unexpected canary incidents response" >&2
+  echo "${canary_incidents}" >&2
+  exit 1
+fi
+
+canary_audit="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${AUDIT_URL}?action_id=${canary_action_id}&event_type=alert_created")"
+canary_audit_count="$(printf '%s' "${canary_audit}" | json_len "items")"
+canary_audit_incident_id="$(printf '%s' "${canary_audit}" | json_get "items.0.incident_id")"
+canary_audit_route="$(printf '%s' "${canary_audit}" | json_get "items.0.data.route")"
+if [[ "${canary_audit_count}" != "1" || "${canary_audit_incident_id}" != "${canary_incident_id}" || "${canary_audit_route}" != "ops-p1" ]]; then
+  echo "unexpected canary audit response" >&2
+  echo "${canary_audit}" >&2
   exit 1
 fi
 

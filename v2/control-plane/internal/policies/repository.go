@@ -69,10 +69,10 @@ func (r *InMemoryRepository) List(_ context.Context, filters ListFilters) ([]pol
 
 	items := make([]policydomain.Policy, 0, len(r.items))
 	for _, item := range r.items {
-		if filters.ActionType != "" && item.ActionType != filters.ActionType {
+		if filters.ActionType != "" && item.ActionType != filters.ActionType && item.ActionType != "*" {
 			continue
 		}
-		if filters.ResourceType != "" && item.ResourceType != filters.ResourceType {
+		if filters.ResourceType != "" && item.ResourceType != filters.ResourceType && item.ResourceType != "*" {
 			continue
 		}
 		if filters.Archived != nil {

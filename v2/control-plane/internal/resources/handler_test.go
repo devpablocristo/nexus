@@ -24,7 +24,8 @@ func TestResourceEndpointsLifecycle(t *testing.T) {
 		"environment":"prod",
 		"chain":"ethereum",
 		"labels":{"tier":"hot"},
-		"criticality":"critical"
+		"criticality":"critical",
+		"is_canary":true
 	}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
@@ -39,6 +40,9 @@ func TestResourceEndpointsLifecycle(t *testing.T) {
 	}
 	if created.ID == "" || created.Type != "wallet" {
 		t.Fatalf("unexpected created resource: %#v", created)
+	}
+	if !created.IsCanary || created.Labels["_nexus_trap"] != "true" {
+		t.Fatalf("unexpected created canary resource: %#v", created)
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/resources?type=wallet&environment=prod&archived=false", nil)
@@ -58,7 +62,8 @@ func TestResourceEndpointsLifecycle(t *testing.T) {
 
 	updateReq := httptest.NewRequest(http.MethodPatch, "/v1/resources/"+created.ID, bytes.NewBufferString(`{
 		"name":"wallet hot usdc primary",
-		"chain":"base"
+		"chain":"base",
+		"is_canary":false
 	}`))
 	updateReq.Header.Set("Content-Type", "application/json")
 	updateRec := httptest.NewRecorder()

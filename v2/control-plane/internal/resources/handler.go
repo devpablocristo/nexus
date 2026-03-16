@@ -83,6 +83,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		"name":        item.Name,
 		"environment": item.Environment,
 		"chain":       item.Chain,
+		"is_canary":   item.IsCanary,
 	})
 	sharedhandlers.WriteJSON(w, http.StatusCreated, toResourceResponse(item))
 }
@@ -177,6 +178,7 @@ func (h *Handler) updateByID(w http.ResponseWriter, r *http.Request) {
 		"name":        item.Name,
 		"environment": item.Environment,
 		"chain":       item.Chain,
+		"is_canary":   item.IsCanary,
 	})
 	sharedhandlers.WriteJSON(w, http.StatusOK, toResourceResponse(item))
 }

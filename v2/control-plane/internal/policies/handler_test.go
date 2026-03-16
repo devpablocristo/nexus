@@ -26,7 +26,8 @@ func TestPolicyEndpointsLifecycle(t *testing.T) {
 		"expression":"action.action_type == \"withdrawal\" && resource.type == \"wallet\"",
 		"reason":"withdrawals from wallets require approval",
 		"require_approval":true,
-		"approval_ttl_seconds":600
+		"approval_ttl_seconds":600,
+		"is_trap":true
 	}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
@@ -41,6 +42,9 @@ func TestPolicyEndpointsLifecycle(t *testing.T) {
 	}
 	if created.ID == "" || created.ActionType != "withdrawal" {
 		t.Fatalf("unexpected created policy: %#v", created)
+	}
+	if !created.IsTrap {
+		t.Fatalf("expected trap policy in response: %#v", created)
 	}
 	if got := createRec.Header().Get("Location"); got != "/v1/policies/"+created.ID {
 		t.Fatalf("unexpected location header: %q", got)

@@ -110,9 +110,10 @@ fi
 
 policy_list_body="$(curl -sS -H "X-API-Key: ${ADMIN_API_KEY}" "${POLICIES_URL}?action_type=withdrawal&resource_type=wallet")"
 policy_count="$(printf '%s' "${policy_list_body}" | json_len "items")"
-listed_policy_id="$(printf '%s' "${policy_list_body}" | json_get "items.0.id")"
+listed_trap_flag="$(printf '%s' "${policy_list_body}" | json_get "items.0.is_trap")"
+listed_policy_id="$(printf '%s' "${policy_list_body}" | json_get "items.1.id")"
 
-if [[ "${policy_count}" != "1" || "${listed_policy_id}" != "${policy_id}" ]]; then
+if [[ "${policy_count}" != "2" || "${listed_trap_flag}" != "true" || "${listed_policy_id}" != "${policy_id}" ]]; then
   echo "unexpected policy list response" >&2
   echo "${policy_list_body}" >&2
   exit 1

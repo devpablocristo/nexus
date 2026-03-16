@@ -11,6 +11,7 @@ type CreatePolicyRequest struct {
 	Reason             string `json:"reason"`
 	RequireApproval    bool   `json:"require_approval"`
 	ApprovalTTLSeconds int    `json:"approval_ttl_seconds"`
+	IsTrap             bool   `json:"is_trap"`
 	Enabled            *bool  `json:"enabled"`
 }
 
@@ -23,6 +24,7 @@ type UpdatePolicyRequest struct {
 	Reason             *string `json:"reason,omitempty"`
 	RequireApproval    *bool   `json:"require_approval,omitempty"`
 	ApprovalTTLSeconds *int    `json:"approval_ttl_seconds,omitempty"`
+	IsTrap             *bool   `json:"is_trap,omitempty"`
 	Enabled            *bool   `json:"enabled,omitempty"`
 }
 
@@ -36,6 +38,7 @@ type PolicyResponse struct {
 	Reason             string     `json:"reason"`
 	RequireApproval    bool       `json:"require_approval"`
 	ApprovalTTLSeconds int        `json:"approval_ttl_seconds"`
+	IsTrap             bool       `json:"is_trap"`
 	Enabled            bool       `json:"enabled"`
 	Archived           bool       `json:"archived"`
 	ArchivedAt         *time.Time `json:"archived_at,omitempty"`

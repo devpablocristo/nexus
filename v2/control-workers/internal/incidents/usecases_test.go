@@ -168,6 +168,28 @@ func TestUsecasesCreateEmitsMetrics(t *testing.T) {
 	}
 }
 
+func TestUsecasesCreateCanaryTriggerIsAlwaysCritical(t *testing.T) {
+	t.Parallel()
+
+	uc := NewUsecases(NewInMemoryRepository(nil))
+
+	item, err := uc.Create(context.Background(), CreateRequest{
+		SourceKind:   incidentdomain.SourceKindAction,
+		SourceID:     "action-1",
+		ActionType:   "withdrawal",
+		ResourceID:   "wallet_canary_1",
+		ResourceType: "wallet",
+		Trigger:      incidentdomain.TriggerCanaryTriggered,
+		RiskLevel:    incidentdomain.RiskLevelLow,
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if item.Severity != incidentdomain.SeverityCritical {
+		t.Fatalf("unexpected severity: %s", item.Severity)
+	}
+}
+
 func mustUUID(t *testing.T, value string) uuid.UUID {
 	t.Helper()
 	id, err := uuid.Parse(value)

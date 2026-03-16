@@ -14,6 +14,7 @@ type IncidentTrigger string
 
 const (
 	IncidentTriggerBlockedAction    IncidentTrigger = "blocked_action"
+	IncidentTriggerCanaryTriggered  IncidentTrigger = "canary_triggered"
 	IncidentTriggerApprovalRejected IncidentTrigger = "approval_rejected"
 	IncidentTriggerExecutionFailed  IncidentTrigger = "execution_failed"
 )
@@ -75,6 +76,8 @@ func incidentSummary(trigger IncidentTrigger, actionType actiondomain.ActionType
 	switch trigger {
 	case IncidentTriggerBlockedAction:
 		return string(actionType) + " blocked by Nexus"
+	case IncidentTriggerCanaryTriggered:
+		return string(actionType) + " triggered a Nexus canary trap"
 	case IncidentTriggerApprovalRejected:
 		return string(actionType) + " rejected during approval"
 	case IncidentTriggerExecutionFailed:
@@ -94,6 +97,20 @@ func blockedIncidentReason(item actiondomain.Action) string {
 		}
 	}
 	return "action blocked by Nexus policy"
+}
+
+func canaryIncidentReason(item actiondomain.Action) string {
+	for _, evidence := range item.Evidence {
+		if evidence.Kind != "policy_decision" {
+			continue
+		}
+		if details := evidence.Details; details != nil {
+			if raw, ok := details["matched_policy_id"].(string); ok && strings.TrimSpace(raw) != "" {
+				return "canary trap matched policy " + strings.TrimSpace(raw)
+			}
+		}
+	}
+	return "action matched a canary trap policy"
 }
 
 func rejectionIncidentReason(comment string) string {
