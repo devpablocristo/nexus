@@ -10,13 +10,141 @@ Relacionado:
 
 ## Que es Nexus
 
-Nexus es una capa determinista de control previo para acciones criticas automatizadas.
+Nexus es el nexo unico en dos sentidos. **Siempre que hay una interaccion con el producto, esta Nexus.**
 
-Su trabajo es decidir si una accion puede ocurrir antes de que toque infraestructura que puede mover, autorizar o enrutar fondos.
+**Con los clientes**: del otro lado suelen estar **agentes** (bots, sistemas de los clientes). Nexus recibe sus requests, los procesa, gobierna la autoridad delegada antes de que toquen infraestructura que mueve fondos. Decide, limita, supervisa e interviene. No custodia ni ejecuta.
 
-Nexus no custodia fondos.
-Nexus no firma transacciones.
-Nexus decide si pueden ocurrir.
+**Con los equipos** (interno): del otro lado estan **humanos** (treasury, ops, security, compliance). Un solo **agente de Nexus** — el mismo para todos — se comunica por el **mismo chat**: notifica anomalias, contextualiza, ofrece opciones rapidas (botones, forms) y, en evolucion posterior, hace de nexo entre equipos y responde preguntas sobre documentacion y proyectos. No hace falta hablar con otro equipo para coordinar ni buscar en otra herramienta: se habla con Nexus.
+
+En resumen: una voz, dos nexos — agentes (clientes) y humanos (equipos) — y un solo lugar para operar y preguntar: el mismo chatbot, en web y en app movil.
+
+## Tesis del producto
+
+La automatizacion financiera util ya no va a consistir en bots tontos ejecutando una sola instruccion. Va a consistir en agentes que:
+
+- reciben objetivos
+- elaboran planes
+- ejecutan multiples pasos
+- consumen autonomia delegada
+- pueden desviarse del comportamiento esperado
+
+Y los equipos humanos que supervisan esas operaciones estan fragmentados: treasury no sabe que hace security, ops no sabe que aprobo compliance, y nadie tiene una vista unificada.
+
+El problema no es solo "esta transaccion es valida?". El problema es:
+
+- que autoridad tiene este agente
+- dentro de que objetivo y presupuesto puede operar
+- cuanto riesgo ya consumio
+- si se esta desviando de lo esperado
+- cuando hay que intervenir, reducir scope o revocar la sesion
+- quien necesita saberlo y que opciones tiene
+
+Nexus existe para resolver eso. Para los agentes Y para los humanos.
+
+## Problema que resuelve
+
+Las empresas con operaciones financieras automatizadas ya tienen bots, scripts, playbooks y, cada vez mas, agentes con permisos altos y contexto incompleto.
+
+Sin una capa de gobierno explicita:
+
+- un agente puede operar fuera de los limites que el humano cree haber delegado
+- una accion tecnicamente valida puede ser operacionalmente catastrofica
+- el equipo termina revisando excepciones tarde, no gobernando autonomia a tiempo
+- approvals, evidencia, auditoria e incidentes quedan dispersos
+- la coordinacion entre equipos depende de Slack, emails y reuniones
+- la operacion se vuelve dificil de explicar, revisar y corregir
+
+El problema no es solo ejecutar.
+El problema es hacer utilizable la autonomia sin perder control, y coordinar a los humanos que supervisan sin que dependan de canales informales.
+
+## Propuesta de valor
+
+Nexus hace posible delegar autonomia operativa sin entregar autoridad ilimitada, y coordina a los equipos humanos alrededor de las decisiones que importan.
+
+Mensaje central:
+
+> Ningun bot o agente deberia operar dinero con autoridad plena fuera de Nexus. Ningun equipo deberia coordinar respuestas criticas sin Nexus.
+
+Nexus:
+
+- define perimetros de autonomia para agentes y sistemas automatizados
+- evalua cada accion en el contexto de esa autonomia delegada
+- mide riesgo, presupuesto consumido y desvio del comportamiento esperado
+- decide si deja pasar, frena, escala o reduce el alcance operativo
+- deja auditoria explicable de que paso y por que
+- le da a cada equipo humano el contexto que necesita con las opciones que corresponden
+- mantiene runbooks, policies y handoffs como documentacion viva
+- conecta treasury, ops, security y compliance sin que tengan que buscarse entre si
+
+## Los 6 pilares
+
+Todo lo que Nexus hace cae en uno de estos pilares:
+
+### 1. Delegate
+Delegar autoridad de forma explicita y acotada. El humano (o un agente superior) define que puede hacer el agente, sobre que, por cuanto, y durante cuanto tiempo.
+
+### 2. Govern
+Aplicar reglas de gobernanza en tiempo real. Policies, limites, restricciones, compliance rules. Evaluar cada accion en el contexto de la autonomia delegada.
+
+### 3. Contain
+Contener el blast radius si algo sale mal. Reducir autonomia, revocar sesion, bloquear scope. Intervenir proporcionalmente antes de que el dano escale.
+
+### 4. Explain
+Explicar cada decision de forma auditable y comprensible. El analista IA contextualiza para humanos. Cada equipo recibe la explicacion en su lenguaje.
+
+### 5. Prove
+Demostrar ante auditores, reguladores y terceros que todo se hizo correctamente. Audit trail inmutable, evidence chain, policy snapshots, replay.
+
+### 6. Learn
+Mejorar continuamente basado en lo que observa. Baselines que maduran, anticuerpos de incidentes, policy tuning. Simulation y replay para calibrar controles.
+
+## Primitive central
+
+La forma final del producto gira alrededor de:
+
+- `AgentSession` — identidad y ciclo de vida del agente
+- `GoalEnvelope` — intencion declarada contra la que se mide comportamiento
+- `CapabilityLease` — autonomia delegada acotada
+- `AutonomyBudget` — presupuesto de riesgo consumible
+- `Intervention` — respuesta proporcional
+- `Audit` — evidencia verificable para todos
+
+En el estado actual de `v2`, la implementacion opera sobre:
+
+- `Action`, `Resource`, `Policy`, `Approval`, `Lease`
+
+Eso es la base actual del runtime. No es la forma final del producto.
+
+## Las dos partes del sistema
+
+Nexus se construye en dos partes claras:
+
+### 1. Engine determinista (data-plane)
+
+Recibe requests, los procesa (evalua, decide, emite leases). Si hay una **anomalia** (riesgo alto, desvio de baseline, accion bloqueada, require_approval, etc.), no resuelve solo: **notifica al agente IA de Nexus**. La autoridad de decision sigue en el engine; determinista, auditable, predecible.
+
+### 2. Agente IA de Nexus (ai-runtime)
+
+Recibe las anomalias del engine. **Notifica al equipo responsable** del area donde ocurrio, **contextualiza** (que paso, por que, que impacto) y **crea botones con acciones rapidas** (aprobar, rechazar, escalar, ver mas). El agente no decide allow/deny: presenta opciones; el humano ejecuta.
+
+Bucle inicial: **anomalia → notificar → contexto y opciones a los responsables.** A partir de ahi el mismo agente puede evolucionar para ser el **nexo entre equipos** y el lugar donde se pregunta por **documentacion de proyectos**, runbooks y demas — un solo chatbot para operar y para preguntar.
+
+### Interfaz unica: un agente, un chat
+
+Para todos los equipos es **el mismo agente**, que se comunica siempre por el **mismo chat**. Una web donde el agente puede crear forms, botones, presentar diagramas y contexto; y una **app movil** con la misma experiencia. Un solo lugar, una sola voz.
+
+Implementacion:
+- Core determinista (data-plane) + operadores (control-workers) para side-effects y playbooks
+- Agente IA (ai-runtime) como unico interlocutor para humanos
+- Superficie de administracion (control-plane) para configuracion, auditoria y gestion
+
+### Evolucion posterior: nexo real entre equipos
+
+El bucle inicial (anomalia → contexto → opciones) usa solo lo que ya fluye por Nexus: acciones, aprobaciones, incidentes, alertas, cambios de config.
+
+Para que Nexus sea el nexo real entre equipos necesita ademas saber que hace cada equipo: quien es dueno de que, en que trabajan, handoffs, dependencias. Sin eso, no puede conectar “el equipo A necesita X” con “el equipo B hace X”.
+
+La direccion es integrar las herramientas donde los equipos ya trabajan (repos, trackers de tareas, etc.) para que Nexus tenga esa vista sin que nadie escriba nada adicional. Sin esa integracion, el rol de nexo entre equipos queda a medias.
 
 ## Nicho inicial
 
@@ -30,225 +158,104 @@ Casos iniciales:
 - treasury transfers
 - hot to cold wallet moves
 
-## Problema que resuelve
-
-Las empresas con operaciones cripto automatizadas ya tienen bots, scripts, playbooks y agentes que pueden proponer o disparar acciones sensibles.
-
-El problema no es solo ejecutar esas acciones.
-El problema es mantener control antes de que esas acciones toquen sistemas que pueden mover fondos o cambiar superficies criticas.
-
-Sin una autoridad previa:
-
-- un bot puede mover fondos sin control humano suficiente
-- un sistema puede ejecutar una accion valida tecnicamente pero riesgosa operativamente
-- la aprobacion, la evidencia y la auditoria quedan dispersas
-- el sistema se vuelve dificil de explicar, revisar y gobernar
-
-## Propuesta de valor
-
-Nexus agrega una autoridad determinista antes de la ejecucion.
-
-Mensaje central:
-
-> Ningun bot o agente puede mover fondos sin pasar por Nexus.
-
-Nexus:
-
-- evalua la accion
-- aplica policy
-- calcula riesgo determinista
-- genera evidencia
-- decide `allow`, `deny` o `require_approval`
-- si corresponde, emite un lease efimero de ejecucion
-- deja auditoria explicable
-
-## Lo que protege
-
-Nexus protege acciones criticas como:
-
-- retiros
-- transferencias de treasury
-- movimientos hot to cold
-- cambios de whitelist
-- cambios de limites
-- rotacion de claves
-
-La primera etapa de producto se enfoca solo en:
-
-- `withdrawal`
-- `treasury_transfer`
-- `hot_to_cold_move`
+Crypto es el wedge, no el techo. Las primitivas se disenan agnosticas desde el dia 1 para servir a cualquier servicio financiero AI-native.
 
 ## Punto de enforcement
 
-La arquitectura objetivo es:
-
 ```text
-bot / script / agent
-        |
-        v
-      Nexus
-    (decide)
-        |
-        v
+human
+  |
+  v
+agent / bot / system
+  |
+  v
+Nexus
+(governs delegated autonomy + coordinates teams)
+  |
+  v
 wallet / signer / execution system
-        |
-        v
+  |
+  v
 blockchain
 ```
 
-El sistema ejecutor solo deberia poder proceder si presenta una autorizacion valida emitida por Nexus para esa accion, ese recurso y esa ventana temporal.
+El sistema ejecutor solo deberia proceder si la autoridad vigente emitida por Nexus sigue siendo valida para esa accion, ese recurso, esa sesion, ese objetivo, y ese presupuesto.
+
+## Diferenciador
+
+Nexus no es otro policy engine. Nexus no es otro alerting tool.
+
+- no solo evalua transacciones — gobierna autonomia delegada
+- no solo bloquea o permite — interviene proporcionalmente
+- no solo alerta — explica, contextualiza y ofrece acciones
+- no solo sirve a un equipo — conecta a todos los equipos alrededor de las decisiones
+
+> Nexus no es la puerta que mira una transaccion. Es el nexo que gobierna agentes y coordina humanos en operaciones financieras criticas.
 
 ## Componentes del sistema
 
-### 1. Core determinista
+### 1. Engine determinista (data-plane + control-workers)
 
-Es la autoridad.
+Data-plane: recibe requests, evalua, decide, emite leases. Cuando detecta anomalia, notifica al agente IA. Control-workers: abren incidentes, envian alertas, ejecutan playbooks. La autoridad de decision esta aqui; determinista, auditable.
 
-Responsabilidades:
+### 2. Agente IA de Nexus (ai-runtime)
 
-- policy engine
-- evaluacion de acciones
-- approvals
-- limites
-- riesgo determinista
-- evidencia
-- auditoria
+Un solo agente para todos los equipos. Consume anomalias del engine; notifica al equipo responsable, contextualiza y ofrece acciones rapidas (botones, forms). Puede evolucionar a nexo entre equipos y respuesta sobre documentacion y proyectos. No es la autoridad final — el humano decide; el agente presenta opciones.
 
-El core debe ser:
+### 3. Superficie de administracion (control-plane)
 
-- auditable
-- predecible
-- confiable
+Configuracion, recursos, policies, auditoria, tenant settings, billing. Expone la gestion del sistema.
 
-### 2. Operadores deterministas
+### 4. Interfaz de chat (web + app movil)
 
-Automatizaciones que no piensan.
-Ejecutan reglas y playbooks seguros.
+El mismo chat para todos: web (forms, botones, diagramas) y app movil. Un solo punto de contacto con Nexus para humanos.
 
-Ejemplos:
+## Estado actual de v2
 
-- recolectar evidencia
-- abrir incidentes
-- enviar alertas
-- activar cuarentenas
-- aplicar limites
+Hoy `v2` tiene una base real y operativa centrada en control por accion, con saas-core integrado para billing, auth y tenancy.
 
-### 3. Agente IA experto
+### Implementado en runtime
 
-La IA no decide acciones criticas.
+- risk scoring multi-factor con cascada y amplificacion no-lineal
+- decision graduada: `allow`, `enhanced_log`, `additional_auth`, `require_approval`, `deny`
+- baselines estadisticas por recurso y actor con confidence saturante
+- known destinations con decay exponencial
+- canary resources y trap policies
+- hysteresis, cold start conservador
+- graceful degradation con DegradationCollector per-request
+- idempotencia en POST /v1/actions
+- `RiskProfile` versionado (builtin `balanced/v1`)
 
-Su rol es:
+### Integrado via saas-core
 
-- analizar eventos
-- explicar decisiones del core
-- contextualizar riesgo
-- priorizar incidentes
-- asistir a humanos
+- auth (JWT/JWKS, API keys, Clerk webhooks, OIDC)
+- billing (Stripe checkout/portal/webhooks, plans, subscriptions, dunning)
+- tenancy (orgs, memberships, roles, tenant settings, hard limits)
+- usage metering (counters, dedup, middleware)
+- admin (tenant lifecycle, activity log)
 
-En el nicho inicial, el agente sera experto en operaciones cripto.
+### Direccion futura
 
-## Mapa de componentes
+- Bucle cerrado: engine notifica al agente IA → agente notifica a responsables con contexto y botones
+- Interfaz unica: mismo chat en web y app movil (forms, botones, diagramas)
+- Evolucion del agente: nexo entre equipos, preguntas sobre documentacion y proyectos
+- `AgentSession`, `GoalEnvelope`, `CapabilityLease`, `AutonomyBudget`; intervenciones proporcionales
 
-La separacion operativa de `v2` queda asi:
-
-- `data-plane = decidir`
-- `control-workers = operar`
-- `ai-runtime = asistir`
-- `control-plane = administrar`
-
-En concreto:
-
-- `data-plane`
-  Decide sobre acciones criticas en runtime.
-  Evalua policy, riesgo, evidencia, approval y lease antes de la ejecucion.
-
-- `control-workers`
-  Ejecuta automatizaciones deterministas y operativas.
-  Recolecta evidencia, abre incidentes, manda alertas y corre playbooks seguros.
-
-- `ai-runtime`
-  Asiste a humanos y contextualiza el sistema.
-  Analiza, explica, prioriza y responde, pero no decide acciones criticas.
-
-- `control-plane`
-  Administra configuracion y superficie de gestion.
-  Expone CRUDs, recursos, policies y la capa de administracion del sistema.
-
-## Estructura compartida
-
-En `v2`, lo agnostico queda separado asi:
-
-- `v2/pkgs/contracts`
-  - contratos y artefactos multilenguaje
-  - OpenAPI, errores, eventos y otras definiciones compartidas
-- `v2/pkgs/go-pkg`
-  - codigo Go compartido y agnostico entre servicios
-
-## Centro actual de `v2`
-
-Hoy el centro de producto y de dominio de `v2` es:
-
-- `control-plane`
-  - `resources`
-  - `action policies`
-  - `audit records`
-  - write interno por `/internal/audit`
-  - lectura administrativa por `/v1/audit`
-
-- `data-plane`
-  - `actions`
-  - `approvals`
-  - `leases`
-  - `execute`
-  - emision best effort de `audit` para `action_created`, `action_blocked`, `action_approved`, `action_rejected`, `action_leased`, `action_executed` y `action_execution_failed`
-
-- `control-workers`
-  - `incidents`
-  - apertura determinista de incidentes desde `data-plane/actions` cuando una accion queda bloqueada, rechazada o falla al ejecutar
-  - `alerts`
-  - apertura determinista de alerts desde `incidents` segun severidad
-  - emision best effort de `audit` para `incident_created` y `alert_created`
-
-La direccion principal de producto es `action/resource/policy/approval/lease`.
-El eje anterior `run/tool` ya fue retirado de la superficie publica de `v2`.
-
-Capacidades agregadas post-MVP (Fase 0 — hardening):
-
-- idempotencia en `POST /v1/actions` via header `Idempotency-Key`
-- graceful degradation en `data-plane` con cache local de resources y policies
-- si `control-plane` no esta disponible, `data-plane` usa cache con TTL
-- si el cache expiro o no existe, `data-plane` hace fail closed (deny)
-- marcado de `degraded_context` en audit via `DegradationCollector` per-request en context
-
-Capacidades agregadas post-MVP (Fase 1A — ya implementada en runtime):
-
-- risk scoring multi-factor con cascada: factores pro-riesgo y anti-riesgo con amplificacion no-lineal
-- 5 niveles de decision graduada: allow, enhanced_log, additional_auth, require_approval, deny
-- baselines estadisticas por recurso y actor: daily_action_count, avg_amount, typical_hours
-- known destinations con decay exponencial y confidence
-- canary resources via label interno `_nexus_trap` y trap policies con `is_trap=true`
-- hysteresis: el risk score actual se mezcla con el anterior para evitar oscilaciones
-- cold start conservador: recursos nuevos arrancan con mas friccion
-- `RiskProfile` versionado (builtin `balanced/v1`; CRUD desde control-plane pendiente para 1B)
-
-El roadmap post-MVP esta documentado en [ROADMAP.md](ROADMAP.md).
-La guia operativa esta documentada en [OPS.md](OPS.md).
+El roadmap esta en [ROADMAP.md](ROADMAP.md).
+La guia operativa esta en [OPS.md](OPS.md).
 
 ## Que Nexus no es
-
-Nexus no es:
 
 - un custodio
 - un signer
 - un wallet
 - un sistema que mueve fondos por si mismo
-- un agente autonomo con poder de decision final
+- un copiloto generalista
 - un SIEM generalista
+- un chatbot genérico sin gobierno ni contexto operativo (Nexus es un agente con contexto del producto y los equipos)
+- un agente autonomo con poder final sin controles (el engine decide; el agente notifica y ofrece opciones; el humano ejecuta)
 
 ## Buyer inicial
-
-Buyers probables al inicio:
 
 - Head of Security
 - COO o Head of Operations
@@ -257,61 +264,35 @@ Buyers probables al inicio:
 
 Cliente inicial ideal:
 
-- exchanges cripto
+- exchanges cripto con bots en produccion
 - custodios
 - plataformas con treasury automatizado
 
 ## Negocio
 
-Nexus es un negocio SaaS de seguridad y control operativo.
-
-Se vende como capa de control para operaciones financieras automatizadas de alto impacto.
-
-Rango de pricing esperado:
-
-- Starter: 1.5k USD / mes
-- Growth: 5k USD / mes
-- Enterprise: 15k+ USD / mes
+Nexus se vende como runtime de gobierno para operaciones financieras automatizadas y coordinacion de equipos alrededor de decisiones criticas.
 
 El valor economico viene de:
 
 - reducir riesgo operacional
 - reducir probabilidad de perdida de fondos
-- mejorar gobernanza sobre automatizaciones
-- centralizar approvals, evidencia y auditoria
-- hacer explicable el control sobre sistemas automatizados
-
-## Alcance inicial real de producto
-
-El alcance inicial real debe mantenerse acotado a:
-
-- crypto ops automatizadas
-- pocas acciones iniciales
-- pocas decisiones iniciales
-- un punto de enforcement claro
-- IA fuera del camino critico
-
-Decisiones iniciales:
-
-- `allow`
-- `deny`
-- `require_approval`
+- hacer utilizable la automatizacion de alto impacto
+- centralizar governance, approvals, evidencia y auditoria
+- eliminar la coordinacion informal entre equipos para respuestas criticas
+- dar una capa de supervision, intervencion y documentacion viva
 
 ## Expansion
 
-Orden esperado de expansion:
-
 1. crypto ops automatizadas
-2. fintech y pagos
-3. banca
-4. sistemas criticos operados por agentes
+2. autonomia delegada para agentes financieros
+3. fintech y pagos
+4. banca
+5. sistemas criticos operados por agentes
 
 ## Frase de producto
 
-> Nexus permite que sistemas automatizados ejecuten acciones criticas sin perder control humano.
+> Nexus: el nexo entre agentes (clientes) y lo protegido, y entre los equipos que supervisan. Un engine determinista que detecta anomalias; un solo agente que notifica, contextualiza y ofrece acciones rapidas en el mismo chat (web y app). Una voz, un lugar.
 
 ## Definicion corta
 
-> Nexus es una capa determinista de control previo para operaciones cripto automatizadas.
-> Evalua acciones criticas, aplica policy y approval, genera evidencia y, solo si corresponde, emite una autorizacion efimera consumible por el sistema que efectivamente ejecuta.
-> Nexus no custodia fondos ni firma transacciones: decide si pueden ocurrir.
+> Nexus es el runtime de gobierno para agentes financieros y el nexo con los equipos humanos. El engine procesa requests y, ante anomalias, notifica al agente IA; el agente avisa a los responsables, da contexto y opciones rapidas en un solo chat (web y app). Mismo agente para todos; puede evolucionar a nexo entre equipos y consulta de documentacion. No custodia fondos ni firma: gobierna la autonomia y pone el canal unico para operar y preguntar.

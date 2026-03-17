@@ -1,0 +1,52 @@
+---
+description: Reglas base del proyecto Nexus (Go + Python)
+alwaysApply: true
+---
+
+# Reglas base Nexus
+
+## Reglas críticas
+- NUNCA usar valores hardcodeados (URLs, keys, timeouts) — siempre variables de entorno
+- NUNCA modificar migraciones existentes — crear nuevas
+- NUNCA exponer domain structs/models por HTTP — siempre DTOs
+- NUNCA usar `panic()` (Go) o excepciones genéricas sin tipo (Python)
+- NUNCA ignorar errores con `_` (Go) o `except: pass` (Python) — al menos loguear
+- NUNCA usar `fmt.Printf`/`log.Println` (Go) o `print()` (Python) — usar slog/structlog
+- NUNCA cambiar nada que no sea quirúrgicamente lo que se pide
+- NUNCA usar DELETE como soft delete — DELETE es hard delete, Archive es soft delete
+- Iterar hasta obtener resultados válidos: buildear, tests, revisar; no alcanza con "escribir código"
+- Siempre comenzar con TLDR
+- Siempre proponer enfoque antes de implementar algo no trivial y esperar confirmación
+
+## Idioma
+- Comentarios en español (`//`, `/* */`, `--` SQL, `#` Python)
+- Código en inglés
+- TODOs en inglés
+- Responder siempre en español
+
+## Verificar antes de decir "listo"
+### Go
+1. `go build ./...` — compila sin errores
+2. `go vet ./...` — sin warnings
+3. `go test ./...` — todos pasan
+### Python
+1. `ruff check .` — sin errores de lint
+2. `mypy .` — sin errores de tipos
+3. `python -m pytest` — todos pasan
+
+Nunca afirmar "listo", "funciona" o "debería andar" sin evidencia de ejecución exitosa.
+
+## Enfoque: ideal primero
+- Antes de proponer cambios, ofrecer **primero** la forma ideal aunque sea costosa
+- Luego ofrecer la forma **recomendada** (más práctica)
+- Si ideal y recomendada coinciden, indicarlo
+
+## Principios de diseño
+- **DRY** — no duplicar lógica; si se repite dos veces, abstraer
+- **YAGNI** — sin features especulativas ni para "el futuro"
+- **SOLID** — SRP, OCP, LSP, ISP, DIP
+- **KISS** — tres líneas similares son mejores que una abstracción prematura
+- **Fail fast** — validar inputs al inicio, retornar error inmediato
+- **Early return** — evitar nesting; validar y retornar temprano
+- No agregar error handling para casos imposibles
+- No crear helpers/utils para operaciones de un solo uso

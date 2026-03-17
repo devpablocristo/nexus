@@ -1,0 +1,129 @@
+---
+description: Arquitectura hexagonal Go — patrón Nexus v2
+globs: "**/*.go"
+alwaysApply: true
+---
+
+# Go Hexagonal Architecture (patrón Nexus v2)
+
+**Para Go siempre hexagonal.** Sin excepciones.
+
+## Stack
+- **Runtime**: Go 1.26+, `net/http` nativo (no Gin, no Echo)
+- **DB**: PostgreSQL 16 via `pgx/v5`
+- **DI**: Manual en `wire/setup.go` (constructores explícitos, sin code generation)
+- **Migraciones**: SQL numeradas en `migrations/`, ejecutadas al arrancar
+- **Entrypoint**: `cmd/api/main.go`
+
+## Accept interfaces, return structs
+
+- Constructores **reciben interfaces**, nunca tipos concretos
+- Constructores **devuelven `*Struct`**, nunca una interfaz
+- Interfaces se definen en el **consumidor**, no en el proveedor
+- Cada adapter define su propio port con **solo los métodos que necesita** (ISP)
+
+```go
+// handler.go — port mínimo para el handler
+type requestUsecase interface {
+    Submit(ctx context.Context, req SubmitRequest) (*domain.Request, error)
+    GetByID(ctx context.Context, id uuid.UUID) (*domain.Request, error)
+}
+
+type Handler struct { uc requestUsecase }
+
+func NewHandler(uc requestUsecase) *Handler {
+    return &Handler{uc: uc}
+}
+```
+
+## Wire builder pattern (deps opcionales)
+```go
+func (h *Handler) WithAuditSink(sink auditSink) *Handler {
+    h.audit = sink
+    return h
+}
+```
+
+## Naming obligatorio
+
+| Archivo | Struct principal | Constructor |
+|---------|-----------------|-------------|
+| `usecases.go` | `type Usecases struct` | `func NewUsecases(...)` |
+| `handler.go` | `type Handler struct` | `func NewHandler(...)` |
+| `repository.go` | `type Repository interface` | — |
+| `repository_inmemory.go` | `type InMemoryRepository struct` | `func NewInMemoryRepository(...)` |
+| `repository_postgres.go` | `type PostgresRepository struct` | `func NewPostgresRepository(...)` |
+
+## Estructura por módulo
+
+```
+internal/<modulo>/
+    usecases/domain/
+        entities.go          # entidades puras (sin deps HTTP ni DB)
+    usecases.go              # lógica + ports (interfaces)
+    handler.go               # adapter HTTP
+    handler/dto/
+        dto.go               # DTOs entrada/salida
+    repository.go            # port: interface + sentinel errors
+    repository_inmemory.go   # adapter: in-memory
+    repository_postgres.go   # adapter: pgx
+    *_test.go
+```
+
+## Sentinel errors en repository.go
+
+```go
+var (
+    ErrNotFound      = errors.New("not found")
+    ErrAlreadyExists = errors.New("already exists")
+    ErrArchived      = errors.New("entity is archived")
+)
+```
+
+## Reglas Go estrictas
+
+- `context.Context` siempre como primer parámetro
+- No `init()` en código de aplicación
+- No `panic()` en producción — retornar error
+- No `_` para ignorar errores — al menos loguear con `slog.Error`
+- Slices como valores `[]Type`, no `*[]Type`
+- Punteros para structs de dominio: `*domain.Entity`
+- IDs como `uuid.UUID` (no string, no int64)
+- Enums como typed string: `type Effect string`
+- No global state — todo por DI
+- Error wrapping: `fmt.Errorf("create policy: %w", err)`
+- Early return — validar y retornar temprano, no nesting
+- Errors son valores — `errors.Is()`, nunca comparar strings
+- Structs literales nombrados — `Policy{Name: "x"}`, nunca posicionales
+- Config desde variables de entorno, nunca hardcodeado
+- Logging: siempre `slog.Info/Error/Warn` con key-value, nunca `fmt.Printf`
+
+## Health endpoints
+- `GET /healthz` — liveness, siempre 200, **fuera de auth**
+- `GET /readyz` — readiness, verifica deps, **fuera de auth**
+
+## Graceful shutdown
+- `signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)`
+- Server con timeout de shutdown
+- Cerrar conexiones de DB en cleanup
+
+## Audit emission
+- Best-effort desde handler, después de la lógica
+- **Nunca fallar la request** si audit falla — loguear error
+- Append-only: eventos nunca se modifican ni eliminan
+
+## AI adapter pattern
+- Port (interface) en el consumidor
+- Stub para tests (retorna datos fijos)
+- Adapter real con timeout (5s) + fallback (datos crudos + degraded=true)
+- **Nunca fallar la request** por error de AI
+
+## Paquetes compartidos (usar siempre)
+
+| Paquete | Uso |
+|---------|-----|
+| `pkgs/go-pkg/handlers` | `DecodeJSON`, `WriteJSON` |
+| `pkgs/go-pkg/postgres` | `pgxpool`, migrations |
+| `pkgs/go-pkg/apikey` | Auth middleware |
+| `pkgs/go-pkg/httpserver` | Graceful shutdown, security headers |
+| `pkgs/go-pkg/observability` | slog JSON, Prometheus |

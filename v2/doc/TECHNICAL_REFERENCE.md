@@ -42,21 +42,28 @@ Patron esperado:
 
 ## Mapa actual por servicio
 
-- `control-plane`
-  - administra `resources`
-  - administra `action policies`
-  - administra lectura de `audit`
-  - expone write interno de `audit`
-
-- `control-workers`
-  - opera `incidents`
-  - opera `alerts`
-
-- `data-plane`
+- `data-plane` (engine determinista)
   - ejecuta `/actions`
   - decide lifecycle de `actions`
   - emite `audit`
   - abre `incidents` deterministas cuando corresponde
+  - ante anomalias, notifica al agente IA (ai-runtime)
+
+- `control-workers` (operadores deterministas)
+  - opera `incidents`
+  - opera `alerts`
+  - ejecuta playbooks y side-effects
+
+- `ai-runtime` (agente IA de Nexus)
+  - recibe anomalias del engine
+  - notifica a los equipos responsables con contexto y opciones
+  - unico interlocutor para humanos via chat (web + app)
+  - no decide allow/deny — presenta opciones; el humano ejecuta
+
+- `control-plane` (administracion + SaaS)
+  - administra `resources`, `action policies`, `audit`
+  - expone write interno de `audit`
+  - integra saas-core: billing, auth, tenancy, metering, admin
 
 ## Estado actual de Fase 1A
 

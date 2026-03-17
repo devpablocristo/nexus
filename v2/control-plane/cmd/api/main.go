@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
 	"github.com/devpablocristo/nexus/v2/pkgs/go-pkg/httpserver"
 	sharedobservability "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/observability"
 	sharedpostgres "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/postgres"
@@ -41,22 +40,34 @@ func main() {
 		ControlPlaneDatabaseURL:    os.Getenv("NEXUS_CONTROL_PLANE_DATABASE_URL"),
 		AuditPostgresConfig:        auditPostgresConfig,
 		ControlPlanePostgresConfig: controlPlanePostgresConfig,
+		NexusAPIKeys:               os.Getenv("NEXUS_API_KEYS"),
+		SaaS: wire.SaaSConfig{
+			DatabaseURL:           os.Getenv("NEXUS_SAAS_DATABASE_URL"),
+			StripeSecretKey:       os.Getenv("STRIPE_SECRET_KEY"),
+			StripeWebhookSecret:   os.Getenv("STRIPE_WEBHOOK_SECRET"),
+			StripePriceStarter:    os.Getenv("STRIPE_PRICE_STARTER"),
+			StripePriceGrowth:     os.Getenv("STRIPE_PRICE_GROWTH"),
+			StripePriceEnterprise: os.Getenv("STRIPE_PRICE_ENTERPRISE"),
+			TowerBaseURL:          os.Getenv("TOWER_BASE_URL"),
+			ClerkWebhookSecret:    os.Getenv("CLERK_WEBHOOK_SECRET"),
+			JWTIssuer:             os.Getenv("NEXUS_SAAS_JWT_ISSUER"),
+			JWTAudience:           os.Getenv("NEXUS_SAAS_JWT_AUDIENCE"),
+			JWTOrgClaim:           os.Getenv("NEXUS_SAAS_JWT_ORG_CLAIM"),
+			JWTRoleClaim:          os.Getenv("NEXUS_SAAS_JWT_ROLE_CLAIM"),
+			JWTScopesClaim:        os.Getenv("NEXUS_SAAS_JWT_SCOPES_CLAIM"),
+			JWTActorClaim:         os.Getenv("NEXUS_SAAS_JWT_ACTOR_CLAIM"),
+		},
 	})
 	if err != nil {
 		logger.Error("control-plane startup failed", "error", err)
 		os.Exit(1)
 	}
 	defer cleanup()
-	authn, err := sharedapikey.NewAuthenticator(os.Getenv("NEXUS_API_KEYS"))
-	if err != nil {
-		logger.Error("control-plane auth configuration failed", "error", err)
-		os.Exit(1)
-	}
 
 	appHandler := sharedobservability.WithMetricsEndpoint(handler, metrics.Handler())
 	securedHandler := httpserver.SecurityMiddleware(
 		httpserver.SecurityConfigFromEnv(),
-		sharedobservability.MiddlewareWithMetrics(logger, metrics, authn.Middleware(appHandler)),
+		sharedobservability.MiddlewareWithMetrics(logger, metrics, appHandler),
 	)
 	server := httpserver.New(addr, securedHandler)
 

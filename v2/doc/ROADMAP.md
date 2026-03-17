@@ -27,18 +27,16 @@ Los disenos de Fase 1A y 1B fueron revisados y cerrados en [REVIEW.md](REVIEW.md
 
 ## Posicionamiento
 
-Nexus no compite con Fireblocks feature por feature.
+Nexus es el nexo unico en dos sentidos:
 
-Fireblocks es custodia completa con policy engine incluido.
-Nexus es policy engine standalone para cualquier custodia.
+- **Con los clientes**: los agentes (bots, sistemas) envian requests. El engine determinista gobierna la autoridad delegada antes de que toquen infraestructura que mueve fondos.
+- **Con los equipos**: un solo agente IA notifica anomalias, contextualiza, y ofrece acciones rapidas a los responsables. Un unico chat (web y app) para todos los equipos.
 
-El diferenciador funcional central es:
+No compite con Fireblocks feature por feature. Fireblocks es custodia con policy engine incluido. Nexus es el runtime de gobierno standalone que ademas conecta a los equipos humanos alrededor de las decisiones.
 
-> Fireblocks evalua transacciones. Nexus evalua patrones.
+El diferenciador central:
 
-El policy engine de Fireblocks esta disenado como parte de su stack de custodia integrado. Su fortaleza es la evaluacion de transacciones individuales contra reglas estaticas en ese contexto.
-
-Nexus toma un approach diferente: evalua cada accion en contexto de las acciones anteriores, con ventanas temporales, correlacion entre entidades y respuesta adaptativa. Al ser standalone, puede permitirse un modelo de evaluacion stateful que no depende de un stack de custodia especifico.
+> Nexus no es la puerta que mira una transaccion. Es el nexo que gobierna agentes y coordina humanos en operaciones financieras criticas.
 
 ## Principio de diseno
 

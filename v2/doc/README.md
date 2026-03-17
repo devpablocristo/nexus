@@ -1,10 +1,12 @@
 # Nexus v2 Docs
 
-Documentacion principal de `v2`.
+Documentacion principal de `v2`. Entrada unica recomendada para entender producto, estado y tecnica.
 
-Estado actual: MVP cerrado + Fase 0 cerrada en entorno local (4 deploy blockers pendientes) + Fase 1A implementada en runtime (cascada multi-factor, canaries, baselines).
+**Que es Nexus:** El nexo unico entre agentes financieros y lo protegido (engine determinista que gobierna autoridad delegada) y entre los equipos humanos que supervisan (un solo agente IA que notifica, contextualiza y ofrece acciones en un chat unico).
 
-Orden recomendado de lectura:
+**Estado actual:** MVP cerrado, Fase 0 cerrada en local (4 deploy blockers), Fase 1A en runtime (cascada, canaries, baselines), saas-core integrado (billing, auth, tenancy). Ver [ONE_PAGER.md](ONE_PAGER.md) para producto y GTM.
+
+**Orden recomendado de lectura:**
 
 1. [DEFINITION.md](DEFINITION.md)
    - definicion de producto, nicho, negocio y separacion por servicio
@@ -24,6 +26,14 @@ Orden recomendado de lectura:
    - guia operativa: topologia, rollout, rollback, config, runbooks
 9. [REVIEW.md](REVIEW.md)
    - historial de decisiones de diseno (colaboracion Claude + GPT)
+10. [ONE_PAGER.md](ONE_PAGER.md)
+    - una pagina: problema, solucion, diferenciacion, estado, proximo paso (ventas/partners)
+11. [POLISH_PLAN.md](POLISH_PLAN.md)
+    - plan de pulido de doc, producto y GTM
+12. [CURSOR_ONBOARDING.md](CURSOR_ONBOARDING.md)
+    - onboarding para agentes (Cursor): que falta, prioridad, convenciones
+13. [V1_STUDY.md](V1_STUDY.md)
+    - estudio completo de Nexus v1 (repo `v1/`): arquitectura, flujos, conceptos reutilizables para v2
 
 Assets operativos relevantes:
 
@@ -51,3 +61,10 @@ Reglas de estructura relevantes:
   - `control-plane`
   - `control-workers`
   - `ai-runtime`
+
+## Proximos pasos (resumen)
+
+1. Cerrar 4 deploy blockers de [PRE_PROD.md](PRE_PROD.md) y pasar [PROD_CHECKLIST.md](PROD_CHECKLIST.md).
+2. Migrations de saas-core en control-plane y tests de saas-core.
+3. Integrar saas-core en Pymes y Ponti; features diferenciales (CapabilityLease, AI Analyst).
+4. GTM: demo, doc de integracion, prospects (meta: segunda semana junio 2026). Detalle en [CURSOR_ONBOARDING.md](CURSOR_ONBOARDING.md).

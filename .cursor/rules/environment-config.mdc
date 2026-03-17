@@ -1,0 +1,28 @@
+---
+description: Configuración y entorno — universal Go + Python
+alwaysApply: true
+---
+
+# Configuración y entorno
+
+- El código es uno solo para todos los ambientes (local, staging, prod)
+- **Sin forks de lógica por ambiente** en el código fuente
+- Todo config desde variables de entorno
+- `.env.example` como referencia canónica — mantener actualizado
+- `docker-compose.yml` para desarrollo local
+- Producción: variables de entorno en el deploy (fly.io, ECS, Lambda)
+
+## Go
+- `os.Getenv("VAR")` con defaults seguros
+- Config struct en `wire/setup.go` o `config/config.go`
+- NUNCA hardcodear valores
+
+## Python
+- `pydantic-settings` con `class Settings(BaseSettings)`
+- `.env` file para local, env vars para producción
+- NUNCA hardcodear valores, NUNCA `os.getenv()` directo — siempre Settings
+
+## Reglas
+- Los defaults deben ser seguros (TTL corto, no auto-allow por default)
+- Si una config cambia, actualizar `.env.example` primero
+- Secretos (API keys, DB passwords) nunca en código, nunca en git

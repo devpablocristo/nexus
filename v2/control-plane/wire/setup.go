@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	sharedapikey "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/apikey"
 	sharedhandlers "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/handlers"
 	sharedpostgres "github.com/devpablocristo/nexus/v2/pkgs/go-pkg/postgres"
 	"nexus/v2/control-plane/internal/audit"
@@ -17,6 +18,8 @@ type Config struct {
 	ControlPlaneDatabaseURL    string
 	AuditPostgresConfig        sharedpostgres.Config
 	ControlPlanePostgresConfig sharedpostgres.Config
+	NexusAPIKeys               string
+	SaaS                       SaaSConfig
 }
 
 func NewServer(cfg Config) (http.Handler, func(), error) {
@@ -71,17 +74,35 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		cleanupCleanups(cleanups)
 		return nil, nil, err
 	}
+	// SaaS modules (billing, auth, tenancy)
+	saasSvc, err := SetupSaaS(cfg.SaaS)
+	if err != nil {
+		cleanupCleanups(cleanups)
+		return nil, nil, err
+	}
+	if saasSvc != nil {
+		cleanups = append(cleanups, saasSvc.Cleanup)
+	}
+
 	mux := http.NewServeMux()
 	sharedhandlers.RegisterHealthEndpoints(mux, sharedhandlers.ComposeReadinessChecks(readinessChecks...))
 	audit.NewHandler(auditUC).Register(mux)
 	resources.NewHandler(resourceUC).WithAuditSink(auditSink).Register(mux)
 	policies.NewHandler(policyUC).WithAuditSink(auditSink).Register(mux)
+	RegisterSaaSRoutes(mux, saasSvc)
+
+	authn, err := sharedapikey.NewAuthenticator(cfg.NexusAPIKeys)
+	if err != nil {
+		cleanupCleanups(cleanups)
+		return nil, nil, err
+	}
+
 	cleanup := func() {
 		for i := len(cleanups) - 1; i >= 0; i-- {
 			cleanups[i]()
 		}
 	}
-	return mux, cleanup, nil
+	return WrapAuth(mux, authn, saasSvc), cleanup, nil
 }
 
 func cleanupCleanups(cleanups []func()) {
