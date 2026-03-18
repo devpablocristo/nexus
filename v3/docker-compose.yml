@@ -1,5 +1,5 @@
 services:
-  review-postgres:
+  postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -7,9 +7,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "${NEXUS_REVIEW_POSTGRES_PORT:-15434}:5432"
+      - "${NEXUS_POSTGRES_PORT:-15434}:5432"
     volumes:
-      - review-postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_review"]
       interval: 2s
@@ -23,14 +23,14 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
-      DATABASE_URL: "postgres://postgres:postgres@review-postgres:5432/nexus_review?sslmode=disable"
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/nexus_review?sslmode=disable"
       NEXUS_API_KEYS: "admin=${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key},prometheus=${NEXUS_REVIEW_PROMETHEUS_API_KEY:-nexus-review-prometheus-dev-key}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       APPROVAL_DEFAULT_TTL: "${NEXUS_REVIEW_APPROVAL_TTL:-3600}"
     ports:
       - "${NEXUS_REVIEW_PORT:-18084}:8080"
     depends_on:
-      review-postgres:
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1 || exit 1"]
@@ -49,4 +49,4 @@ services:
         condition: service_healthy
 
 volumes:
-  review-postgres-data:
+  postgres-data:
