@@ -89,16 +89,14 @@ Requester (agente / servicio / humano)
   │                                                      │
   │  internal/requests/         (modulo principal)       │
   │  ├── usecases/domain/       entidades de dominio    │
-  │  ├── usecases.go            logica + ports          │
+  │  ├── usecases.go            logica + ports + opts   │
   │  ├── handler.go             adapter: HTTP           │
   │  ├── handler/dto/           DTOs                    │
-  │  ├── repository.go          port: persistencia      │
-  │  ├── repository_postgres.go adapter: PostgreSQL     │
+  │  ├── repository.go          port + pgx impl         │
   │  ├── policy_evaluator.go    CEL evaluation          │
   │  ├── risk.go                risk tiering            │
   │  ├── ai_contextualizer.go   port+adapter: Claude    │
-  │  ├── audit.go               emision de eventos      │
-  │  └── metrics.go             Prometheus              │
+  │  └── audit_sink.go          emision de eventos      │
   │                                                      │
   │  internal/policies/         (CRUD + CEL validation) │
   │  internal/approvals/        (inbox + decisions)     │
@@ -126,58 +124,63 @@ review-v1/
 │   ├── requests/                       # Modulo principal: requests
 │   │   ├── usecases/domain/
 │   │   │   └── entities.go             # Request, RequestStatus, Decision, RiskLevel, RequesterType
-│   │   ├── usecases.go                 # Ports: PolicyEvaluator, AIContextualizer, LearningEngine
-│   │   ├── handler.go                  # POST /v1/requests, GET, etc.
+│   │   ├── usecases.go                 # Ports + logica + functional options
+│   │   ├── handler.go                  # POST /v1/requests, GET, POST result
 │   │   ├── handler/dto/
 │   │   │   └── dto.go
-│   │   ├── repository.go
-│   │   ├── repository_postgres.go
-│   │   ├── policy_evaluator.go
-│   │   ├── risk.go
-│   │   ├── ai_contextualizer.go
-│   │   ├── audit.go
-│   │   ├── metrics.go
-│   │   └── *_test.go
+│   │   ├── repository.go              # Interface + pgx impl + idempotency store
+│   │   ├── policy_evaluator.go        # CEL evaluation (compilado + cacheado)
+│   │   ├── risk.go                    # Risk tiering + decision logic
+│   │   ├── ai_contextualizer.go       # Stub + Claude HTTP (api.anthropic.com)
+│   │   ├── audit_sink.go             # Adapter: audit events best-effort
+│   │   └── handler_test.go
 │   │
-│   ├── policies/                       # CRUD de politicas CEL
+│   ├── policies/                       # CRUD completo (7 ops) + CEL validation
 │   │   ├── usecases/domain/entities.go
 │   │   ├── usecases.go
-│   │   ├── handler.go
-│   │   ├── repository.go
-│   │   └── repository_postgres.go
+│   │   ├── handler.go                 # Create, Read, List, Update, Delete, Archive, Restore
+│   │   ├── handler/dto/dto.go
+│   │   ├── repository.go             # Interface + pgx impl
+│   │   └── handler_test.go
 │   │
-│   ├── approvals/                      # Inbox + decisiones humanas
+│   ├── approvals/                      # Inbox + decisiones humanas + audit events
 │   │   ├── usecases/domain/entities.go
-│   │   ├── usecases.go
+│   │   ├── usecases.go               # WithAuditSink() builder
 │   │   ├── handler.go
-│   │   ├── repository.go
-│   │   └── repository_postgres.go
+│   │   ├── repository.go             # Interface + pgx impl
+│   │   └── handler_test.go
 │   │
 │   ├── audit/                          # Trail inmutable + replay
 │   │   ├── usecases/domain/entities.go
 │   │   ├── usecases.go
 │   │   ├── handler.go
-│   │   ├── repository.go
-│   │   └── repository_postgres.go
+│   │   ├── repository.go             # Interface + pgx impl (append-only)
+│   │   └── handler_test.go
 │   │
 │   ├── learning/                       # Pattern detection + policy proposals
-│   │   ├── usecases/domain/entities.go # Proposal, Pattern, Insight
-│   │   ├── usecases.go                 # AnalyzePatterns(), GenerateProposals()
-│   │   ├── handler.go                  # GET /v1/learning/proposals, POST accept/dismiss
-│   │   ├── analyzer.go                 # Port+Adapter: pattern detection
-│   │   ├── proposer.go                 # Port+Adapter: Claude genera propuestas
-│   │   ├── repository.go
-│   │   └── repository_postgres.go
+│   │   ├── usecases/domain/entities.go
+│   │   ├── usecases.go               # WithAnalyzer() + WithProposer() builders
+│   │   ├── handler.go                # proposals CRUD + POST /v1/learning/analyze
+│   │   ├── analyzer.go               # Pattern detection sobre requests
+│   │   ├── proposer.go               # Genera propuestas CEL desde patrones
+│   │   ├── repository.go             # Interface + pgx impl
+│   │   └── handler_test.go
 │   │
 │   └── dashboard/
-│       ├── usecases.go
-│       ├── handler.go
-│       └── repository_postgres.go
+│       ├── handler.go                 # Metricas reales desde requests
+│       └── handler_test.go
 │
-├── wire/setup.go
-├── migrations/0001_initial.up.sql
-├── web/                                # React (approval inbox, replay, proposals, dashboard)
+├── wire/
+│   ├── setup.go                       # DI manual, pgx pool, cleanup
+│   ├── policy_lister_adapter.go       # Adapter: policies → requests
+│   ├── learning_policy_creator.go     # Adapter: proposals → policies
+│   └── replay_getter.go              # Adapter: requests → audit replay
+│
+├── migrations/
+│   ├── 0001_initial.up.sql
+│   └── 0001_initial.down.sql
 ├── doc/
+├── .env.example
 ├── go.mod
 ├── Dockerfile
 ├── docker-compose.yml
@@ -187,13 +190,14 @@ review-v1/
 ### Patron hexagonal por modulo
 
 ```
-usecases/domain/entities.go    # Entidades puras
-usecases.go                    # Logica + ports (interfaces)
-repository.go                  # Port: persistencia
-repository_postgres.go         # Adapter: pgx
-handler.go                     # Adapter: net/http
+usecases/domain/entities.go    # Entidades puras (sin deps HTTP ni DB)
+usecases.go                    # Logica + ports (interfaces) + functional options
+repository.go                  # Interface + sentinel errors + implementacion pgx
+handler.go                     # Adapter: net/http (recibe interface, no *Usecases)
 handler/dto/dto.go             # DTOs (separados del dominio)
 ```
+
+PostgreSQL siempre — no hay repositorios in-memory. Un solo archivo `repository.go` por modulo.
 
 ### Reutilizacion de pkgs/go-pkg de v2
 
@@ -527,14 +531,16 @@ Response:
 }
 ```
 
-### 5.7 Policies CRUD
+### 5.7 Policies CRUD (7 operaciones canonicas)
 
 ```
-POST   /v1/policies
-GET    /v1/policies
-GET    /v1/policies/{id}
-PATCH  /v1/policies/{id}
-DELETE /v1/policies/{id}
+POST   /v1/policies                    -- 201 crear
+GET    /v1/policies                    -- 200 listar (excluye archivados; ?archived=true para incluir)
+GET    /v1/policies/{id}               -- 200 leer (incluye archivados)
+PATCH  /v1/policies/{id}               -- 200 actualizar (patch parcial)
+DELETE /v1/policies/{id}               -- 204 hard delete (fisico, irreversible)
+POST   /v1/policies/{id}/archive       -- 204 soft delete (archived_at = now)
+POST   /v1/policies/{id}/restore       -- 204 restaurar (limpia archived_at)
 ```
 
 ### 5.8 Learning: policy proposals
@@ -542,8 +548,9 @@ DELETE /v1/policies/{id}
 ```
 GET    /v1/learning/proposals              -- listar propuestas pendientes
 GET    /v1/learning/proposals/{id}         -- detalle de una propuesta
-POST   /v1/learning/proposals/{id}/accept  -- aceptar (crea la policy)
+POST   /v1/learning/proposals/{id}/accept  -- aceptar (crea la policy con origin='learned')
 POST   /v1/learning/proposals/{id}/dismiss -- descartar
+POST   /v1/learning/analyze               -- trigger manual: detectar patrones y generar propuestas
 ```
 
 Ejemplo de propuesta:
@@ -711,11 +718,20 @@ time.day_of_week             -- 1 (lunes=1)
 Port:
 ```go
 type AIContextualizer interface {
-    Summarize(ctx context.Context, input SummarizeInput) (string, error)
+    Summarize(ctx context.Context, input SummarizeInput) (summary string, degraded bool, err error)
 }
 ```
 
-Se invoca solo cuando decision = require_approval. Timeout 5s. Fallback: datos crudos, ai_degraded=true.
+Implementaciones:
+- **StubContextualizer**: fallback con datos crudos (modo sin API key)
+- **ClaudeContextualizer**: HTTP directo a `api.anthropic.com/v1/messages` (sin SDK externo)
+  - Model: `claude-sonnet-4-20250514`
+  - Timeout: 5s
+  - System prompt en español, max 300 tokens
+  - Si falla: retorna resumen crudo + `ai_degraded=true`
+  - **Nunca falla la request** por un error de AI
+
+Se invoca solo cuando decision = require_approval.
 
 ### 8.2 Proposer (learning)
 
@@ -790,15 +806,19 @@ El analyzer detecta el patron. El proposer (Claude) genera la policy. El humano 
 | Componente | Tecnologia |
 |------------|-----------|
 | Backend | Go 1.26, net/http |
-| Database | PostgreSQL 16, pgx |
+| Database | PostgreSQL 16, pgx/v5 (siempre, incluso dev) |
 | Policy engine | CEL (google/cel-go) |
-| AI | Claude API (anthropic-sdk-go) |
+| AI | Claude API via HTTP directo (api.anthropic.com/v1/messages) |
 | Frontend | React + Tailwind |
 | Auth | API keys (SHA256) + JWT (UI) |
 | Deployment | Docker Compose (dev), fly.io (prod MVP) |
 | Observability | slog + Prometheus |
+| Tests | Table-driven, httptest, fakes inline en _test.go |
+| Style | Uber Go Style Guide + hexagonal + CRUD canonico 7 ops |
 
 ## 11. Deployment
+
+`DATABASE_URL` es obligatorio. Sin base de datos, el servicio no arranca.
 
 ```yaml
 services:
@@ -806,16 +826,21 @@ services:
     image: postgres:16
     environment:
       POSTGRES_DB: nexus_review
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus
+    ports: ["5432:5432"]
 
   nexus-review:
     build: .
     ports: ["8080:8080"]
     environment:
-      DATABASE_URL: postgres://...
+      PORT: "8080"
+      DATABASE_URL: postgres://nexus:nexus@postgres:5432/nexus_review?sslmode=disable
+      NEXUS_REVIEW_API_KEYS: "nxr_dev=dev-key-change-me"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      PORT: 8080
-      APPROVAL_DEFAULT_TTL: 3600
-      LEARNING_ANALYSIS_INTERVAL: 86400
+      APPROVAL_DEFAULT_TTL: "3600"
+    depends_on:
+      - postgres
 ```
 
 ## 12. Roadmap

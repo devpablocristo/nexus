@@ -1,14 +1,37 @@
-# Nexus Review v1 — PoC (RFC 3.0)
-.PHONY: build run test lint
+# Nexus Review v1
+.PHONY: test qa smoke e2e acceptance up down build logs dev
+
+# --- Quality ---
+test:
+	cd decision-plane && go test ./... -count=1
+
+qa:
+	bash scripts/quality/check-api.sh
+
+# --- Docker ---
+up:
+	@test -f .env || cp .env.example .env
+	docker compose up -d --build
+
+down:
+	docker compose down
 
 build:
-	go build -o bin/nexus-review ./cmd/api
+	docker compose build
 
-run: build
-	./bin/nexus-review
+logs:
+	docker compose logs -f
 
-test:
-	go test ./...
+# --- Tests contra API corriendo ---
+smoke:
+	bash scripts/smoke/run-policies-crud.sh
+	bash scripts/smoke/run-requests-flow.sh
 
-lint:
-	golangci-lint run ./...
+e2e:
+	bash scripts/e2e/run-full-lifecycle.sh
+
+acceptance: smoke e2e
+
+# --- Dev ---
+dev:
+	bash scripts/dev/run-api.sh

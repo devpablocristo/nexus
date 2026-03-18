@@ -1,87 +1,19 @@
 ---
-description: Convenciones de tests (Go + Python)
-globs: "**/*_test.go,**/test_*.py,**/conftest.py"
+description: Tests Go + Python — fakes inline, table-driven, cobertura
+globs: "**/*_test.go,**/test_*.py"
 alwaysApply: false
 ---
 
-# Convenciones de tests
+# Tests
 
 ## Go
-
-### Patrón obligatorio
-- **Table-driven tests** — `[]struct{ name, input, expected }`
-- **`t.Parallel()`** en todos los tests sin estado compartido mutable
-- **`httptest.NewRequest` + `httptest.NewRecorder`** para handlers HTTP
-- **In-memory repositories** para tests — sin DB real, sin mocks sintéticos
-- Ejecutar tests sin preguntar — siempre `go test ./...` después de cambios
-
-### Cobertura mínima por módulo
-1. Happy path (operación exitosa)
-2. Not found (404)
-3. Validation error (400)
-4. Conflict / duplicate (409) si aplica
-5. Archive / restore lifecycle si la entidad los tiene
-6. CRUD completo: create → get → list → update → archive → restore → delete
-
-### Ejemplo Go
-```go
-func TestPolicyLifecycle(t *testing.T) {
-    t.Parallel()
-    uc := NewUsecases(NewInMemoryRepository(nil))
-    mux := http.NewServeMux()
-    NewHandler(uc).Register(mux)
-
-    tests := []struct {
-        name           string
-        method, path   string
-        body           string
-        expectedStatus int
-    }{
-        {"create ok", http.MethodPost, "/v1/policies", `{"name":"test","expression":"true","effect":"allow"}`, 201},
-        {"get not found", http.MethodGet, "/v1/policies/00000000-0000-0000-0000-000000000000", "", 404},
-    }
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            t.Parallel()
-            var body io.Reader
-            if tt.body != "" { body = strings.NewReader(tt.body) }
-            req := httptest.NewRequest(tt.method, tt.path, body)
-            rec := httptest.NewRecorder()
-            mux.ServeHTTP(rec, req)
-            if rec.Code != tt.expectedStatus {
-                t.Fatalf("expected %d, got %d: %s", tt.expectedStatus, rec.Code, rec.Body.String())
-            }
-        })
-    }
-}
-```
+- Table-driven: `[]struct{ name, input, expected }`
+- `t.Parallel()` siempre
+- `httptest.NewRequest` + `httptest.NewRecorder`
+- Fakes inline en `_test.go`, NUNCA archivos separados
+- Cubrir: happy path, not found, validation, conflict, archive/restore
 
 ## Python
-
-### Patrón obligatorio
-- **pytest** con `@pytest.mark.asyncio` para tests async
-- **httpx.AsyncClient** con `ASGITransport` para endpoints
-- **In-memory repos** o SQLite para tests — no mocks de DB
-- Misma cobertura: happy path, not found, validation, conflict, archive/restore
-
-### Ejemplo Python
-```python
-@pytest.mark.asyncio
-async def test_policy_crud():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        r = await c.post("/v1/policies", json={"name": "test", "expression": "true", "effect": "allow"})
-        assert r.status_code == 201
-        policy_id = r.json()["id"]
-
-        r = await c.get(f"/v1/policies/{policy_id}")
-        assert r.status_code == 200
-
-        r = await c.delete(f"/v1/policies/{policy_id}")
-        assert r.status_code == 204
-```
-
-## Prohibiciones
-- NUNCA afirmar que tests pasan sin haberlos ejecutado
-- NUNCA usar mocks sintéticos para la DB — usar InMemoryRepository
-- NUNCA omitir `t.Parallel()` (Go) sin justificación
-- NUNCA `except: pass` en tests Python — dejar que falle
+- pytest + httpx.AsyncClient
+- Fakes inline, no mocks de DB
+- Misma cobertura

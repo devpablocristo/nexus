@@ -1,0 +1,52 @@
+services:
+  decision-plane-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_decision_plane
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${NEXUS_DECISION_PLANE_POSTGRES_PORT:-15434}:5432"
+    volumes:
+      - decision-plane-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_decision_plane"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  nexus-decision-plane:
+    build:
+      context: ..
+      dockerfile: review-v1/decision-plane/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://postgres:postgres@decision-plane-postgres:5432/nexus_decision_plane?sslmode=disable"
+      NEXUS_API_KEYS: "admin=${NEXUS_DECISION_PLANE_ADMIN_API_KEY:-nexus-decision-plane-admin-dev-key},prometheus=${NEXUS_DECISION_PLANE_PROMETHEUS_API_KEY:-nexus-decision-plane-prometheus-dev-key}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      APPROVAL_DEFAULT_TTL: "${NEXUS_DECISION_PLANE_APPROVAL_TTL:-3600}"
+    ports:
+      - "${NEXUS_DECISION_PLANE_PORT:-18084}:8080"
+    depends_on:
+      decision-plane-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  nexus-tower:
+    build:
+      context: ./tower
+    restart: unless-stopped
+    ports:
+      - "${NEXUS_TOWER_PORT:-13001}:80"
+    depends_on:
+      nexus-decision-plane:
+        condition: service_healthy
+
+volumes:
+  decision-plane-postgres-data:

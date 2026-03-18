@@ -1,124 +1,27 @@
 ---
-description: Patrón canónico CRUD estandarizado (Go + Python) — las 7 operaciones obligatorias
+description: CRUD canónico 7 operaciones — DELETE hard, Archive soft, DTOs obligatorios
 alwaysApply: true
 ---
 
-# Patrón canónico CRUD
+# CRUD canónico (7 operaciones)
 
-**Todo módulo con entidades persistidas implementa exactamente estas 7 operaciones.** No se omite ninguna. Mismo patrón en Go y Python.
+| Operación | Método | Path | Status |
+|-----------|--------|------|--------|
+| Create | POST | `/v1/{entities}` | 201 |
+| Read | GET | `/v1/{entities}/{id}` | 200 |
+| List | GET | `/v1/{entities}` | 200 |
+| Update | PATCH | `/v1/{entities}/{id}` | 200 |
+| Delete | DELETE | `/v1/{entities}/{id}` | 204 |
+| Archive | POST | `/v1/{entities}/{id}/archive` | 204 |
+| Restore | POST | `/v1/{entities}/{id}/restore` | 204 |
 
-## Contrato HTTP (universal)
+## Reglas
 
-| Operación | Método | Path | Status | Response |
-|-----------|--------|------|--------|----------|
-| Create | `POST` | `/v1/{entities}` | 201 | `{"id": "uuid"}` o entidad completa |
-| Read | `GET` | `/v1/{entities}/{id}` | 200 | DTO tipado |
-| List | `GET` | `/v1/{entities}` | 200 | `{"data": [...]}` |
-| Update | `PATCH` | `/v1/{entities}/{id}` | 200 | DTO actualizado |
-| Delete | `DELETE` | `/v1/{entities}/{id}` | 204 | sin body |
-| Archive | `POST` | `/v1/{entities}/{id}/archive` | 204 | sin body |
-| Restore | `POST` | `/v1/{entities}/{id}/restore` | 204 | sin body |
-
-## Reglas inamovibles
-
-- `DELETE` = **hard delete** siempre (físico, irreversible, borra el registro)
-- `Archive` = **soft delete** (`archived_at = now()`)
-- `Restore` = limpiar `archived_at`
-- **No existe** "soft delete con DELETE" — DELETE siempre es hard
-- Archive y Restore son **idempotentes** (204 aunque ya esté en ese estado)
-- `GET /{id}` incluye archivados (con `archived_at` en DTO)
-- `GET /` excluye archivados por default; `?archived=true` para incluirlos
-- Cada módulo **debe** implementar las 7 operaciones si tiene `archived_at`
-- Si una entidad no tiene `archived_at`, tiene al menos Create, Read, List, Update, Delete
-
-## DTOs (Go)
-
-```
-handler/dto/dto.go:
-    Create<Entity>Request   — payload de creación
-    Update<Entity>Request   — payload de actualización (campos opcionales con punteros)
-    <Entity>Response        — respuesta individual (incluye archived_at)
-```
-
-## DTOs (Python)
-
-```
-schemas.py:
-    Create<Entity>Request(BaseModel)
-    Update<Entity>Request(BaseModel)    — campos opcionales con | None
-    <Entity>Response(BaseModel)         — incluye archived_at
-```
-
-## Repository interface (Go)
-```go
-type Repository interface {
-    Create(ctx context.Context, item domain.Entity) (*domain.Entity, error)
-    GetByID(ctx context.Context, id uuid.UUID) (*domain.Entity, error)
-    List(ctx context.Context, filters ListFilters) ([]domain.Entity, error)
-    Update(ctx context.Context, item domain.Entity) (*domain.Entity, error)
-    DeleteByID(ctx context.Context, id uuid.UUID) error
-    ArchiveByID(ctx context.Context, id uuid.UUID) error
-    RestoreByID(ctx context.Context, id uuid.UUID) error
-}
-
-var (
-    ErrNotFound      = errors.New("not found")
-    ErrAlreadyExists = errors.New("already exists")
-    ErrArchived      = errors.New("entity is archived")
-)
-```
-
-## Repository interface (Python)
-```python
-class Repository(Protocol):
-    async def create(self, item: Entity) -> Entity: ...
-    async def get_by_id(self, id: UUID) -> Entity | None: ...
-    async def list(self, filters: ListFilters) -> list[Entity]: ...
-    async def update(self, item: Entity) -> Entity: ...
-    async def delete_by_id(self, id: UUID) -> None: ...
-    async def archive_by_id(self, id: UUID) -> None: ...
-    async def restore_by_id(self, id: UUID) -> None: ...
-```
-
-## Errores HTTP estructurados
-
-| Caso | Status | Code |
-|------|--------|------|
-| No encontrado | 404 | `NOT_FOUND` |
-| Conflicto / ya existe | 409 | `CONFLICT` |
-| Input inválido | 400 | `VALIDATION` |
-| No autorizado | 401 | `UNAUTHORIZED` |
-| Server error | 500 | `INTERNAL` |
-
-## Handler Register (Go) — siempre las 7 rutas
-```go
-func (h *Handler) Register(mux *http.ServeMux) {
-    mux.HandleFunc("POST /v1/policies", h.create)
-    mux.HandleFunc("GET /v1/policies", h.list)
-    mux.HandleFunc("GET /v1/policies/{id}", h.getByID)
-    mux.HandleFunc("PATCH /v1/policies/{id}", h.update)
-    mux.HandleFunc("DELETE /v1/policies/{id}", h.deleteByID)
-    mux.HandleFunc("POST /v1/policies/{id}/archive", h.archiveByID)
-    mux.HandleFunc("POST /v1/policies/{id}/restore", h.restoreByID)
-}
-```
-
-## Router (Python) — siempre las 7 rutas
-```python
-router = APIRouter(prefix="/v1/policies", tags=["policies"])
-
-@router.post("/", status_code=201)
-@router.get("/{id}")
-@router.get("/")
-@router.patch("/{id}")
-@router.delete("/{id}", status_code=204)
-@router.post("/{id}/archive", status_code=204)
-@router.post("/{id}/restore", status_code=204)
-```
-
-## Prohibiciones
-- NUNCA retornar `map[string]string{"error": "..."}` como único error — usar error estructurado
-- NUNCA exponer domain structs/models por HTTP — siempre DTOs
-- NUNCA omitir Archive/Restore si la entidad tiene `archived_at`
-- NUNCA usar DELETE como soft delete — DELETE es hard delete, Archive es soft delete
-- NUNCA crear DTOs individuales por operación que no sea Create/Update
+- DELETE = hard delete. Archive = soft delete. Restore = limpia archived_at.
+- Archive/Restore idempotentes (204 aunque ya esté en ese estado).
+- List excluye archivados por default; `?archived=true` para incluir.
+- NUNCA `var body struct{...}` inline — siempre DTOs en `handler/dto/dto.go`
+- NUNCA exponer domain structs por HTTP — siempre DTOs
+- NUNCA `err.Error()` en respuestas al cliente — loguear y retornar mensaje genérico
+- Errores HTTP: `{code, message}` (NOT_FOUND, CONFLICT, VALIDATION, INTERNAL)
+- Sentinel errors en `repository.go`: ErrNotFound, ErrAlreadyExists, ErrArchived
