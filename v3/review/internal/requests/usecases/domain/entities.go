@@ -1,0 +1,77 @@
+package domain
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type RequesterType string
+
+const (
+	RequesterTypeAgent   RequesterType = "agent"
+	RequesterTypeService RequesterType = "service"
+	RequesterTypeHuman   RequesterType = "human"
+)
+
+type RiskLevel string
+
+const (
+	RiskLow    RiskLevel = "low"
+	RiskMedium RiskLevel = "medium"
+	RiskHigh   RiskLevel = "high"
+)
+
+type Decision string
+
+const (
+	DecisionAllow            Decision = "allow"
+	DecisionDeny             Decision = "deny"
+	DecisionRequireApproval   Decision = "require_approval"
+)
+
+type RequestStatus string
+
+const (
+	StatusPending         RequestStatus = "pending"
+	StatusEvaluated       RequestStatus = "evaluated"
+	StatusAllowed         RequestStatus = "allowed"
+	StatusDenied          RequestStatus = "denied"
+	StatusPendingApproval RequestStatus = "pending_approval"
+	StatusApproved        RequestStatus = "approved"
+	StatusRejected        RequestStatus = "rejected"
+	StatusExpired         RequestStatus = "expired"
+	StatusExecuted        RequestStatus = "executed"
+	StatusFailed          RequestStatus = "failed"
+	StatusCancelled       RequestStatus = "cancelled"
+)
+
+type Request struct {
+	ID              uuid.UUID
+	IdempotencyKey  *string
+	RequesterType   RequesterType
+	RequesterID     string
+	RequesterName   string
+	ActionType      string
+	TargetSystem    string
+	TargetResource  string
+	Params          map[string]any
+	Reason          string
+	Context         string
+	RiskLevel       RiskLevel
+	Decision        Decision
+	DecisionReason  string
+	PolicyID        *uuid.UUID
+	Status          RequestStatus
+	ApprovalID      *uuid.UUID
+	ExecutionResult map[string]any
+	ErrorMessage    string
+	AISummary       string
+	AIDegraded      bool
+	EvaluatedAt     *time.Time
+	DecidedAt       *time.Time
+	ExecutedAt      *time.Time
+	ExpiresAt       *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}

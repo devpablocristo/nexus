@@ -42,7 +42,7 @@ Monorepo con tres proyectos: `v1/` (legacy), `v2/` (producción), `review-v1/` (
 
 ```
 {proyecto}/                          # raíz
-├── {servicio}/                      # nombre = rol arquitectónico (decision-plane, control-plane)
+├── {servicio}/                      # nombre = lo que hace (review, billing, gateway)
 │   ├── cmd/api/main.go
 │   ├── internal/
 │   │   ├── {modulo}/                # un dir por dominio de negocio
@@ -53,7 +53,7 @@ Monorepo con tres proyectos: `v1/` (legacy), `v2/` (producción), `review-v1/` (
 │   │   └── embed.go
 │   ├── Dockerfile
 │   └── go.mod
-├── tower/                           # frontend (siempre "tower")
+├── console/                         # frontend (siempre "console")
 ├── scripts/
 │   ├── lib/common.sh
 │   ├── quality/check-{servicio}.sh
@@ -211,21 +211,23 @@ Los **mappers** viven en el adapter que los necesita:
 
 ## 8. Docker y naming
 
-### Servicios
+### Servicios en docker-compose
 
-| Tipo | Patrón | Ejemplo |
-|------|--------|---------|
-| Servicio Go | `nexus-{directorio}` | `nexus-decision-plane` |
-| DB | `{directorio}-postgres` | `decision-plane-postgres` |
-| Volumen | `{directorio}-postgres-data` | `decision-plane-postgres-data` |
-| Frontend | `nexus-tower` | `nexus-tower` |
+Los nombres de servicio NO llevan prefijo `nexus-`. El `COMPOSE_PROJECT_NAME` ya lo aporta. Resultado: `{project}-{service}-{n}`.
+
+| Tipo | Servicio compose | Container resultante |
+|------|-----------------|---------------------|
+| Servicio Go | `review` | `nexus-v3-review-1` |
+| DB | `review-postgres` | `nexus-v3-review-postgres-1` |
+| Volumen | `review-postgres-data` | — |
+| Frontend | `console` | `nexus-v3-console-1` |
 
 ### Variables de entorno
 
-- `COMPOSE_PROJECT_NAME=nexus-{proyecto}`
-- Puertos: `NEXUS_{SERVICE}_PORT`, `NEXUS_TOWER_PORT`
+- `COMPOSE_PROJECT_NAME=nexus-v3`
+- Puertos: `NEXUS_{SERVICE}_PORT`, `NEXUS_CONSOLE_PORT`
 - API keys: `NEXUS_API_KEYS` dentro del container
-- DB: `DATABASE_URL` dentro del container, nombre `nexus_{servicio_underscore}`
+- DB: `DATABASE_URL` dentro del container, nombre `nexus_{servicio}`
 
 ### Reglas Docker
 
@@ -233,7 +235,8 @@ Los **mappers** viven en el adapter que los necesita:
 
 ### Nombres prohibidos
 
-- NUNCA `web/`, `frontend/`, `api/`, `backend/` → usar `tower/` y nombre funcional
+- NUNCA `web/`, `frontend/`, `ui/`, `tower/` → siempre `console/`
+- NUNCA `api/`, `backend/`, `server/` → usar nombre del producto (`review/`, `billing/`)
 - NUNCA `postgres:16` sin `-alpine`
 
 ---

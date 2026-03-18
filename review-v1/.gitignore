@@ -1,7 +1,0 @@
-.env
-.DS_Store
-**/tmp/
-**/coverage.out
-**/node_modules/
-tower/dist/
-decision-plane/bin/
