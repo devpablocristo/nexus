@@ -21,6 +21,7 @@ const translations = {
     typeToConfirm: 'Type to confirm:',
     confirmApprove: 'Confirm Approve',
     confirmReject: 'Confirm Reject',
+    breakGlass: 'Break-glass',
 
     // Requests detail
     timeline: 'Timeline',
@@ -70,6 +71,9 @@ const translations = {
     disabled: 'Disabled',
     optional: 'optional',
     none: 'None',
+    policyMode: 'Mode',
+    modeEnforced: 'Enforced',
+    modeShadow: 'Shadow',
 
     // Requests
     requests: 'Requests',
@@ -165,18 +169,34 @@ const translations = {
     maxBodySize: 'Max body size (bytes)',
     maxBodySizeHelp: 'Maximum HTTP request body size (1048576 = 1MB)',
 
-    // Simulate
-    simulate: 'Simulate',
-    simulateTitle: 'Simulate Request',
-    simulateDesc: 'Test what Nexus would decide without executing anything',
+    // Sandbox
+    sandbox: 'Sandbox',
+    sandboxTitle: 'Sandbox',
+    sandbox_simulate: 'Simulate',
+    sandbox_shadow: 'Shadow Monitor',
+    sandbox_replay: 'Replay Test',
     runSimulation: 'Run Simulation',
     simulating: 'Simulating...',
     clear: 'Clear',
-    simulateResult: 'Result',
-    wouldRequireApproval: 'Would require human approval',
     policyMatched: 'Policy matched',
     riskFactors: 'Risk Factors (Cascade)',
     rawScore: 'Raw score',
+    simulateHistory: 'History',
+    noHistory: 'No simulations yet.',
+    noShadowPolicies: 'No shadow policies active.',
+    noShadowPoliciesHelp: 'Create a policy in shadow mode from the Policies tab to start monitoring.',
+    promoteToEnforced: 'Promote to Enforced',
+    replayDesc: 'Test a CEL expression against real historical requests. See how many would match and what would change.',
+    replayLimit: 'Max requests',
+    runReplay: 'Run Replay',
+    replayEvaluated: 'Evaluated',
+    replayMatched: 'Matched',
+    replayWouldAllow: 'Would Allow',
+    replayWouldDeny: 'Would Deny',
+    replayWouldRequire: 'Would Require',
+    replayOriginal: 'Original',
+    replayWouldBe: 'Would Be',
+    replayChanged: 'Changed',
   },
   es: {
     // Nav
@@ -200,6 +220,7 @@ const translations = {
     typeToConfirm: 'Escribí para confirmar:',
     confirmApprove: 'Confirmar aprobación',
     confirmReject: 'Confirmar rechazo',
+    breakGlass: 'Break-glass',
 
     // Requests detail
     timeline: 'Línea de tiempo',
@@ -249,6 +270,9 @@ const translations = {
     disabled: 'Deshabilitada',
     optional: 'opcional',
     none: 'Ninguno',
+    policyMode: 'Modo',
+    modeEnforced: 'Aplicar',
+    modeShadow: 'Sombra',
 
     // Requests
     requests: 'Requests',
@@ -344,18 +368,34 @@ const translations = {
     maxBodySize: 'Tamaño máximo de body (bytes)',
     maxBodySizeHelp: 'Tamaño máximo del body HTTP (1048576 = 1MB)',
 
-    // Simulate
-    simulate: 'Simular',
-    simulateTitle: 'Simular Request',
-    simulateDesc: 'Probá qué decidiría Nexus sin ejecutar nada',
+    // Sandbox
+    sandbox: 'Sandbox',
+    sandboxTitle: 'Sandbox',
+    sandbox_simulate: 'Simular',
+    sandbox_shadow: 'Monitor Shadow',
+    sandbox_replay: 'Replay Test',
     runSimulation: 'Ejecutar simulación',
     simulating: 'Simulando...',
     clear: 'Limpiar',
-    simulateResult: 'Resultado',
-    wouldRequireApproval: 'Requeriría aprobación humana',
     policyMatched: 'Policy que matcheó',
     riskFactors: 'Factores de riesgo (Cascada)',
     rawScore: 'Score base',
+    simulateHistory: 'Historial',
+    noHistory: 'Sin simulaciones aún.',
+    noShadowPolicies: 'No hay políticas shadow activas.',
+    noShadowPoliciesHelp: 'Creá una política en modo shadow desde la pestaña Políticas para empezar a monitorear.',
+    promoteToEnforced: 'Activar como enforced',
+    replayDesc: 'Probá una expresión CEL contra requests históricas reales. Mirá cuántas matchearían y qué cambiaría.',
+    replayLimit: 'Máx requests',
+    runReplay: 'Ejecutar replay',
+    replayEvaluated: 'Evaluadas',
+    replayMatched: 'Matchearon',
+    replayWouldAllow: 'Permitirían',
+    replayWouldDeny: 'Denegarían',
+    replayWouldRequire: 'Requerirían',
+    replayOriginal: 'Original',
+    replayWouldBe: 'Sería',
+    replayChanged: 'Cambió',
   },
 }
 

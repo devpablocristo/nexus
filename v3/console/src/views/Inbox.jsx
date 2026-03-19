@@ -69,8 +69,23 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay }) {
         <span className="font-medium">{request?.action_type || '—'}</span>
         <span className="text-gray-500">{request?.target_resource || ''}</span>
         <span className="text-gray-600 text-sm">{request?.target_system || ''}</span>
+        {approval.break_glass && (
+          <span className="px-2 py-0.5 bg-red-900 text-red-300 border border-red-700 rounded text-xs font-medium">
+            {t(lang, 'breakGlass')} ({approval.current_approvals}/{approval.required_approvals})
+          </span>
+        )}
         <span className="ml-auto text-gray-500 text-xs">{timeRemaining(approval.expires_at, lang)}</span>
       </div>
+      {/* Decisiones parciales de break-glass */}
+      {approval.break_glass && approval.decisions && approval.decisions.length > 0 && (
+        <div className="mb-2 space-y-1">
+          {approval.decisions.map((d, i) => (
+            <div key={i} className={`text-xs px-2 py-1 rounded ${d.action === 'approve' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+              {d.approver_id}: {d.action} — {d.note}
+            </div>
+          ))}
+        </div>
+      )}
       {request?.ai_summary && (
         <p className="text-gray-300 text-sm mb-2 line-clamp-2">{request.ai_summary}</p>
       )}
@@ -156,17 +171,16 @@ export default function Inbox({ lang, onViewReplay }) {
     try {
       setLoading(true)
       const res = await fetchPendingApprovals()
-      const approvals = res.data || []
-      const enriched = await Promise.all(
-        approvals.map(async (a) => {
-          try {
-            const req = await fetchRequest(a.request_id)
-            return { approval: a, request: req }
-          } catch {
-            return { approval: a, request: null }
-          }
-        })
-      )
+      const approvals = (res.data || []).slice(0, 20) // máx 20 para no saturar
+      const enriched = []
+      for (const a of approvals) {
+        try {
+          const req = await fetchRequest(a.request_id)
+          enriched.push({ approval: a, request: req })
+        } catch {
+          enriched.push({ approval: a, request: null })
+        }
+      }
       setItems(enriched)
       setError(null)
     } catch (e) {
@@ -178,7 +192,7 @@ export default function Inbox({ lang, onViewReplay }) {
 
   useEffect(() => { load() }, [])
   useEffect(() => {
-    const id = setInterval(load, 10000)
+    const id = setInterval(load, 30000)
     return () => clearInterval(id)
   }, [])
 

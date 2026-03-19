@@ -31,7 +31,9 @@ make qa          # build + vet + test -race
 make smoke       # smoke tests contra API corriendo
 make e2e         # end-to-end lifecycle test
 make acceptance  # smoke + e2e
-make dev         # correr review/ localmente (requiere postgres en :15434)
+make dev         # hot reload con Air + Vite (docker-compose.dev.yml)
+make dev-logs    # logs en modo dev
+make dev-down    # bajar modo dev
 ```
 
 ### Variables de entorno
@@ -85,6 +87,20 @@ NEXUS_REVIEW_APPROVAL_TTL=3600   # segundos
    ```
 4. Agregar sección en `console/`
 5. Agregar scripts en `scripts/`
+
+## Desarrollo con hot reload
+
+```bash
+make dev          # levanta con docker-compose.dev.yml (Air + Vite hot reload)
+make dev-logs     # ver logs en modo dev
+make dev-down     # bajar modo dev
+```
+
+Usa `docker-compose.dev.yml` como override sobre `docker-compose.yml`:
+- **Backend**: Air para hot reload de Go
+- **Frontend**: Vite dev server con HMR
+
+---
 
 ## Producción (futuro)
 

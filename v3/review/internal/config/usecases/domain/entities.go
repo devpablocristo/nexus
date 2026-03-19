@@ -65,7 +65,16 @@ type Amplification struct {
 // --- Approvals ---
 
 type ApprovalsConfig struct {
-	DefaultTTLSeconds int `json:"default_ttl_seconds"` // default 3600 (1h)
+	DefaultTTLSeconds  int              `json:"default_ttl_seconds"`  // default 3600 (1h)
+	BreakGlassRules    []BreakGlassRule `json:"break_glass_rules"`   // reglas que activan break-glass
+	BreakGlassDefault  int              `json:"break_glass_default"`  // aprobadores por defecto para break-glass (default 2)
+}
+
+// BreakGlassRule define cuándo se activa break-glass
+type BreakGlassRule struct {
+	ActionTypes       []string `json:"action_types"`       // action types que matchean (vacío = todos)
+	RiskLevel         string   `json:"risk_level"`         // "critical", "high" (vacío = cualquiera)
+	RequiredApprovals int      `json:"required_approvals"` // cuántos aprobadores
 }
 
 // --- Learning ---
@@ -125,6 +134,11 @@ func DefaultSystemConfig() SystemConfig {
 		},
 		Approvals: ApprovalsConfig{
 			DefaultTTLSeconds: 3600,
+			BreakGlassDefault: 2,
+			BreakGlassRules: []BreakGlassRule{
+				{ActionTypes: []string{"delete"}, RiskLevel: "critical", RequiredApprovals: 2},
+				{ActionTypes: []string{"runbook.execute"}, RiskLevel: "high", RequiredApprovals: 2},
+			},
 		},
 		Learning: LearningConfig{
 			MinSamples:      50,

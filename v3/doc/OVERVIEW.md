@@ -47,6 +47,8 @@ Ejemplo de regla: *"Si alguien quiere silenciar una alerta crítica fuera de hor
 
 También clasifica el **riesgo** de la acción evaluando 6 factores simultáneamente (tipo de acción, horario, historial del actor, frecuencia, tasa de éxito, sensibilidad del sistema destino). Cuando varios factores coinciden, el riesgo se amplifica — similar a como funciona la cascada de coagulación en biología. Una acción de riesgo alto siempre requiere aprobación, aunque no haya regla que la bloquee.
 
+Además, el resultado de cada ejecución (éxito o fallo) retroalimenta el factor de tasa de éxito (F5). Si una acción históricamente falla mucho, su riesgo sube automáticamente. Esto crea un **feedback loop**: las decisiones mejoran con cada ejecución reportada.
+
 ### 2. Registrar
 
 Todo queda guardado: quién pidió qué, cuándo, qué decidió Nexus, quién aprobó, cuánto tardó, qué pasó después.
@@ -147,22 +149,35 @@ Si el administrador acepta, la regla se crea automáticamente y futuras acciones
 
 ## La consola
 
-La interfaz web tiene 6 pestañas principales y un botón flotante de simulación:
+La interfaz web tiene 7 pestañas:
 
 | Sección | Qué muestra |
 |---------|-------------|
-| **Inbox** | Acciones pendientes de aprobación con resumen IA |
+| **Inbox** | Acciones pendientes de aprobación con resumen IA. Badge de break-glass e indicador de progreso para aprobaciones multi-aprobador |
 | **Requests** | Todas las requests con timeline inline y replay integrado |
-| **Policies** | Crear, editar, archivar, eliminar reglas |
+| **Policies** | Crear, editar, archivar, eliminar reglas. Soporte shadow mode (evalúa sin actuar) con contador de hits y botón "Promote to enforced" |
+| **Sandbox** | Tres sub-tabs: Simulate (dry-run con templates), Shadow Monitor (seguimiento de policies en modo shadow), Replay Test (probar expresión CEL contra historial) |
 | **Learning** | Propuestas automáticas de nuevas reglas |
 | **Dashboard** | Métricas: cuántas acciones, cuántas aprobadas, cuántas denegadas |
-| **Config** | Configuración de riesgo, aprobaciones, learning, IA y general |
-
-Además, hay un **botón flotante "Simulate"** visible desde cualquier pestaña. Al presionarlo, se abre un panel lateral donde se puede probar una request sin ejecutarla: Nexus muestra qué decisión tomaría, qué factores de riesgo se activarían, y qué amplificación aplicaría. Útil para validar reglas antes de que lleguen requests reales.
+| **Config** | Configuración de riesgo, aprobaciones, learning, IA y general (5 secciones expandibles) |
 
 La pestaña activa se mantiene al refrescar la página (F5).
 
 Disponible en **inglés y español** (selector en la barra superior, con persistencia en localStorage).
+
+---
+
+## Break-glass: aprobación de emergencia
+
+Algunas acciones son tan críticas que requieren **múltiples aprobadores**. Nexus soporta break-glass: cuando una request se marca como `break_glass: true`, se requieren N aprobaciones (configurable por `action_type` y `risk_level`).
+
+Reglas:
+- **Un rechazo cancela todo** — cualquier aprobador puede vetarla
+- **El mismo aprobador no puede decidir dos veces** — se requieren personas distintas
+- **Aprobación parcial visible** — el Inbox muestra el progreso (ej: "2/3 aprobaciones")
+- **Configurable** — las reglas de break-glass se definen en la sección Config
+
+Ejemplo: *"Borrar tabla en producción requiere 3 aprobadores. Si uno rechaza, se cancela."*
 
 ---
 
@@ -199,20 +214,23 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 
 ```
 1. Llega una acción
-2. Nexus busca si alguna regla aplica
+2. Nexus busca si alguna regla aplica (incluyendo shadow policies que evalúan sin actuar)
 3. Si una regla dice "denegar" → deniega
 4. Si una regla dice "pedir aprobación" → va al inbox
 5. Si ninguna regla aplica → clasifica riesgo con 6 factores:
    - Tipo de acción, horario, historial del actor, frecuencia,
-     tasa de éxito, sensibilidad del destino
+     tasa de éxito (alimentada por resultados reales), sensibilidad del destino
    - Si hay combinaciones sospechosas → amplifica el riesgo
    - Riesgo alto → va al inbox
    - Riesgo bajo/medio → aprueba automáticamente
 6. Si va al inbox:
    - IA genera resumen para el aprobador
+   - Si es break-glass → requiere N aprobadores (un rechazo cancela todo)
    - El aprobador decide (con confirmación obligatoria)
-7. Todo queda registrado paso a paso
-8. Con el tiempo, Nexus propone nuevas reglas basadas en lo que los humanos aprobaron
+7. El requester ejecuta y reporta resultado (éxito/fallo)
+8. El resultado retroalimenta el factor de éxito → mejora futuras evaluaciones
+9. Todo queda registrado paso a paso
+10. Con el tiempo, Nexus propone nuevas reglas basadas en lo que los humanos aprobaron
 ```
 
 ---
@@ -232,13 +250,16 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 
 ## Métricas clave del PoC
 
-- **28 endpoints** de API funcionando (26 de módulos + 2 health)
-- **8 módulos** de backend (requests, policies, approvals, audit, learning, dashboard, config, shared)
-- **6 pestañas** en la consola web + panel flotante de simulación
+- **29 endpoints** de API funcionando (27 de módulos + 2 health)
+- **9 módulos** de backend (requests, policies, approvals, audit, learning, dashboard, config, shared + execution_stats)
+- **7 pestañas** en la consola web (Inbox, Requests, Policies, Sandbox, Learning, Dashboard, Config)
 - **3 containers** Docker (backend, frontend, base de datos)
 - **i18n** inglés y español con persistencia en localStorage
 - **Cascade risk scoring** con 6 factores y amplificación multiplicativa
-- **Simulation mode** dry-run disponible desde cualquier pestaña
+- **Feedback loop** — resultados de ejecución retroalimentan el scoring de riesgo
+- **Break-glass** — aprobación multi-aprobador para operaciones críticas
+- **Sandbox** — simulate (dry-run) + shadow monitor + replay test
+- **Shadow policies** — evalúan sin actuar, con contador de hits y promoción a enforced
 
 ---
 

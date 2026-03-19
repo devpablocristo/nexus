@@ -83,18 +83,36 @@ func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
 
 // toApprovalResponse convierte entidad de dominio a DTO HTTP.
 func toApprovalResponse(a approvaldomain.Approval) approvaldto.ApprovalResponse {
+	approveCount := 0
+	for _, d := range a.Decisions {
+		if d.Action == "approve" {
+			approveCount++
+		}
+	}
+
 	resp := approvaldto.ApprovalResponse{
-		ID:           a.ID.String(),
-		RequestID:    a.RequestID.String(),
-		Status:       string(a.Status),
-		DecidedBy:    a.DecidedBy,
-		DecisionNote: a.DecisionNote,
-		ExpiresAt:    a.ExpiresAt.Format("2006-01-02T15:04:05Z"),
-		CreatedAt:    a.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:                a.ID.String(),
+		RequestID:         a.RequestID.String(),
+		Status:            string(a.Status),
+		DecidedBy:         a.DecidedBy,
+		DecisionNote:      a.DecisionNote,
+		ExpiresAt:         a.ExpiresAt.Format("2006-01-02T15:04:05Z"),
+		CreatedAt:         a.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		BreakGlass:        a.BreakGlass,
+		RequiredApprovals: a.RequiredApprovals,
+		CurrentApprovals:  approveCount,
 	}
 	if a.DecidedAt != nil {
 		s := a.DecidedAt.Format("2006-01-02T15:04:05Z")
 		resp.DecidedAt = &s
+	}
+	for _, d := range a.Decisions {
+		resp.Decisions = append(resp.Decisions, approvaldto.ApprovalDecisionDTO{
+			ApproverID: d.ApproverID,
+			Action:     d.Action,
+			Note:       d.Note,
+			DecidedAt:  d.DecidedAt.Format("2006-01-02T15:04:05Z"),
+		})
 	}
 	return resp
 }
@@ -102,6 +120,10 @@ func toApprovalResponse(a approvaldomain.Approval) approvaldto.ApprovalResponse 
 func writeApprovalUsecaseError(w http.ResponseWriter, err error) {
 	if errors.Is(err, ErrNotPending) {
 		shared.WriteError(w, http.StatusConflict, "CONFLICT", "approval is not pending")
+		return
+	}
+	if errors.Is(err, ErrAlreadyDecided) {
+		shared.WriteError(w, http.StatusConflict, "CONFLICT", "approver already decided on this approval")
 		return
 	}
 	if errors.Is(err, ErrNotFound) {

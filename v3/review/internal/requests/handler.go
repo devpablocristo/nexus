@@ -19,6 +19,7 @@ import (
 type requestUsecase interface {
 	Submit(ctx context.Context, in SubmitInput) (SubmitOutput, error)
 	Simulate(ctx context.Context, in SubmitInput) (SimulateOutput, error)
+	ReplaySimulate(ctx context.Context, in ReplaySimulateInput) (ReplaySimulateOutput, error)
 	GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Request, error)
 	List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error)
 	ReportResult(ctx context.Context, requestID uuid.UUID, in ReportResultInput) error
@@ -35,6 +36,7 @@ func NewHandler(uc requestUsecase) *Handler {
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/requests", h.submit)
 	mux.HandleFunc("POST /v1/requests/simulate", h.simulate)
+	mux.HandleFunc("POST /v1/requests/simulate/replay", h.replaySimulate)
 	mux.HandleFunc("GET /v1/requests", h.list)
 	mux.HandleFunc("GET /v1/requests/{id}", h.getByID)
 	mux.HandleFunc("POST /v1/requests/{id}/result", h.reportResult)
@@ -78,6 +80,31 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 		WouldRequireApproval: out.WouldRequireApproval,
 		AISummary:            out.AISummary,
 	})
+}
+
+func (h *Handler) replaySimulate(w http.ResponseWriter, r *http.Request) {
+	var body requestdto.ReplaySimulateRequest
+	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	if body.Expression == "" || body.Effect == "" {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "expression and effect are required")
+		return
+	}
+
+	out, err := h.uc.ReplaySimulate(r.Context(), ReplaySimulateInput{
+		Expression: body.Expression,
+		Effect:     body.Effect,
+		Limit:      body.Limit,
+	})
+	if err != nil {
+		slog.Error("replay simulate failed", "error", err)
+		shared.WriteInternalError(w, err, "replay simulate")
+		return
+	}
+
+	sharedhandlers.WriteJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {

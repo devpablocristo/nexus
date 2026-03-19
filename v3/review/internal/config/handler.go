@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	configdto "github.com/devpablocristo/nexus/v3/review/internal/config/handler/dto"
 	configdomain "github.com/devpablocristo/nexus/v3/review/internal/config/usecases/domain"
 	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 )
@@ -16,7 +17,6 @@ type configUsecase interface {
 	UpdateSection(ctx context.Context, section string, data json.RawMessage) (*configdomain.SystemConfig, error)
 }
 
-// Handler gestiona los endpoints de configuración
 type Handler struct {
 	uc configUsecase
 }
@@ -39,22 +39,26 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(toResponse(cfg))
 }
 
 func (h *Handler) updateConfig(w http.ResponseWriter, r *http.Request) {
-	var cfg configdomain.SystemConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	var body configdto.UpdateSystemConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid JSON body")
 		return
 	}
-	updated, err := h.uc.UpdateConfig(r.Context(), cfg)
+
+	domainCfg := toDomain(body)
+	updated, err := h.uc.UpdateConfig(r.Context(), domainCfg)
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		// Nunca exponer err.Error() — mensaje genérico
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid configuration values")
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updated)
+	json.NewEncoder(w).Encode(toResponse(updated))
 }
 
 func (h *Handler) updateSection(w http.ResponseWriter, r *http.Request) {
@@ -64,13 +68,15 @@ func (h *Handler) updateSection(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid JSON body")
 		return
 	}
+
 	updated, err := h.uc.UpdateSection(r.Context(), section, data)
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid configuration for section "+section)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updated)
+	json.NewEncoder(w).Encode(toResponse(updated))
 }
 
 func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
@@ -80,5 +86,77 @@ func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(toResponse(cfg))
+}
+
+// --- Mappers: domain ↔ DTO ---
+
+func toResponse(cfg *configdomain.SystemConfig) configdto.SystemConfigResponse {
+	return configdto.SystemConfigResponse{
+		Risk: configdto.RiskConfigDTO{
+			Thresholds: configdto.ThresholdsDTO{
+				Allow: cfg.Risk.Thresholds.Allow, EnhancedLog: cfg.Risk.Thresholds.EnhancedLog,
+				RequireApproval: cfg.Risk.Thresholds.RequireApproval, Deny: cfg.Risk.Thresholds.Deny,
+				MaxAmplification: cfg.Risk.Thresholds.MaxAmplification,
+			},
+			ActionTypes: configdto.ActionTypeRiskDTO{High: cfg.Risk.ActionTypes.High, Medium: cfg.Risk.ActionTypes.Medium},
+			BusinessHours: configdto.BusinessHoursDTO{Start: cfg.Risk.BusinessHours.Start, End: cfg.Risk.BusinessHours.End},
+			FrequencyThresholds: configdto.FrequencyThresholdsDTO{Warning: cfg.Risk.FrequencyThresholds.Warning, Critical: cfg.Risk.FrequencyThresholds.Critical},
+			ActorThresholds: configdto.ActorThresholdsDTO{Unknown: cfg.Risk.ActorThresholds.Unknown, New: cfg.Risk.ActorThresholds.New},
+			SuccessRateThresholds: configdto.SuccessRateThresholdsDTO{Low: cfg.Risk.SuccessRateThresholds.Low, Moderate: cfg.Risk.SuccessRateThresholds.Moderate, Excellent: cfg.Risk.SuccessRateThresholds.Excellent},
+			Amplifications: toAmplificationDTOs(cfg.Risk.Amplifications),
+			SensitiveSystems: cfg.Risk.SensitiveSystems,
+		},
+		Approvals: configdto.ApprovalsConfigDTO{DefaultTTLSeconds: cfg.Approvals.DefaultTTLSeconds},
+		Learning: configdto.LearningConfigDTO{MinSamples: cfg.Learning.MinSamples, MinApprovalRate: cfg.Learning.MinApprovalRate, MaxRequests: cfg.Learning.MaxRequests},
+		AI: configdto.AIConfigDTO{Enabled: cfg.AI.Enabled, Model: cfg.AI.Model, TimeoutSeconds: cfg.AI.TimeoutSeconds},
+		General: configdto.GeneralConfigDTO{
+			DefaultListLimit: cfg.General.DefaultListLimit, MaxListLimit: cfg.General.MaxListLimit,
+			MaxExpressionLength: cfg.General.MaxExpressionLength, MaxIdempotencyKeyLength: cfg.General.MaxIdempotencyKeyLength,
+			IdempotencyCacheTTLSeconds: cfg.General.IdempotencyCacheTTLSeconds, MaxBodySizeBytes: cfg.General.MaxBodySizeBytes,
+		},
+	}
+}
+
+func toDomain(dto configdto.SystemConfigResponse) configdomain.SystemConfig {
+	return configdomain.SystemConfig{
+		Risk: configdomain.RiskConfig{
+			Thresholds: configdomain.Thresholds{
+				Allow: dto.Risk.Thresholds.Allow, EnhancedLog: dto.Risk.Thresholds.EnhancedLog,
+				RequireApproval: dto.Risk.Thresholds.RequireApproval, Deny: dto.Risk.Thresholds.Deny,
+				MaxAmplification: dto.Risk.Thresholds.MaxAmplification,
+			},
+			ActionTypes: configdomain.ActionTypeRisk{High: dto.Risk.ActionTypes.High, Medium: dto.Risk.ActionTypes.Medium},
+			BusinessHours: configdomain.BusinessHours{Start: dto.Risk.BusinessHours.Start, End: dto.Risk.BusinessHours.End},
+			FrequencyThresholds: configdomain.FrequencyThresholds{Warning: dto.Risk.FrequencyThresholds.Warning, Critical: dto.Risk.FrequencyThresholds.Critical},
+			ActorThresholds: configdomain.ActorThresholds{Unknown: dto.Risk.ActorThresholds.Unknown, New: dto.Risk.ActorThresholds.New},
+			SuccessRateThresholds: configdomain.SuccessRateThresholds{Low: dto.Risk.SuccessRateThresholds.Low, Moderate: dto.Risk.SuccessRateThresholds.Moderate, Excellent: dto.Risk.SuccessRateThresholds.Excellent},
+			Amplifications: toAmplificationDomain(dto.Risk.Amplifications),
+			SensitiveSystems: dto.Risk.SensitiveSystems,
+		},
+		Approvals: configdomain.ApprovalsConfig{DefaultTTLSeconds: dto.Approvals.DefaultTTLSeconds},
+		Learning: configdomain.LearningConfig{MinSamples: dto.Learning.MinSamples, MinApprovalRate: dto.Learning.MinApprovalRate, MaxRequests: dto.Learning.MaxRequests},
+		AI: configdomain.AIConfig{Enabled: dto.AI.Enabled, Model: dto.AI.Model, TimeoutSeconds: dto.AI.TimeoutSeconds},
+		General: configdomain.GeneralConfig{
+			DefaultListLimit: dto.General.DefaultListLimit, MaxListLimit: dto.General.MaxListLimit,
+			MaxExpressionLength: dto.General.MaxExpressionLength, MaxIdempotencyKeyLength: dto.General.MaxIdempotencyKeyLength,
+			IdempotencyCacheTTLSeconds: dto.General.IdempotencyCacheTTLSeconds, MaxBodySizeBytes: dto.General.MaxBodySizeBytes,
+		},
+	}
+}
+
+func toAmplificationDTOs(amps []configdomain.Amplification) []configdto.AmplificationDTO {
+	out := make([]configdto.AmplificationDTO, len(amps))
+	for i, a := range amps {
+		out[i] = configdto.AmplificationDTO{Factors: a.Factors, Multiplier: a.Multiplier, Reason: a.Reason}
+	}
+	return out
+}
+
+func toAmplificationDomain(dtos []configdto.AmplificationDTO) []configdomain.Amplification {
+	out := make([]configdomain.Amplification, len(dtos))
+	for i, d := range dtos {
+		out[i] = configdomain.Amplification{Factors: d.Factors, Multiplier: d.Multiplier, Reason: d.Reason}
+	}
+	return out
 }

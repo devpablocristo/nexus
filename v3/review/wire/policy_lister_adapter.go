@@ -31,6 +31,7 @@ func (a *policyListerAdapter) ListActive(ctx context.Context) ([]requests.Policy
 			Expression:   p.Expression,
 			Effect:       p.Effect,
 			RiskOverride: p.RiskOverride,
+			Mode:         string(p.Mode),
 		}
 	}
 	return out, nil

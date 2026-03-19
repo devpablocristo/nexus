@@ -23,7 +23,7 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 |---|---------|--------|--------------------------|
 | 11 | **Hash-chained audit** | v1 | Prueba criptografica de no-alteracion. Cuando el cliente pregunta "como se que no editaron el log?" |
 | 12 | **Policy proposals (IA sugiere reglas)** | v1 | ✅ Implementado. Loop de feedback: deteccion de patrones → propuestas → humano acepta → auto-crear policy. |
-| 13 | **Break-glass approval** | v1 | 3am, nadie aprueba, el agente necesita silenciar una alerta. Admin override con logging reforzado. |
+| 13 | **Break-glass approval** | v1 | ✅ Implementado. Multi-aprobador: `break_glass: true`, `required_approvals: N`. Un rechazo cancela todo, mismo aprobador no puede decidir dos veces. Configurable por action_type + risk_level. |
 | 14 | **Rate limiting por agente** | v1 | Agente con bug manda 10K propuestas/minuto. Sliding window en memoria, sin Redis. |
 | 15 | **Background job: expiracion de approvals** | nuevo | Sin esto, approvals pendientes quedan para siempre. Job cada 1min que expira TTL vencidos. |
 | 16 | **DegradationCollector per-request** | v2 | Marca `ai_degraded: true` cuando Claude no respondio. El SRE sabe que decide sin contexto IA. |
@@ -54,7 +54,7 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 | 31 | **SDK Go** | v1 | Para agentes escritos en Go. Menos prioritario que Python. |
 | 32 | **SDK TypeScript** | v1 | Para agentes en Node.js. Menos comun en ops. |
 | 33 | **Simulacion de politicas** | v2 Fase 1C | ✅ Implementado como `POST /v1/requests/simulate` + panel flotante en consola |
-| 34 | **Replay de incidentes** | v2 Fase 1C | "Con esta politica, hubieramos detectado este incidente 20 min antes?" |
+| 34 | **Replay de incidentes** | v2 Fase 1C | ✅ Implementado como `POST /v1/requests/simulate/replay` — evalua expresion CEL propuesta contra historial real |
 | 35 | **Backtest de politicas** | v2 Fase 1C | "Si bajo el threshold, cuantas mas acciones se frenan?" |
 | 36 | **Risk tiering configurable** | nuevo | ✅ Implementado via config module (API + UI). El usuario configura action_types high/medium/low. |
 | 37 | **Approval TTL configurable por policy** | v2 | Diferentes TTLs segun la politica (5min para criticos, 1h para bajos). |
@@ -72,7 +72,7 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 | 44 | **Amplificaciones no-lineales** | v2 Fase 1A | ✅ Implementado como parte de la cascada (combinaciones de factores con multiplicadores). |
 | 45 | **Confidence saturation** | v2 Fase 1A | Solo con baselines. |
 | 46 | **Bucketed counters (sliding windows)** | v2 Fase 1B | "Mas de 10 silences en 2 horas → bloquear." Util pero no MVP. |
-| 47 | **Multi-step approvals (4-eyes, quorum)** | v2 Fase 1B | Cuando los clientes lo pidan. Overkill para v1. |
+| 47 | **Multi-step approvals (4-eyes, quorum)** | v2 Fase 1B | ✅ Implementado parcialmente via break-glass (multi-aprobador con required_approvals configurable). Falta quorum flexible. |
 | 48 | **Resource groups** | v2 Fase 1B | Para agrupar alertas/servicios. No necesario para el wedge. |
 | 49 | **Execution leases (ephemeral tokens)** | v2 | Solo si Review ejecuta acciones en nombre del agente. Hoy el agente ejecuta. |
 | 50 | **Caching con soft/hard TTL + degradation** | v2 | Solo para microservicios. Review es monolito. |

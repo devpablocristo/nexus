@@ -24,6 +24,11 @@ type PolicyLister interface {
 	ListActive(ctx context.Context) ([]PolicyForEval, error)
 }
 
+// ShadowHitRecorder registra hits de shadow policies (best-effort)
+type ShadowHitRecorder interface {
+	IncrementShadowHits(ctx context.Context, policyID uuid.UUID) error
+}
+
 // PolicyForEval contiene solo los campos necesarios para evaluación.
 type PolicyForEval struct {
 	ID           uuid.UUID
@@ -33,18 +38,35 @@ type PolicyForEval struct {
 	Expression   string
 	Effect       string
 	RiskOverride *string
+	Mode         string // "enforced" o "shadow"
+}
+
+// BreakGlassRule define cuándo se activa break-glass (copiado de config domain)
+type BreakGlassRule struct {
+	ActionTypes       []string
+	RiskLevel         string
+	RequiredApprovals int
+}
+
+// BreakGlassConfig provee las reglas de break-glass
+type BreakGlassConfig struct {
+	Rules          []BreakGlassRule
+	DefaultApprovals int
 }
 
 type Usecases struct {
-	reqRepo      Repository
-	policyRepo   PolicyLister
-	approvalRepo approvalCreator
-	idemStore    IdempotencyStore
-	audit        AuditSink
-	evaluator    *PolicyEvaluator
-	riskConfig   RiskConfig
-	ai           AIContextualizer
-	approvalTTL  time.Duration
+	reqRepo        Repository
+	policyRepo     PolicyLister
+	approvalRepo   approvalCreator
+	idemStore      IdempotencyStore
+	audit          AuditSink
+	evaluator      *PolicyEvaluator
+	riskConfig     RiskConfig
+	ai             AIContextualizer
+	approvalTTL    time.Duration
+	shadowHits     ShadowHitRecorder
+	execStats      ExecutionStatsStore
+	breakGlassCfg  BreakGlassConfig
 }
 
 // Option configura el constructor de Usecases (functional options pattern — Uber).
@@ -68,6 +90,18 @@ func WithApprovalTTL(d time.Duration) Option {
 
 func WithRiskConfig(cfg RiskConfig) Option {
 	return func(u *Usecases) { u.riskConfig = cfg }
+}
+
+func WithShadowHitRecorder(r ShadowHitRecorder) Option {
+	return func(u *Usecases) { u.shadowHits = r }
+}
+
+func WithExecutionStats(s ExecutionStatsStore) Option {
+	return func(u *Usecases) { u.execStats = s }
+}
+
+func WithBreakGlassConfig(cfg BreakGlassConfig) Option {
+	return func(u *Usecases) { u.breakGlassCfg = cfg }
 }
 
 // NewUsecases crea Usecases con los 3 repos obligatorios + evaluator, y opciones para el resto.
@@ -165,6 +199,15 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		return SubmitOutput{}, fmt.Errorf("list active policies: %w", err)
 	}
 
+	// Obtener success rate del feedback loop (best-effort)
+	successRate := -1.0
+	if u.execStats != nil {
+		stats, statsErr := u.execStats.GetByActionType(ctx, req.ActionType)
+		if statsErr == nil {
+			successRate = stats.SuccessRate()
+		}
+	}
+
 	requestMap := requestToMap(req)
 	matched := false
 	for _, p := range policyList {
@@ -180,8 +223,28 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		if !match {
 			continue
 		}
+
+		// Shadow mode: loguear + incrementar counter, pero NO actuar
+		if p.Mode == "shadow" {
+			slog.Info("shadow policy matched",
+				"policy_id", p.ID, "policy_name", p.Name,
+				"effect", p.Effect, "request_action", req.ActionType,
+				"request_id", req.ID)
+			if u.shadowHits != nil {
+				if err := u.shadowHits.IncrementShadowHits(ctx, p.ID); err != nil {
+					slog.Error("increment shadow hits failed", "error", err, "policy_id", p.ID)
+				}
+			}
+			continue // no actúa, sigue buscando policies enforced
+		}
+
 		matched = true
-		req.RiskLevel = TierRisk(req.ActionType, p.RiskOverride, u.riskConfig)
+		signals := RiskSignals{
+			ActionType: req.ActionType, TargetSystem: req.TargetSystem,
+			RequesterID: req.RequesterID, RequesterType: string(req.RequesterType),
+			CurrentHour: now.Hour(), SuccessRate: successRate,
+		}
+		req.RiskLevel, _ = TierRiskFromSignals(signals, u.riskConfig, p.RiskOverride)
 		dec, ok := DecideFromPolicy(p.Effect, req.RiskLevel)
 		if !ok {
 			continue
@@ -192,7 +255,12 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		break
 	}
 	if !matched {
-		req.RiskLevel = TierRisk(req.ActionType, nil, u.riskConfig)
+		signals := RiskSignals{
+			ActionType: req.ActionType, TargetSystem: req.TargetSystem,
+			RequesterID: req.RequesterID, RequesterType: string(req.RequesterType),
+			CurrentHour: now.Hour(), SuccessRate: successRate,
+		}
+		req.RiskLevel, _ = TierRiskFromSignals(signals, u.riskConfig, nil)
 		req.Decision = DefaultDecision(req.RiskLevel)
 		req.DecisionReason = "No policy matched; default for risk " + string(req.RiskLevel)
 	}
@@ -266,13 +334,18 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 		return SubmitOutput{}, fmt.Errorf("create request: %w", err)
 	}
 
+	// Determinar si es break-glass
+	breakGlass, requiredApprovals := u.checkBreakGlass(req.ActionType, string(req.RiskLevel))
+
 	// Crear approval después (referencia a request existente)
 	approval := approvaldomain.Approval{
-		ID:        uuid.New(),
-		RequestID: req.ID,
-		Status:    approvaldomain.ApprovalStatusPending,
-		ExpiresAt: expiresAt,
-		CreatedAt: now,
+		ID:                uuid.New(),
+		RequestID:         req.ID,
+		Status:            approvaldomain.ApprovalStatusPending,
+		ExpiresAt:         expiresAt,
+		CreatedAt:         now,
+		BreakGlass:        breakGlass,
+		RequiredApprovals: requiredApprovals,
 	}
 	approval, err := u.approvalRepo.Create(ctx, approval)
 	if err != nil {
@@ -372,6 +445,37 @@ func rebuildOutputFromCache(reqID uuid.UUID, resp map[string]any) SubmitOutput {
 	return out
 }
 
+// checkBreakGlass determina si una request requiere break-glass y cuántos aprobadores
+func (u *Usecases) checkBreakGlass(actionType, riskLevel string) (bool, int) {
+	for _, rule := range u.breakGlassCfg.Rules {
+		// Verificar action type match
+		actionMatch := len(rule.ActionTypes) == 0
+		for _, at := range rule.ActionTypes {
+			if at == actionType {
+				actionMatch = true
+				break
+			}
+		}
+		if !actionMatch {
+			continue
+		}
+		// Verificar risk level match
+		if rule.RiskLevel != "" && rule.RiskLevel != riskLevel {
+			continue
+		}
+		// Matcheó — break-glass activado
+		approvals := rule.RequiredApprovals
+		if approvals <= 1 {
+			approvals = u.breakGlassCfg.DefaultApprovals
+		}
+		if approvals <= 1 {
+			approvals = 2
+		}
+		return true, approvals
+	}
+	return false, 1
+}
+
 func requestToMap(r requestdomain.Request) map[string]any {
 	params := r.Params
 	if params == nil {
@@ -463,6 +567,15 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 		req.DecisionReason = "No policy matched; default for risk " + string(req.RiskLevel)
 	}
 
+	// Obtener success rate del feedback loop (best-effort)
+	simSuccessRate := -1.0
+	if u.execStats != nil {
+		stats, statsErr := u.execStats.GetByActionType(ctx, req.ActionType)
+		if statsErr == nil {
+			simSuccessRate = stats.SuccessRate()
+		}
+	}
+
 	// Calcular assessment completo de cascada
 	signals := RiskSignals{
 		ActionType:    req.ActionType,
@@ -470,7 +583,7 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 		RequesterID:   req.RequesterID,
 		RequesterType: string(req.RequesterType),
 		CurrentHour:   now.Hour(),
-		SuccessRate:   -1,
+		SuccessRate:   simSuccessRate,
 	}
 	_, assessment := TierRiskFromSignals(signals, u.riskConfig, policyRiskOverride)
 
@@ -495,6 +608,94 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 	}
 	if matched {
 		out.PolicyMatched = &matchedPolicyName
+	}
+
+	return out, nil
+}
+
+// ReplaySimulateInput es el input para re-evaluar requests históricas contra una policy propuesta
+type ReplaySimulateInput struct {
+	Expression string // expresión CEL a probar
+	Effect     string // allow, deny, require_approval
+	Limit      int    // máx requests a evaluar
+}
+
+// ReplaySimulateOutput es el resultado de una replay simulation
+type ReplaySimulateOutput struct {
+	TotalEvaluated int                    `json:"total_evaluated"`
+	WouldMatch     int                    `json:"would_match"`
+	WouldAllow     int                    `json:"would_allow"`
+	WouldDeny      int                    `json:"would_deny"`
+	WouldRequire   int                    `json:"would_require_approval"`
+	Samples        []ReplaySimulateSample `json:"samples"`
+}
+
+type ReplaySimulateSample struct {
+	RequestID      string `json:"request_id"`
+	ActionType     string `json:"action_type"`
+	RequesterID    string `json:"requester_id"`
+	TargetSystem   string `json:"target_system"`
+	OriginalStatus string `json:"original_status"`
+	WouldDecide    string `json:"would_decide"`
+	Changed        bool   `json:"changed"`
+}
+
+// ReplaySimulate re-evalúa requests históricas contra una expresión CEL propuesta
+func (u *Usecases) ReplaySimulate(ctx context.Context, in ReplaySimulateInput) (ReplaySimulateOutput, error) {
+	limit := in.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+
+	reqs, err := u.reqRepo.List(ctx, "", "", limit)
+	if err != nil {
+		return ReplaySimulateOutput{}, fmt.Errorf("list requests for replay: %w", err)
+	}
+
+	out := ReplaySimulateOutput{
+		Samples: make([]ReplaySimulateSample, 0),
+	}
+
+	for _, req := range reqs {
+		out.TotalEvaluated++
+		reqMap := requestToMap(req)
+		match, evalErr := u.evaluator.Matches(in.Expression, reqMap, req.CreatedAt)
+		if evalErr != nil {
+			continue
+		}
+		if !match {
+			continue
+		}
+
+		out.WouldMatch++
+		risk := TierRisk(req.ActionType, nil, u.riskConfig)
+		decision, ok := DecideFromPolicy(in.Effect, risk)
+		if !ok {
+			continue
+		}
+
+		switch decision {
+		case requestdomain.DecisionAllow:
+			out.WouldAllow++
+		case requestdomain.DecisionDeny:
+			out.WouldDeny++
+		case requestdomain.DecisionRequireApproval:
+			out.WouldRequire++
+		}
+
+		changed := string(decision) != string(req.Decision)
+
+		if len(out.Samples) < 20 {
+			out.Samples = append(out.Samples, ReplaySimulateSample{
+				RequestID:      req.ID.String(),
+				ActionType:     req.ActionType,
+				RequesterID:    req.RequesterID,
+				TargetSystem:   req.TargetSystem,
+				OriginalStatus: string(req.Status),
+				WouldDecide:    string(decision),
+				Changed:        changed,
+			})
+		}
 	}
 
 	return out, nil
@@ -531,6 +732,12 @@ func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in Rep
 				"Executed successfully", map[string]any{"result": in.Result, "duration_ms": in.DurationMs}),
 			requestID, auditdomain.EventExecuted,
 		)
+		// Feedback loop: registrar éxito para ajustar riesgo futuro
+		if u.execStats != nil {
+			if err := u.execStats.RecordSuccess(ctx, req.ActionType); err != nil {
+				slog.Error("record execution success failed", "error", err, "action_type", req.ActionType)
+			}
+		}
 	} else {
 		req.Status = requestdomain.StatusFailed
 		req.ErrorMessage = in.ErrorMessage
@@ -539,6 +746,12 @@ func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in Rep
 				in.ErrorMessage, nil),
 			requestID, auditdomain.EventExecutionFailed,
 		)
+		// Feedback loop: registrar fallo para ajustar riesgo futuro
+		if u.execStats != nil {
+			if err := u.execStats.RecordFailure(ctx, req.ActionType); err != nil {
+				slog.Error("record execution failure failed", "error", err, "action_type", req.ActionType)
+			}
+		}
 	}
 	if _, err := u.reqRepo.Update(ctx, req); err != nil {
 		return fmt.Errorf("update request: %w", err)

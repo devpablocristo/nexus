@@ -43,6 +43,13 @@ type SimulateResponse struct {
 	AISummary            string      `json:"ai_summary,omitempty"`
 }
 
+// ReplaySimulateRequest es el body para replay simulation
+type ReplaySimulateRequest struct {
+	Expression string `json:"expression"`
+	Effect     string `json:"effect"`
+	Limit      int    `json:"limit,omitempty"`
+}
+
 type ReportResultRequest struct {
 	Success      bool           `json:"success"`
 	Result       map[string]any `json:"result,omitempty"`

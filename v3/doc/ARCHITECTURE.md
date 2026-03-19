@@ -8,7 +8,8 @@ Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independien
 ┌─────────────────────────────────────────────────────┐
 │                    console/                          │
 │              (React + Tailwind, :13001)              │
-│   Inbox │ Policies │ Replay │ Learning │ Dashboard   │
+│  Inbox │ Requests │ Policies │ Sandbox │ Learning    │
+│  │ Dashboard │ Config                                │
 └────────────────────┬────────────────────────────────┘
                      │ /v1/*
                      ▼
@@ -18,7 +19,7 @@ Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independien
 │                                                     │
 │  requests ─── policies ─── approvals                │
 │      │                         │                    │
-│   audit ──── learning ──── dashboard                │
+│   audit ──── learning ──── dashboard ─── config     │
 │                                                     │
 │  wire/setup.go (DI manual)                          │
 └────────────────────┬────────────────────────────────┘
@@ -46,12 +47,13 @@ v3/
 ├── review/              # servicio Go (primer módulo)
 │   ├── cmd/api/main.go
 │   ├── internal/
-│   │   ├── requests/    # módulo principal (CEL, risk, AI, audit)
-│   │   ├── policies/    # CRUD 7 ops
-│   │   ├── approvals/   # inbox + approve/reject
+│   │   ├── requests/    # módulo principal (CEL, risk, AI, audit, execution_stats)
+│   │   ├── policies/    # CRUD 7 ops + shadow mode
+│   │   ├── approvals/   # inbox + approve/reject + break-glass
 │   │   ├── audit/       # trail append-only + replay
 │   │   ├── learning/    # pattern detection + proposals
 │   │   ├── dashboard/   # métricas
+│   │   ├── config/      # configuración global (5 secciones)
 │   │   └── shared/      # helpers transversales
 │   ├── wire/setup.go    # DI manual
 │   ├── migrations/
@@ -59,7 +61,7 @@ v3/
 │   └── go.mod
 ├── console/             # frontend único (React + Tailwind)
 │   ├── src/
-│   │   ├── views/       # Inbox, Policies, Replay, Learning, Dashboard
+│   │   ├── views/       # Inbox, Requests, Policies, Sandbox, Learning, Dashboard, Config
 │   │   ├── components/  # RiskBadge, StatusBadge
 │   │   ├── api.js       # API client
 │   │   └── i18n.js      # EN/ES con persistencia

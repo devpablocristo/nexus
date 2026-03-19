@@ -61,6 +61,10 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "effect must be allow, deny or require_approval")
 		return
 	}
+	mode := policydomain.PolicyModeEnforced
+	if body.Mode == "shadow" {
+		mode = policydomain.PolicyModeShadow
+	}
 	p := policydomain.Policy{
 		Name:         body.Name,
 		Description:  body.Description,
@@ -68,6 +72,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		Effect:       body.Effect,
 		RiskOverride: body.RiskOverride,
 		Priority:     body.Priority,
+		Mode:         mode,
 		Enabled:      body.Enabled,
 		ActionType:   body.ActionType,
 		TargetSystem: body.TargetSystem,
@@ -153,6 +158,9 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	if body.TargetSystem != nil {
 		p.TargetSystem = body.TargetSystem
 	}
+	if body.Mode != nil {
+		p.Mode = policydomain.PolicyMode(*body.Mode)
+	}
 	updated, err := h.uc.Update(r.Context(), p)
 	if err != nil {
 		writePolicyUsecaseError(w, err)
@@ -203,6 +211,10 @@ func (h *Handler) restoreByID(w http.ResponseWriter, r *http.Request) {
 // --- Helpers ---
 
 func toPolicyResponse(p policydomain.Policy) policydto.PolicyResponse {
+	modeStr := string(p.Mode)
+	if modeStr == "" {
+		modeStr = "enforced"
+	}
 	resp := policydto.PolicyResponse{
 		ID:           p.ID.String(),
 		Name:         p.Name,
@@ -212,7 +224,9 @@ func toPolicyResponse(p policydomain.Policy) policydto.PolicyResponse {
 		RiskOverride: p.RiskOverride,
 		Priority:     p.Priority,
 		Origin:       p.Origin,
+		Mode:         modeStr,
 		Enabled:      p.Enabled,
+		ShadowHits:   p.ShadowHits,
 		ActionType:   p.ActionType,
 		TargetSystem: p.TargetSystem,
 		CreatedAt:    p.CreatedAt.Format(time.RFC3339),

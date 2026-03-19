@@ -7,7 +7,7 @@ const RISK_LEVELS = ['', 'low', 'medium', 'high']
 
 const emptyForm = {
   name: '', description: '', expression: '', effect: 'allow',
-  priority: 10, enabled: true, action_type: '', target_system: '', risk_override: '',
+  priority: 10, mode: 'enforced', enabled: true, action_type: '', target_system: '', risk_override: '',
 }
 
 export default function Policies({ lang }) {
@@ -47,6 +47,7 @@ export default function Policies({ lang }) {
       expression: p.expression,
       effect: p.effect,
       priority: p.priority,
+      mode: p.mode || 'enforced',
       enabled: p.enabled,
       action_type: p.action_type || '',
       target_system: p.target_system || '',
@@ -70,6 +71,7 @@ export default function Policies({ lang }) {
       if (form.action_type) data.action_type = form.action_type
       if (form.target_system) data.target_system = form.target_system
       if (form.risk_override) data.risk_override = form.risk_override
+      data.mode = form.mode
 
       if (editingId) {
         await updatePolicy(editingId, data)
@@ -236,7 +238,7 @@ export default function Policies({ lang }) {
               </select>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
               <input
                 type="checkbox"
@@ -246,6 +248,20 @@ export default function Policies({ lang }) {
               />
               {t(lang, 'policyEnabled')}
             </label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{t(lang, 'policyMode')}:</span>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, mode: form.mode === 'enforced' ? 'shadow' : 'enforced' })}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                  form.mode === 'shadow'
+                    ? 'bg-purple-900 text-purple-300 border border-purple-700'
+                    : 'bg-gray-700 text-gray-300 border border-gray-600'
+                }`}
+              >
+                {form.mode === 'shadow' ? t(lang, 'modeShadow') : t(lang, 'modeEnforced')}
+              </button>
+            </div>
           </div>
           <div className="flex gap-2 pt-2">
             <button
@@ -278,6 +294,11 @@ export default function Policies({ lang }) {
               <span className="text-xs text-gray-500">#{p.priority}</span>
               {p.origin === 'learned' && (
                 <span className="text-xs bg-purple-900 text-purple-300 px-2 py-0.5 rounded">{t(lang, 'learned')}</span>
+              )}
+              {p.mode === 'shadow' && (
+                <span className="text-xs bg-purple-900 text-purple-300 px-2 py-0.5 rounded">
+                  {t(lang, 'modeShadow')} {p.shadow_hits > 0 && `(${p.shadow_hits} hits)`}
+                </span>
               )}
               {!p.enabled && (
                 <span className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded">{t(lang, 'disabled')}</span>

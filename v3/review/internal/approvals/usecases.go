@@ -50,11 +50,55 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 	if a.Status != approvaldomain.ApprovalStatusPending {
 		return ErrNotPending
 	}
+
 	now := time.Now().UTC()
+
+	// Break-glass: verificar que el aprobador no haya decidido antes
+	if a.BreakGlass {
+		for _, d := range a.Decisions {
+			if d.ApproverID == decidedBy {
+				return ErrAlreadyDecided
+			}
+		}
+
+		// Registrar decisión parcial
+		a.Decisions = append(a.Decisions, approvaldomain.ApprovalDecision{
+			ApproverID: decidedBy, Action: "approve", Note: note, DecidedAt: now,
+		})
+
+		approveCount := 0
+		for _, d := range a.Decisions {
+			if d.Action == "approve" {
+				approveCount++
+			}
+		}
+
+		// ¿Suficientes aprobaciones?
+		if approveCount < a.RequiredApprovals {
+			// Guardar decisión parcial, no finalizar
+			if _, err := u.repo.Update(ctx, a); err != nil {
+				return fmt.Errorf("update approval (partial): %w", err)
+			}
+			u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
+				fmt.Sprintf("Partial approval (%d/%d): %s", approveCount, a.RequiredApprovals, note),
+				map[string]any{"decided_by": decidedBy, "note": note, "approvals": approveCount, "required": a.RequiredApprovals})
+			return nil
+		}
+		// Suficientes — finalizar
+	}
+
 	a.Status = approvaldomain.ApprovalStatusApproved
 	a.DecidedBy = decidedBy
 	a.DecisionNote = note
 	a.DecidedAt = &now
+
+	// Si no es break-glass, registrar decisión única
+	if !a.BreakGlass {
+		a.Decisions = []approvaldomain.ApprovalDecision{
+			{ApproverID: decidedBy, Action: "approve", Note: note, DecidedAt: now},
+		}
+	}
+
 	if _, err := u.repo.Update(ctx, a); err != nil {
 		return fmt.Errorf("update approval: %w", err)
 	}
@@ -69,9 +113,8 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 		return fmt.Errorf("update request status: %w", err)
 	}
 
-	// Audit: best-effort (patrón v2)
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
-		"Approved: "+note, map[string]any{"decided_by": decidedBy, "note": note})
+		"Approved: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
 
 	return nil
 }
@@ -84,11 +127,27 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 	if a.Status != approvaldomain.ApprovalStatusPending {
 		return ErrNotPending
 	}
+
 	now := time.Now().UTC()
+
+	// Break-glass: verificar que no haya decidido antes
+	if a.BreakGlass {
+		for _, d := range a.Decisions {
+			if d.ApproverID == decidedBy {
+				return ErrAlreadyDecided
+			}
+		}
+	}
+
+	// Un rechazo siempre finaliza (en break-glass o no)
+	a.Decisions = append(a.Decisions, approvaldomain.ApprovalDecision{
+		ApproverID: decidedBy, Action: "reject", Note: note, DecidedAt: now,
+	})
 	a.Status = approvaldomain.ApprovalStatusRejected
 	a.DecidedBy = decidedBy
 	a.DecisionNote = note
 	a.DecidedAt = &now
+
 	if _, err := u.repo.Update(ctx, a); err != nil {
 		return fmt.Errorf("update approval: %w", err)
 	}
@@ -103,9 +162,8 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 		return fmt.Errorf("update request status: %w", err)
 	}
 
-	// Audit: best-effort
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventRejected, decidedBy,
-		"Rejected: "+note, map[string]any{"decided_by": decidedBy, "note": note})
+		"Rejected: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
 
 	return nil
 }

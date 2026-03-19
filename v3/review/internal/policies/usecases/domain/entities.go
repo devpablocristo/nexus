@@ -6,20 +6,30 @@ import (
 	"github.com/google/uuid"
 )
 
+// PolicyMode determina si la policy actúa o solo observa
+type PolicyMode string
+
+const (
+	PolicyModeEnforced PolicyMode = "enforced" // actúa normalmente
+	PolicyModeShadow   PolicyMode = "shadow"   // evalúa pero no actúa, solo loguea
+)
+
 type Policy struct {
-	ID          uuid.UUID
-	Name        string
-	Description string
-	ActionType  *string
+	ID           uuid.UUID
+	Name         string
+	Description  string
+	ActionType   *string
 	TargetSystem *string
-	Expression  string
-	Effect      string
+	Expression   string
+	Effect       string
 	RiskOverride *string
-	Priority    int
-	Origin      string
-	ProposalID  *uuid.UUID
-	Enabled     bool
-	ArchivedAt  *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	Priority     int
+	Origin       string
+	Mode         PolicyMode
+	ProposalID   *uuid.UUID
+	Enabled      bool
+	ShadowHits   int // cuántas requests habría afectado en modo shadow
+	ArchivedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

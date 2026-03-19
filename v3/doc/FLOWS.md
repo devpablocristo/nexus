@@ -143,7 +143,7 @@ POST /v1/requests (Idempotency-Key: "ops-bot-silence-db01")
 ## 7. Policy evaluation (CEL)
 
 ```
-Lista de políticas activas (enabled=true, archived_at IS NULL)
+Lista de políticas activas (enabled=true, archived_at IS NULL, mode='enforced')
    │
    └──▶ Filtrar por scope:
    │    policy.action_type == request.action_type (si definido)
@@ -156,7 +156,11 @@ Lista de políticas activas (enabled=true, archived_at IS NULL)
    │    Evaluar: {request: {...}, time: {hour, day_of_week}}
    │    Si true → usar esta policy
    │
-   └──▶ Si ninguna matchea → decision por riesgo default
+   └──▶ Shadow policies (mode='shadow'):
+   │    Se evalúan en paralelo pero NO afectan la decisión
+   │    Si matchean → incrementar shadow_hits
+   │
+   └──▶ Si ninguna enforced matchea → decision por riesgo default
 ```
 
 ## 8. Risk tiering
@@ -174,4 +178,80 @@ Luego:
   allow        + medium/low        → allow
   (no match)   + high              → require_approval
   (no match)   + medium/low        → allow
+```
+
+## 9. Break-glass (multi-aprobador)
+
+```
+Request llega con break_glass=true (o config lo determina por action_type + risk)
+   │
+   └──▶ Crear approval con:
+   │    break_glass=true
+   │    required_approvals=N (configurable)
+   │    decisions=[] (JSONB vacío)
+   │
+   └──▶ Inbox muestra badge "Break Glass" + progreso (ej: "1/3")
+   │
+   └──▶ Aprobador 1 aprueba:
+   │    decisions=[{by: "sre1@co", action: "approve", at: "..."}]
+   │    Estado sigue pending (1 < N)
+   │
+   └──▶ Aprobador 2 aprueba:
+   │    decisions=[..., {by: "sre2@co", action: "approve", at: "..."}]
+   │    Si 2 == N → approval completada → request aprobada
+   │
+   └──▶ Si cualquier aprobador RECHAZA:
+         decisions=[..., {by: "sre3@co", action: "reject", at: "..."}]
+         Approval cancelada → request rechazada
+
+Reglas:
+  - El mismo aprobador NO puede decidir dos veces
+  - Un rechazo cancela todo (no importa cuántos aprobaron)
+  - Aprobación parcial es visible en el Inbox
+```
+
+## 10. Feedback loop (execution → risk)
+
+```
+POST /v1/requests/{id}/result {success: true/false}
+   │
+   └──▶ Actualizar request.execution_result + request.status → executed
+   │
+   └──▶ Actualizar execution_stats para ese action_type:
+   │    success → success_count++ , last_success_at = now()
+   │    failure → failure_count++ , last_failure_at = now()
+   │
+   └──▶ Próxima request con ese action_type:
+         Factor F5 (execution_history) del cascade risk scoring
+         usa success_rate = success_count / (success + failure)
+         - success_rate < 50%  → score alto (acción que falla mucho)
+         - success_rate > 90%  → score negativo (acción confiable, reduce riesgo)
+```
+
+## 11. Simulate (dry-run)
+
+```
+POST /v1/requests/simulate
+   │
+   └──▶ Mismos campos que POST /v1/requests
+   │
+   └──▶ Evaluar policies CEL + cascade risk scoring
+   │    (misma lógica que una request real)
+   │
+   └──▶ NO persistir, NO crear approval, NO emitir audit events
+   │
+   └──▶ Retornar: decisión, factores activados, amplificación, score final
+```
+
+## 12. Replay simulate (test CEL contra historial)
+
+```
+POST /v1/requests/simulate/replay
+   │
+   └──▶ Recibir expresión CEL propuesta
+   │
+   └──▶ Evaluar contra historial de requests existentes
+   │
+   └──▶ Retornar: cuántas habrían matcheado, con qué efecto,
+         distribución por action_type/decision
 ```

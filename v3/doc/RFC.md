@@ -31,11 +31,14 @@ El engine es generico. La primera superficie de venta cubre requests sobre alert
 | Resolver incidente INC-2847 | sre@company.dev (humano) | medium |
 | Crear incidente por anomalia detectada | triage-bot (agente) | medium |
 
-### Diferenciador
+### Diferenciadores
 
-1. **Contexto con IA.** No datos crudos — un resumen que explica que pide la request, por que se freno, y que recomienda Nexus. Decision en 10 segundos.
-2. **Replay completo.** Cada request documentada de punta a punta. Reconstruible en postmortems.
-3. **Aprende.** "Aprobaste 94% de alert.escalate la semana pasada. Queres auto-aprobar?" El sistema propone reglas.
+1. **Cascade risk scoring.** 6 factores independientes con amplificacion multiplicativa. Determinista, explicable, sin ML. Inspirado en la cascada de coagulacion.
+2. **Feedback loop.** Los resultados de ejecucion (exito/fallo) retroalimentan el factor F5 del cascade. El sistema se calibra solo con el uso.
+3. **Contexto con IA.** No datos crudos — un resumen que explica que pide la request, por que se freno, y que recomienda Nexus. Decision en 10 segundos.
+4. **Sandbox completo.** Simulate (dry-run) + shadow policies (evaluan sin actuar) + replay test (probar CEL contra historial).
+5. **Break-glass.** Aprobacion multi-aprobador para operaciones criticas. Un rechazo cancela todo.
+6. **Learning loop.** "Aprobaste 94% de alert.escalate la semana pasada. Queres auto-aprobar?" El sistema propone reglas.
 
 ## 2. Scope: PoC
 
@@ -57,16 +60,19 @@ Request llega (de agente, servicio, o humano)
 |------------|-----------|---------|
 | CEL policy engine | Si | Sin esto no hay evaluacion |
 | Cascade risk scoring (6 factores) | Si | Evaluacion multi-factor con amplificacion multiplicativa |
+| Feedback loop (execution → risk) | Si | Resultados de ejecucion retroalimentan F5 del cascade |
+| Shadow policies (enforced/shadow) | Si | Evaluar policies sin actuar, con shadow_hits y promote |
+| Break-glass (multi-aprobador) | Si | Operaciones criticas requieren N aprobadores |
 | Audit trail append-only | Si | Sin esto no hay replay ni learning |
 | Approval workflow | Si | Sin esto no hay producto |
 | AI contextualizer | Si | Es el diferenciador |
 | AI policy proposals (learning) | Si | Es el tercer pilar |
-| Simulation mode (dry-run) | Si | Probar requests sin persistir |
+| Sandbox (simulate + shadow + replay test) | Si | Entorno de pruebas completo |
 | Config module | Si | Todos los parametros configurables via API + UI |
 | Idempotency-Key | Si | Requests duplicadas son criticas |
 | API key auth | Si | Minimo para operar |
 | Hexagonal (ports & adapters) | Si | Base de calidad |
-| Console UI (6 tabs + simulate flotante) | Si | Sin UI no hay demo |
+| Console UI (7 tabs) | Si | Sin UI no hay demo |
 | i18n (EN + ES) | Si | Soporte bilingue con persistencia localStorage |
 | Confirmacion segura (nota + APPROVE/REJECT) | Si | Previene clicks accidentales |
 
@@ -100,11 +106,12 @@ Requester (agente / servicio / humano)
   │  ├── repository.go          port + pgx impl         │
   │  ├── policy_evaluator.go    CEL evaluation          │
   │  ├── risk.go                cascade risk scoring    │
+  │  ├── execution_stats.go     feedback loop adapter   │
   │  ├── ai_contextualizer.go   port+adapter: Claude    │
   │  └── audit_sink.go          emision de eventos      │
   │                                                      │
-  │  internal/policies/         (CRUD + CEL validation) │
-  │  internal/approvals/        (inbox + decisions)     │
+  │  internal/policies/         (CRUD + shadow mode)    │
+  │  internal/approvals/        (inbox + break-glass)   │
   │  internal/audit/            (trail + replay)        │
   │  internal/learning/         (pattern detection +    │
   │                              policy proposals)      │
@@ -135,6 +142,7 @@ v3/
 │   │   │   ├── repository.go
 │   │   │   ├── policy_evaluator.go
 │   │   │   ├── risk.go               # cascade risk scoring (6 factores)
+│   │   │   ├── execution_stats.go   # feedback loop (execution → risk F5)
 │   │   │   ├── ai_contextualizer.go
 │   │   │   ├── ai_contextualizer/types.go
 │   │   │   └── audit_sink.go
@@ -239,6 +247,8 @@ CREATE TABLE policies (
     priority    INT NOT NULL DEFAULT 100,
     origin      TEXT NOT NULL DEFAULT 'manual',
     proposal_id UUID,
+    mode        TEXT NOT NULL DEFAULT 'enforced', -- enforced / shadow
+    shadow_hits INTEGER NOT NULL DEFAULT 0,
     enabled     BOOLEAN NOT NULL DEFAULT true,
     archived_at TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -257,6 +267,9 @@ CREATE TABLE approvals (
     decision_note   TEXT,
     decided_at      TIMESTAMPTZ,
     expires_at      TIMESTAMPTZ NOT NULL,
+    break_glass     BOOLEAN NOT NULL DEFAULT false,
+    required_approvals INTEGER NOT NULL DEFAULT 1,
+    decisions       JSONB NOT NULL DEFAULT '[]',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
@@ -313,16 +326,31 @@ CREATE TABLE idempotency_keys (
 );
 ```
 
+### 4.7 execution_stats (feedback loop)
+
+```sql
+CREATE TABLE execution_stats (
+    action_type     TEXT PRIMARY KEY,
+    success_count   INTEGER NOT NULL DEFAULT 0,
+    failure_count   INTEGER NOT NULL DEFAULT 0,
+    last_success_at TIMESTAMPTZ,
+    last_failure_at TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
 ### Diagrama de relaciones
 
 ```
 requests ──1:N──> request_events
     │
-    ├──0:1──> approvals
+    ├──0:1──> approvals (con break_glass + decisions JSONB)
     ├──0:1──> policies (policy que matcheo)
     └──0:1──> idempotency_keys
 
 policy_proposals ──0:1──> policies (si fue aceptada)
+
+execution_stats ──por action_type── (alimentada por POST /v1/requests/{id}/result)
 ```
 
 ## 5. API
@@ -389,13 +417,16 @@ POST   /v1/learning/proposals/{id}/dismiss
 POST   /v1/learning/analyze
 ```
 
-### 5.9 Simulation (dry-run)
+### 5.9 Simulation (dry-run + replay)
 
 ```
 POST /v1/requests/simulate
+POST /v1/requests/simulate/replay
 ```
 
-Evalua una request sin persistirla. Retorna la decision, los factores de la cascada de riesgo, y la amplificacion aplicada. Util para probar politicas antes de enviar requests reales.
+`simulate` evalua una request sin persistirla. Retorna la decision, los factores de la cascada de riesgo, y la amplificacion aplicada. Util para probar politicas antes de enviar requests reales.
+
+`simulate/replay` toma una expresion CEL propuesta y la evalua contra el historial de requests existentes. Retorna cuantas habrian matcheado y con que efecto. Util para validar una policy antes de activarla.
 
 ### 5.10 Dashboard
 
@@ -453,7 +484,7 @@ El riesgo se evalua mediante 6 factores independientes con amplificacion multipl
 | `off_hours` | Fuera de horario laboral (antes 9h, despues 18h) | 0.2 |
 | `actor_unknown` | Actor sin historial o con pocas requests previas | 0.3 |
 | `frequency_anomaly` | Demasiadas requests del mismo tipo en la ultima hora | 0.3 |
-| `execution_history` | Tasa de exito/fallo historica de requests similares | 0.3 (-0.15 si excelente) |
+| `execution_history` | Tasa de exito/fallo historica (alimentada por `execution_stats` via feedback loop) | 0.3 (-0.15 si excelente) |
 | `target_sensitivity` | Sistema destino es produccion o staging | 0.3 |
 
 **Amplificaciones (combinaciones que se potencian):**
@@ -527,9 +558,9 @@ SQL puro sobre requests: agrupa por action_type, calcula approval rate, detecta 
 COMPOSE_PROJECT_NAME=nexus-v3
 
 Containers:
-  nexus-v3-review-1           (Go backend, :18084)
-  nexus-v3-console-1          (React/nginx, :13001)
-  nexus-v3-review-postgres-1  (PostgreSQL, :15434)
+  nexus-v3-review-1      (Go backend, :18084)
+  nexus-v3-console-1     (React/nginx, :13001)
+  nexus-v3-postgres-1    (PostgreSQL, :15434)
 ```
 
 ## 10. Roadmap
@@ -538,9 +569,13 @@ Containers:
 
 | Area | PoC (actual) | MVP |
 |------|-------------|-----|
-| Risk scoring | Cascade 6 factores + amplificacion | Feedback loop (resultado → riesgo) |
+| Risk scoring | Cascade 6 factores + amplificacion + feedback loop | — (ya implementado) |
+| Feedback loop | execution_stats alimenta F5 del cascade automaticamente | — (ya implementado) |
+| Shadow policies | mode enforced/shadow, shadow_hits, promote | — (ya implementado) |
+| Break-glass | Multi-aprobador, configurable por action_type + risk | — (ya implementado) |
+| Sandbox | Simulate + shadow monitor + replay test | — (ya implementado) |
 | Risk config | Configurable via API + UI (config module) | — (ya implementado) |
-| Simulation | `POST /v1/requests/simulate` (dry-run) | — (ya implementado) |
+| Simulation | `POST /v1/requests/simulate` + replay | — (ya implementado) |
 | Config module | API CRUD + UI (5 secciones) | — (ya implementado) |
 | Proposer | Stub (template) | Claude real |
 | Analyzer | SQL GROUP BY | — (ya implementado) |

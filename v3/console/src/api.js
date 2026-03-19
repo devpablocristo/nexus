@@ -43,6 +43,8 @@ export const fetchRequests = (params = {}) => {
 export const fetchRequest = (id) => request(`/v1/requests/${id}`)
 export const simulateRequest = (data) =>
   request('/v1/requests/simulate', { method: 'POST', body: JSON.stringify(data) })
+export const replaySimulate = (data) =>
+  request('/v1/requests/simulate/replay', { method: 'POST', body: JSON.stringify(data) })
 export const fetchReplay = (id) => request(`/v1/requests/${id}/replay`)
 
 // Learning

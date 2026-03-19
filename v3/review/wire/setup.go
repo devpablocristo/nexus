@@ -71,12 +71,26 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	configUC := nexusconfig.NewUsecases(configRepo)
 	policyUC := policies.NewUsecases(policyRepo)
 	policyLister := newPolicyListerAdapter(policyUC)
+	execStats := requests.NewPostgresExecutionStatsStore(db.Pool())
+
+	// Break-glass: default rules (configurable via /v1/config)
+	breakGlassCfg := requests.BreakGlassConfig{
+		DefaultApprovals: 2,
+		Rules: []requests.BreakGlassRule{
+			{ActionTypes: []string{"delete"}, RiskLevel: "critical", RequiredApprovals: 2},
+			{ActionTypes: []string{"runbook.execute"}, RiskLevel: "high", RequiredApprovals: 2},
+		},
+	}
+
 	reqUC := requests.NewUsecases(reqRepo, policyLister, approvalRepo, evaluator,
 		requests.WithIdempotencyStore(idemStore),
 		requests.WithAuditSink(auditSink),
 		requests.WithRiskConfig(riskConfig),
 		requests.WithAI(ai),
 		requests.WithApprovalTTL(ttl),
+		requests.WithShadowHitRecorder(policyRepo),
+		requests.WithExecutionStats(execStats),
+		requests.WithBreakGlassConfig(breakGlassCfg),
 	)
 	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).WithAuditSink(auditSink)
 	replayGetter := newReplayRequestGetter(reqRepo)

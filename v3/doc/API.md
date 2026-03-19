@@ -156,6 +156,9 @@ Respuesta:
 | action_type | | string (scope filter) |
 | target_system | | string (scope filter) |
 | risk_override | | low / medium / high |
+| mode | | enforced (default) / shadow |
+
+**Shadow mode:** cuando `mode: "shadow"`, la policy evalúa pero no actúa. Se incrementa `shadow_hits` en cada match. Útil para probar policies antes de activarlas. Se promueve a enforced cambiando `mode` via PATCH.
 
 ### Variables CEL disponibles
 
@@ -172,6 +175,24 @@ time.hour                    0-23 (UTC)
 time.day_of_week             0-6 (domingo=0)
 ```
 
+## Simulation
+
+### Simulate (dry-run)
+
+```
+POST /v1/requests/simulate
+```
+
+Mismos campos que `POST /v1/requests`, pero no persiste. Retorna decisión, factores de cascada, amplificación y score final.
+
+### Replay simulate
+
+```
+POST /v1/requests/simulate/replay
+```
+
+Evalúa una expresión CEL propuesta contra el historial de requests existentes. Retorna cuántas habrían matcheado y con qué efecto.
+
 ## Approvals
 
 | Endpoint | Método | Descripción |
@@ -186,6 +207,10 @@ time.day_of_week             0-6 (domingo=0)
   "note": "Ventana de mantenimiento confirmada"
 }
 ```
+
+### Break-glass
+
+Cuando una approval tiene `break_glass: true`, requiere `required_approvals` aprobadores distintos. Un rechazo de cualquier aprobador cancela la approval. El mismo aprobador no puede decidir dos veces. El campo `decisions` (JSONB) registra cada decisión parcial.
 
 ## Learning
 
@@ -214,6 +239,15 @@ GET /v1/metrics/summary?period=7d
   "rejected": 5
 }
 ```
+
+## Config
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/v1/config` | GET | Toda la configuración (5 secciones) |
+| `/v1/config` | PATCH | Actualizar múltiples secciones |
+| `/v1/config/{section}` | PATCH | Actualizar una sección (risk, approvals, learning, ai, general) |
+| `/v1/config/reset` | POST | Restaurar valores por defecto |
 
 ## Errores
 

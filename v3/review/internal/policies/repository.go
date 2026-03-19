@@ -49,8 +49,8 @@ func NewPostgresRepository(db *sharedpostgres.DB) *PostgresRepository {
 
 const selectPolicySQL = `
 	SELECT id, name, description, action_type, target_system,
-	       expression, effect, risk_override, priority, origin, proposal_id,
-	       enabled, archived_at, created_at, updated_at
+	       expression, effect, risk_override, priority, origin, mode, proposal_id,
+	       enabled, shadow_hits, archived_at, created_at, updated_at
 	FROM policies`
 
 func (r *PostgresRepository) Create(ctx context.Context, p policydomain.Policy) (policydomain.Policy, error) {
@@ -61,16 +61,19 @@ func (r *PostgresRepository) Create(ctx context.Context, p policydomain.Policy) 
 	p.CreatedAt = now
 	p.UpdatedAt = now
 
+	if p.Mode == "" {
+		p.Mode = policydomain.PolicyModeEnforced
+	}
 	_, err := r.db.Pool().Exec(ctx, `
 		INSERT INTO policies (
 			id, name, description, action_type, target_system,
-			expression, effect, risk_override, priority, origin, proposal_id,
-			enabled, archived_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			expression, effect, risk_override, priority, origin, mode, proposal_id,
+			enabled, shadow_hits, archived_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 	`,
 		p.ID, p.Name, p.Description, p.ActionType, p.TargetSystem,
-		p.Expression, p.Effect, p.RiskOverride, p.Priority, p.Origin, p.ProposalID,
-		p.Enabled, p.ArchivedAt, p.CreatedAt, p.UpdatedAt,
+		p.Expression, p.Effect, p.RiskOverride, p.Priority, p.Origin, p.Mode, p.ProposalID,
+		p.Enabled, p.ShadowHits, p.ArchivedAt, p.CreatedAt, p.UpdatedAt,
 	)
 	if err != nil {
 		return policydomain.Policy{}, fmt.Errorf("insert policy: %w", err)
@@ -128,12 +131,12 @@ func (r *PostgresRepository) Update(ctx context.Context, p policydomain.Policy) 
 		UPDATE policies SET
 			name = $2, description = $3, action_type = $4, target_system = $5,
 			expression = $6, effect = $7, risk_override = $8, priority = $9,
-			enabled = $10, updated_at = $11
+			mode = $10, enabled = $11, updated_at = $12
 		WHERE id = $1
 	`,
 		p.ID, p.Name, p.Description, p.ActionType, p.TargetSystem,
 		p.Expression, p.Effect, p.RiskOverride, p.Priority,
-		p.Enabled, p.UpdatedAt,
+		p.Mode, p.Enabled, p.UpdatedAt,
 	)
 	if err != nil {
 		return policydomain.Policy{}, fmt.Errorf("update policy: %w", err)
@@ -183,6 +186,15 @@ func (r *PostgresRepository) RestoreByID(ctx context.Context, id uuid.UUID) erro
 	return nil
 }
 
+func (r *PostgresRepository) IncrementShadowHits(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Pool().Exec(ctx,
+		`UPDATE policies SET shadow_hits = shadow_hits + 1, updated_at = now() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("increment shadow hits: %w", err)
+	}
+	return nil
+}
+
 // --- Scanner ---
 
 type policyScanRow interface {
@@ -193,8 +205,8 @@ func scanPolicy(row policyScanRow) (policydomain.Policy, error) {
 	var p policydomain.Policy
 	if err := row.Scan(
 		&p.ID, &p.Name, &p.Description, &p.ActionType, &p.TargetSystem,
-		&p.Expression, &p.Effect, &p.RiskOverride, &p.Priority, &p.Origin, &p.ProposalID,
-		&p.Enabled, &p.ArchivedAt, &p.CreatedAt, &p.UpdatedAt,
+		&p.Expression, &p.Effect, &p.RiskOverride, &p.Priority, &p.Origin, &p.Mode, &p.ProposalID,
+		&p.Enabled, &p.ShadowHits, &p.ArchivedAt, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		return policydomain.Policy{}, fmt.Errorf("scan policy: %w", err)
 	}
