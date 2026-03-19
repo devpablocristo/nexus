@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -138,6 +139,13 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 		Context:        body.Context,
 	})
 	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "unknown action_type") ||
+			strings.Contains(errMsg, "is disabled") ||
+			strings.Contains(errMsg, "not delegated") {
+			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", errMsg)
+			return
+		}
 		shared.WriteInternalError(w, err, "request submission failed")
 		return
 	}

@@ -70,6 +70,8 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 | 42 | **Baselines estadisticas** | v2 Fase 1A | Cuando haya suficiente volumen para que las baselines tengan confidence. |
 | 43 | **Hysteresis en decision bands** | v2 Fase 1A | Solo con cascada continua. Review usa tiering discreto. |
 | 44 | **Amplificaciones no-lineales** | v2 Fase 1A | ✅ Implementado como parte de la cascada (combinaciones de factores con multiplicadores). |
+| 44b | **Ontologia tipada de acciones** | Roadmap unicornio | ✅ Implementado (Q2 MVP): tabla action_types, 9 seeded, CRUD 5 ops, verificacion en Submit (403). |
+| 44c | **Delegation graph** | Roadmap unicornio | ✅ Implementado (Q2 MVP): tabla delegations, CRUD 5 ops, verificacion en Submit (403). |
 | 45 | **Confidence saturation** | v2 Fase 1A | Solo con baselines. |
 | 46 | **Bucketed counters (sliding windows)** | v2 Fase 1B | "Mas de 10 silences en 2 horas → bloquear." Util pero no MVP. |
 | 47 | **Multi-step approvals (4-eyes, quorum)** | v2 Fase 1B | ✅ Implementado parcialmente via break-glass (multi-aprobador con required_approvals configurable). Falta quorum flexible. |
@@ -110,6 +112,6 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 | 2: Muy importante | 10 | v1 completo (semanas 5-10) |
 | 3: Importante | 10 | v1.1 / v1.2 |
 | 4: Nice-to-have | 10 | Si hay tiempo |
-| 5: Futuro lejano | 16 | Cuando el producto lo pida |
+| 5: Futuro lejano | 18 | Cuando el producto lo pida (2 ya implementadas: ontologia, delegations) |
 | 6: Descartar | 14 | No aplica a Review |
-| **Total** | **70** | |
+| **Total** | **72** | |

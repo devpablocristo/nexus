@@ -8,8 +8,8 @@ Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independien
 ┌─────────────────────────────────────────────────────┐
 │                    console/                          │
 │              (React + Tailwind, :13001)              │
-│  Inbox │ Requests │ Policies │ Sandbox │ Learning    │
-│  │ Dashboard │ Config                                │
+│  Inbox │ Requests │ Policies │ Actions │ Agents      │
+│  │ Sandbox │ Learning │ Dashboard │ Config            │
 └────────────────────┬────────────────────────────────┘
                      │ /v1/*
                      ▼
@@ -20,6 +20,8 @@ Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independien
 │  requests ─── policies ─── approvals                │
 │      │                         │                    │
 │   audit ──── learning ──── dashboard ─── config     │
+│      │                                              │
+│   actiontypes ─── delegations                       │
 │                                                     │
 │  wire/setup.go (DI manual)                          │
 └────────────────────┬────────────────────────────────┘
@@ -54,6 +56,8 @@ v3/
 │   │   ├── learning/    # pattern detection + proposals
 │   │   ├── dashboard/   # métricas
 │   │   ├── config/      # configuración global (5 secciones)
+│   │   ├── actiontypes/ # ontología tipada (CRUD 5 ops, 9 seeded)
+│   │   ├── delegations/ # delegation graph (CRUD 5 ops)
 │   │   └── shared/      # helpers transversales
 │   ├── wire/setup.go    # DI manual
 │   ├── migrations/
@@ -61,7 +65,7 @@ v3/
 │   └── go.mod
 ├── console/             # frontend único (React + Tailwind)
 │   ├── src/
-│   │   ├── views/       # Inbox, Requests, Policies, Sandbox, Learning, Dashboard, Config
+│   │   ├── views/       # Inbox, Requests, Policies, Actions, Agents, Sandbox, Learning, Dashboard, Config
 │   │   ├── components/  # RiskBadge, StatusBadge
 │   │   ├── api.js       # API client
 │   │   └── i18n.js      # EN/ES con persistencia

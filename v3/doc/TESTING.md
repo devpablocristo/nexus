@@ -30,6 +30,7 @@ Qué cubrir por módulo:
 - Happy path
 - Not found (404)
 - Validation error (400)
+- Forbidden (403) — ej: action type desconocido, agente sin delegación
 - Conflict (409) — ej: approval ya decidida
 - Archive/Restore lifecycle (policies)
 

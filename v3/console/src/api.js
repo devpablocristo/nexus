@@ -73,6 +73,24 @@ export const restorePolicy = (id) =>
 // Dashboard
 export const fetchMetrics = (period = '7d') => request(`/v1/metrics/summary?period=${period}`)
 
+// Action Types
+export const fetchActionTypes = () => request('/v1/action-types')
+export const createActionType = (data) =>
+  request('/v1/action-types', { method: 'POST', body: JSON.stringify(data) })
+export const updateActionType = (id, data) =>
+  request(`/v1/action-types/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+export const deleteActionType = (id) =>
+  request(`/v1/action-types/${id}`, { method: 'DELETE' })
+
+// Delegations
+export const fetchDelegations = () => request('/v1/delegations')
+export const createDelegation = (data) =>
+  request('/v1/delegations', { method: 'POST', body: JSON.stringify(data) })
+export const updateDelegation = (id, data) =>
+  request(`/v1/delegations/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+export const deleteDelegation = (id) =>
+  request(`/v1/delegations/${id}`, { method: 'DELETE' })
+
 // Config
 export const fetchConfig = () => request('/v1/config')
 export const updateConfigSection = (section, data) =>

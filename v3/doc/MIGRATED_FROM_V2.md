@@ -33,7 +33,14 @@ Registro de qué features se trajeron de versiones anteriores para no re-evaluar
 | Multi-service arch | v2 | v3 es monolito modular. Se separa cuando el dolor lo justifique. |
 | Canary trap policies | v2 | Interesante pero no prioritario. Agregar post-MVP. |
 
-## Pendientes de migración (MVP)
+## Implementadas en Q2 MVP
+
+| Feature | Origen | Adaptación | Estado |
+|---------|--------|-----------|--------|
+| **Ontología tipada de acciones** | Roadmap unicornio | Tabla `action_types` con name, category, risk_class (low/medium/high/critical), reversible, requires_break_glass, schema (JSON). 9 action types seeded. CRUD completo: POST/GET/GET/{id}/PATCH/DELETE /v1/action-types. Integrada en Submit: action_type desconocido retorna 403 FORBIDDEN. | ✅ Implementado |
+| **Delegation graph** | Roadmap unicornio | Tabla `delegations`: owner → agent → allowed_action_types → allowed_resources → purpose → max_risk_class → expires_at. CRUD completo: POST/GET/GET/{id}/PATCH/DELETE /v1/delegations. Integrada en Submit: agente sin delegación vigente retorna 403 FORBIDDEN. | ✅ Implementado |
+
+## Pendientes de migración (post-MVP)
 
 | Feature | Origen | Prioridad | Notas |
 |---------|--------|-----------|-------|

@@ -249,6 +249,85 @@ GET /v1/metrics/summary?period=7d
 | `/v1/config/{section}` | PATCH | Actualizar una sección (risk, approvals, learning, ai, general) |
 | `/v1/config/reset` | POST | Restaurar valores por defecto |
 
+## Action Types (ontología tipada)
+
+| Operación | Método | Path | Status |
+|-----------|--------|------|--------|
+| Create | POST | `/v1/action-types` | 201 |
+| Read | GET | `/v1/action-types/{id}` | 200 |
+| List | GET | `/v1/action-types` | 200 |
+| Update | PATCH | `/v1/action-types/{id}` | 200 |
+| Delete | DELETE | `/v1/action-types/{id}` | 204 |
+
+### Create action type
+
+```json
+{
+  "name": "treasury.transfer",
+  "description": "Transferir fondos entre cuentas",
+  "category": "treasury",
+  "risk_class": "critical",
+  "schema": {},
+  "reversible": false,
+  "requires_break_glass": true
+}
+```
+
+| Campo | Obligatorio | Valores |
+|-------|:-----------:|---------|
+| name | si | string (único) |
+| description | | string |
+| category | | string |
+| risk_class | | low / medium / high / critical (default: low) |
+| schema | | object (JSON schema para validación de params) |
+| reversible | | bool (default: true) |
+| requires_break_glass | | bool (default: false) |
+
+9 action types pre-configurados: alert.silence, alert.escalate, runbook.execute, incident.resolve, config.update, deploy.trigger, delete, iam.grant_role, treasury.transfer.
+
+Integración en Submit: si `action_type` no está registrado en la tabla → 403 FORBIDDEN.
+
+## Delegations (delegation graph)
+
+| Operación | Método | Path | Status |
+|-----------|--------|------|--------|
+| Create | POST | `/v1/delegations` | 201 |
+| Read | GET | `/v1/delegations/{id}` | 200 |
+| List | GET | `/v1/delegations` | 200 |
+| Update | PATCH | `/v1/delegations/{id}` | 200 |
+| Delete | DELETE | `/v1/delegations/{id}` | 204 |
+
+### Create delegation
+
+```json
+{
+  "owner_id": "sre-team-lead",
+  "owner_type": "user",
+  "agent_id": "ops-bot",
+  "agent_type": "agent",
+  "allowed_action_types": ["alert.silence", "alert.escalate"],
+  "allowed_resources": ["pagerduty/*"],
+  "purpose": "Gestión automática de alertas",
+  "max_risk_class": "high",
+  "expires_at": "2026-06-01T00:00:00Z"
+}
+```
+
+| Campo | Obligatorio | Valores |
+|-------|:-----------:|---------|
+| owner_id | si | string |
+| agent_id | si | string |
+| owner_type | | string (default: user) |
+| agent_type | | string (default: agent) |
+| allowed_action_types | | array de strings |
+| allowed_resources | | array de strings |
+| purpose | | string |
+| max_risk_class | | low / medium / high / critical (default: high) |
+| expires_at | | RFC3339 datetime |
+| enabled | | bool (default: true) |
+
+Integración en Submit: si el agente no tiene delegación vigente para la acción solicitada → 403 FORBIDDEN.
+
 ## Errores
 
 Formato consistente:
@@ -265,6 +344,7 @@ Formato consistente:
 |------|------|-------------|
 | VALIDATION | 400 | Input inválido |
 | UNAUTHORIZED | 401 | API key inválida o ausente |
+| FORBIDDEN | 403 | Action type desconocido o agente sin delegación vigente |
 | NOT_FOUND | 404 | Recurso no encontrado |
 | CONFLICT | 409 | Estado inválido (ej: approval ya decidida) |
 | INTERNAL | 500 | Error interno (nunca expone detalles) |

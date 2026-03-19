@@ -6,9 +6,11 @@ import Dashboard from './views/Dashboard'
 import Policies from './views/Policies'
 import Config from './views/Config'
 import Sandbox from './views/Sandbox'
+import ActionTypes from './views/ActionTypes'
+import Agents from './views/Agents'
 import { getSavedLang, saveLang, t } from './i18n'
 
-const tabIds = ['inbox', 'requests', 'policies', 'sandbox', 'learning', 'dashboard', 'config']
+const tabIds = ['inbox', 'requests', 'policies', 'actionTypes', 'agents', 'sandbox', 'learning', 'dashboard', 'config']
 
 export default function App() {
   const [view, setView] = useState(() => localStorage.getItem('nexus-review-tab') || 'inbox')
@@ -63,6 +65,8 @@ export default function App() {
         {view === 'inbox' && <Inbox lang={lang} />}
         {view === 'requests' && <Requests lang={lang} />}
         {view === 'policies' && <Policies lang={lang} />}
+        {view === 'actionTypes' && <ActionTypes lang={lang} />}
+        {view === 'agents' && <Agents lang={lang} />}
         {view === 'sandbox' && <Sandbox lang={lang} />}
         {view === 'learning' && <Learning lang={lang} />}
         {view === 'dashboard' && <Dashboard lang={lang} />}

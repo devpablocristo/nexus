@@ -1,9 +1,9 @@
 # RFC: Nexus Review
 
-Estado: Implementado (PoC)
+Estado: Implementado (MVP Q2)
 Autor: Pablo Cristo
-Fecha: 18 de marzo de 2026
-Version: 4.0
+Fecha: 19 de marzo de 2026
+Version: 5.0
 
 ## 1. Resumen
 
@@ -39,6 +39,8 @@ El engine es generico. La primera superficie de venta cubre requests sobre alert
 4. **Sandbox completo.** Simulate (dry-run) + shadow policies (evaluan sin actuar) + replay test (probar CEL contra historial).
 5. **Break-glass.** Aprobacion multi-aprobador para operaciones criticas. Un rechazo cancela todo.
 6. **Learning loop.** "Aprobaste 94% de alert.escalate la semana pasada. Queres auto-aprobar?" El sistema propone reglas.
+7. **Ontologia tipada.** Action types como ciudadanos de primer nivel con schema, riesgo y metadata. Accion desconocida = 403 FORBIDDEN.
+8. **Delegation graph.** Autoridad delegada explicita: owner → agente → action_types → recursos → TTL. Agente sin delegacion = 403 FORBIDDEN.
 
 ## 2. Scope: PoC
 
@@ -72,7 +74,9 @@ Request llega (de agente, servicio, o humano)
 | Idempotency-Key | Si | Requests duplicadas son criticas |
 | API key auth | Si | Minimo para operar |
 | Hexagonal (ports & adapters) | Si | Base de calidad |
-| Console UI (7 tabs) | Si | Sin UI no hay demo |
+| Ontologia tipada (action types) | Si | Acciones como tipos de primer nivel con schema, riesgo y metadata |
+| Delegation graph | Si | Autoridad delegada: owner → agent → action_types → resources → TTL |
+| Console UI (9 tabs) | Si | Sin UI no hay demo |
 | i18n (EN + ES) | Si | Soporte bilingue con persistencia localStorage |
 | Confirmacion segura (nota + APPROVE/REJECT) | Si | Previene clicks accidentales |
 
@@ -117,6 +121,8 @@ Requester (agente / servicio / humano)
   │                              policy proposals)      │
   │  internal/dashboard/        (metricas agregadas)    │
   │  internal/config/           (configuracion global)  │
+  │  internal/actiontypes/      (ontologia tipada)      │
+  │  internal/delegations/      (delegation graph)      │
   │                                                      │
   │  wire/setup.go              (DI manual)             │
   │  cmd/api/main.go            (entry point)           │
@@ -152,6 +158,8 @@ v3/
 │   │   ├── learning/                  # patrones + propuestas
 │   │   ├── dashboard/                 # metricas
 │   │   ├── config/                    # configuracion global via API
+│   │   ├── actiontypes/              # ontologia tipada (CRUD 5 ops)
+│   │   ├── delegations/              # delegation graph (CRUD 5 ops)
 │   │   └── shared/                    # codigo transversal
 │   ├── wire/setup.go
 │   ├── migrations/
@@ -339,6 +347,46 @@ CREATE TABLE execution_stats (
 );
 ```
 
+### 4.8 action_types (ontologia tipada)
+
+```sql
+CREATE TABLE action_types (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                 TEXT NOT NULL UNIQUE,
+    description          TEXT NOT NULL DEFAULT '',
+    category             TEXT NOT NULL DEFAULT '',
+    risk_class           TEXT NOT NULL DEFAULT 'low',
+    schema               JSONB NOT NULL DEFAULT '{}',
+    reversible           BOOLEAN NOT NULL DEFAULT true,
+    requires_break_glass BOOLEAN NOT NULL DEFAULT false,
+    enabled              BOOLEAN NOT NULL DEFAULT true,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+9 action types seeded: alert.silence, alert.escalate, runbook.execute, incident.resolve, config.update, deploy.trigger, delete, iam.grant_role, treasury.transfer.
+
+### 4.9 delegations (delegation graph)
+
+```sql
+CREATE TABLE delegations (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id             TEXT NOT NULL,
+    owner_type           TEXT NOT NULL DEFAULT 'user',
+    agent_id             TEXT NOT NULL,
+    agent_type           TEXT NOT NULL DEFAULT 'agent',
+    allowed_action_types JSONB NOT NULL DEFAULT '[]',
+    allowed_resources    JSONB NOT NULL DEFAULT '[]',
+    purpose              TEXT NOT NULL DEFAULT '',
+    max_risk_class       TEXT NOT NULL DEFAULT 'high',
+    expires_at           TIMESTAMPTZ,
+    enabled              BOOLEAN NOT NULL DEFAULT true,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
 ### Diagrama de relaciones
 
 ```
@@ -351,6 +399,9 @@ requests ──1:N──> request_events
 policy_proposals ──0:1──> policies (si fue aceptada)
 
 execution_stats ──por action_type── (alimentada por POST /v1/requests/{id}/result)
+
+action_types ──por name── requests.action_type (verificacion en Submit)
+delegations  ──por agent_id── requests.requester_id (verificacion en Submit)
 ```
 
 ## 5. API
@@ -445,7 +496,35 @@ POST   /v1/config/reset              -- 200 (restaurar defaults)
 
 Secciones configurables: risk, approvals, learning, AI, general. Todos los valores son modificables via API y via la UI de la consola (tab Config).
 
-### 5.12 Health
+### 5.12 Action Types (ontologia tipada)
+
+```
+POST   /v1/action-types                -- 201
+GET    /v1/action-types                -- 200
+GET    /v1/action-types/{id}           -- 200
+PATCH  /v1/action-types/{id}           -- 200
+DELETE /v1/action-types/{id}           -- 204
+```
+
+Campos: name (unico), description, category, risk_class (low/medium/high/critical), schema (JSON), reversible, requires_break_glass, enabled.
+
+Integrado en Submit: si `action_type` no esta registrado → 403 FORBIDDEN.
+
+### 5.13 Delegations (delegation graph)
+
+```
+POST   /v1/delegations                -- 201
+GET    /v1/delegations                -- 200
+GET    /v1/delegations/{id}           -- 200
+PATCH  /v1/delegations/{id}           -- 200
+DELETE /v1/delegations/{id}           -- 204
+```
+
+Campos: owner_id, owner_type, agent_id, agent_type, allowed_action_types (JSON array), allowed_resources (JSON array), purpose, max_risk_class, expires_at, enabled.
+
+Integrado en Submit: si el agente no tiene delegacion vigente para la accion → 403 FORBIDDEN.
+
+### 5.14 Health
 
 ```
 GET /healthz
@@ -565,24 +644,30 @@ Containers:
 
 ## 10. Roadmap
 
-### PoC → MVP
+### PoC → MVP Q2 (completado)
 
-| Area | PoC (actual) | MVP |
+| Area | PoC | MVP Q2 |
 |------|-------------|-----|
-| Risk scoring | Cascade 6 factores + amplificacion + feedback loop | — (ya implementado) |
-| Feedback loop | execution_stats alimenta F5 del cascade automaticamente | — (ya implementado) |
-| Shadow policies | mode enforced/shadow, shadow_hits, promote | — (ya implementado) |
-| Break-glass | Multi-aprobador, configurable por action_type + risk | — (ya implementado) |
-| Sandbox | Simulate + shadow monitor + replay test | — (ya implementado) |
-| Risk config | Configurable via API + UI (config module) | — (ya implementado) |
-| Simulation | `POST /v1/requests/simulate` + replay | — (ya implementado) |
-| Config module | API CRUD + UI (5 secciones) | — (ya implementado) |
+| Risk scoring | Cascade 6 factores + amplificacion + feedback loop | — (ya implementado en PoC) |
+| Feedback loop | execution_stats alimenta F5 del cascade automaticamente | — (ya implementado en PoC) |
+| Shadow policies | mode enforced/shadow, shadow_hits, promote | — (ya implementado en PoC) |
+| Break-glass | Multi-aprobador, configurable por action_type + risk | — (ya implementado en PoC) |
+| Sandbox | Simulate + shadow monitor + replay test | — (ya implementado en PoC) |
+| Config module | API CRUD + UI (5 secciones) | — (ya implementado en PoC) |
+| Ontologia tipada | action_type como string libre | ✅ Tabla action_types, 9 seeded, CRUD 5 ops, verificacion en Submit |
+| Delegation graph | Sin delegaciones | ✅ Tabla delegations, CRUD 5 ops, verificacion en Submit |
+| Console | 7 tabs | ✅ 9 tabs (+ Actions, Agents) |
+
+### MVP Q2 → Siguiente
+
+| Area | Estado actual | Siguiente |
+|------|-------------|-----|
 | Proposer | Stub (template) | Claude real |
-| Analyzer | SQL GROUP BY | — (ya implementado) |
+| Evidence packs | No | Export JSON firmado |
+| Outcome attestation | No | Attest endpoint + firma |
 | Rate limiting | No | Por IP/key |
 | Paginacion | Limit simple | Cursor |
 | Indices DB | Basicos | Optimizados |
-| Dashboard | SQL aggregation | — (ya implementado) |
 | Validacion CEL | No | Al crear policy |
 | Approval TTL | Global | Por policy |
 | Claude retry | No | Circuit breaker |

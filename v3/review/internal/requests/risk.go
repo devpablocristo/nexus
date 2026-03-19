@@ -1,8 +1,6 @@
 package requests
 
 import (
-	"time"
-
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
 )
 
@@ -234,24 +232,26 @@ func calculateAmplification(factors []RiskFactor) float64 {
 
 // --- Funciones de decisión (compatibles con el flujo existente) ---
 
-// TierRisk determina el nivel de riesgo a partir del assessment de cascada
+// TierRisk determina el nivel de riesgo usando el mapa de action types (determinístico).
+// Se usa en Submit para decisiones de negocio. La cascada completa se usa en Simulate.
 func TierRisk(actionType string, policyRiskOverride *string, cfg RiskConfig) requestdomain.RiskLevel {
-	// Para compatibilidad: construir señales mínimas
-	signals := RiskSignals{
-		ActionType:  actionType,
-		CurrentHour: time.Now().Hour(),
-		SuccessRate: -1, // sin datos
+	if policyRiskOverride != nil {
+		switch *policyRiskOverride {
+		case "high":
+			return requestdomain.RiskHigh
+		case "medium":
+			return requestdomain.RiskMedium
+		case "low":
+			return requestdomain.RiskLow
+		}
 	}
-	assessment := EvaluateCascade(signals, cfg, policyRiskOverride)
-
-	switch assessment.Level {
-	case "critical", "high":
+	if cfg.HighActionTypes[actionType] {
 		return requestdomain.RiskHigh
-	case "medium":
-		return requestdomain.RiskMedium
-	default:
-		return requestdomain.RiskLow
 	}
+	if cfg.MediumActionTypes[actionType] {
+		return requestdomain.RiskMedium
+	}
+	return requestdomain.RiskLow
 }
 
 // TierRiskFromSignals determina el nivel de riesgo con señales completas

@@ -169,6 +169,31 @@ const translations = {
     maxBodySize: 'Max body size (bytes)',
     maxBodySizeHelp: 'Maximum HTTP request body size (1048576 = 1MB)',
 
+    // Action Types
+    actionTypes: 'Actions',
+    actionTypesTitle: 'Action Types',
+    newActionType: 'New Action Type',
+    atName: 'Name',
+    atCategory: 'Category',
+    atRiskClass: 'Risk Class',
+    atReversible: 'Reversible',
+    atBreakGlass: 'Requires Break-glass',
+    disable: 'Disable',
+    enable: 'Enable',
+
+    // Agents / Delegations
+    agents: 'Agents',
+    agentsTitle: 'Agent Delegations',
+    newDelegation: 'New Delegation',
+    noDelegations: 'No delegations yet. Create one to control agent permissions.',
+    delOwner: 'Owner',
+    delAgent: 'Agent',
+    delAllowedActions: 'Allowed action types',
+    delAllowedActionsHelp: 'Comma-separated. Empty = all actions allowed.',
+    delPurpose: 'Purpose',
+    delMaxRisk: 'Max risk class',
+    delAllActions: 'All action types allowed',
+
     // Sandbox
     sandbox: 'Sandbox',
     sandboxTitle: 'Sandbox',
@@ -367,6 +392,31 @@ const translations = {
     idempotencyCacheTTLHelp: 'Cuánto tiempo se guardan respuestas cacheadas (86400 = 24h)',
     maxBodySize: 'Tamaño máximo de body (bytes)',
     maxBodySizeHelp: 'Tamaño máximo del body HTTP (1048576 = 1MB)',
+
+    // Action Types
+    actionTypes: 'Acciones',
+    actionTypesTitle: 'Tipos de acción',
+    newActionType: 'Nuevo tipo de acción',
+    atName: 'Nombre',
+    atCategory: 'Categoría',
+    atRiskClass: 'Clase de riesgo',
+    atReversible: 'Reversible',
+    atBreakGlass: 'Requiere Break-glass',
+    disable: 'Deshabilitar',
+    enable: 'Habilitar',
+
+    // Agents / Delegations
+    agents: 'Agentes',
+    agentsTitle: 'Delegaciones de agentes',
+    newDelegation: 'Nueva delegación',
+    noDelegations: 'No hay delegaciones. Creá una para controlar permisos de agentes.',
+    delOwner: 'Propietario',
+    delAgent: 'Agente',
+    delAllowedActions: 'Tipos de acción permitidos',
+    delAllowedActionsHelp: 'Separados por coma. Vacío = todas las acciones.',
+    delPurpose: 'Propósito',
+    delMaxRisk: 'Riesgo máximo',
+    delAllActions: 'Todas las acciones permitidas',
 
     // Sandbox
     sandbox: 'Sandbox',

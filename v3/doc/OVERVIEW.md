@@ -65,12 +65,44 @@ El humano revisa la propuesta y decide si aceptarla. Si acepta, Nexus crea la re
 
 ---
 
+## Tipos de acción (ontología tipada)
+
+Cada acción tiene un **tipo** definido: `alert.silence`, `runbook.execute`, `treasury.transfer`, etc. Estos tipos están registrados con metadata que incluye:
+
+- **Categoría** — alert, runbook, incident, config, deploy, data, iam, treasury
+- **Clase de riesgo** — low, medium, high, critical
+- **Reversible** — si la acción se puede deshacer
+- **Requiere break-glass** — si necesita múltiples aprobadores por defecto
+- **Schema** — validación JSON de los parámetros esperados
+
+Nexus viene con **9 tipos de acción** pre-configurados, pero se pueden crear, editar y eliminar desde la pestaña **Actions** de la consola (o via API).
+
+Si una request llega con un `action_type` que no está registrado, Nexus la **rechaza** (403 FORBIDDEN). Esto garantiza que solo se procesen acciones conocidas y tipadas.
+
+---
+
+## Delegaciones de agentes
+
+Nexus modela explícitamente **quién delega qué a quién**. Un owner (humano o equipo) puede delegar autoridad a un agente, especificando:
+
+- **Qué acciones puede hacer** — lista de action types permitidos
+- **Sobre qué recursos** — lista de recursos específicos
+- **Propósito** — para qué se otorga la delegación
+- **Riesgo máximo** — el nivel más alto de riesgo que el agente puede asumir
+- **Expiración** — cuándo caduca la delegación
+
+Si un agente intenta una acción que **no tiene delegada**, Nexus la rechaza (403 FORBIDDEN). Esto garantiza que cada agente opera dentro de los límites que su owner definió.
+
+Las delegaciones se gestionan desde la pestaña **Agents** de la consola (o via API).
+
+---
+
 ## Quién puede pedir acciones
 
 Nexus no le importa quién pide. Acepta acciones de:
 
-- **Agentes IA** (bots de operaciones, triage automático)
-- **Servicios** (deploy pipelines, monitoring, scripts)
+- **Agentes IA** (bots de operaciones, triage automático) — deben tener delegación vigente
+- **Servicios** (deploy pipelines, monitoring, scripts) — deben tener delegación vigente
 - **Humanos** (ingenieros, SREs, operadores)
 
 ---
@@ -149,13 +181,15 @@ Si el administrador acepta, la regla se crea automáticamente y futuras acciones
 
 ## La consola
 
-La interfaz web tiene 7 pestañas:
+La interfaz web tiene 9 pestañas:
 
 | Sección | Qué muestra |
 |---------|-------------|
 | **Inbox** | Acciones pendientes de aprobación con resumen IA. Badge de break-glass e indicador de progreso para aprobaciones multi-aprobador |
 | **Requests** | Todas las requests con timeline inline y replay integrado |
 | **Policies** | Crear, editar, archivar, eliminar reglas. Soporte shadow mode (evalúa sin actuar) con contador de hits y botón "Promote to enforced" |
+| **Actions** | CRUD de action types: nombre, categoría, clase de riesgo, reversible, break-glass, schema JSON. 9 tipos pre-configurados |
+| **Agents** | CRUD de delegaciones: owner → agente → action types permitidos → recursos → propósito → riesgo máximo → expiración |
 | **Sandbox** | Tres sub-tabs: Simulate (dry-run con templates), Shadow Monitor (seguimiento de policies en modo shadow), Replay Test (probar expresión CEL contra historial) |
 | **Learning** | Propuestas automáticas de nuevas reglas |
 | **Dashboard** | Métricas: cuántas acciones, cuántas aprobadas, cuántas denegadas |
@@ -214,23 +248,25 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 
 ```
 1. Llega una acción
-2. Nexus busca si alguna regla aplica (incluyendo shadow policies que evalúan sin actuar)
-3. Si una regla dice "denegar" → deniega
-4. Si una regla dice "pedir aprobación" → va al inbox
-5. Si ninguna regla aplica → clasifica riesgo con 6 factores:
+2. Nexus verifica que el action_type esté registrado (si no → 403 FORBIDDEN)
+3. Nexus verifica que el agente tenga delegación vigente para esa acción (si no → 403 FORBIDDEN)
+4. Nexus busca si alguna regla aplica (incluyendo shadow policies que evalúan sin actuar)
+5. Si una regla dice "denegar" → deniega
+6. Si una regla dice "pedir aprobación" → va al inbox
+7. Si ninguna regla aplica → clasifica riesgo con 6 factores:
    - Tipo de acción, horario, historial del actor, frecuencia,
      tasa de éxito (alimentada por resultados reales), sensibilidad del destino
    - Si hay combinaciones sospechosas → amplifica el riesgo
    - Riesgo alto → va al inbox
    - Riesgo bajo/medio → aprueba automáticamente
-6. Si va al inbox:
+8. Si va al inbox:
    - IA genera resumen para el aprobador
    - Si es break-glass → requiere N aprobadores (un rechazo cancela todo)
    - El aprobador decide (con confirmación obligatoria)
-7. El requester ejecuta y reporta resultado (éxito/fallo)
-8. El resultado retroalimenta el factor de éxito → mejora futuras evaluaciones
-9. Todo queda registrado paso a paso
-10. Con el tiempo, Nexus propone nuevas reglas basadas en lo que los humanos aprobaron
+9. El requester ejecuta y reporta resultado (éxito/fallo)
+10. El resultado retroalimenta el factor de éxito → mejora futuras evaluaciones
+11. Todo queda registrado paso a paso
+12. Con el tiempo, Nexus propone nuevas reglas basadas en lo que los humanos aprobaron
 ```
 
 ---
@@ -248,14 +284,18 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 
 ---
 
-## Métricas clave del PoC
+## Métricas clave del MVP (Q2)
 
-- **29 endpoints** de API funcionando (27 de módulos + 2 health)
-- **9 módulos** de backend (requests, policies, approvals, audit, learning, dashboard, config, shared + execution_stats)
-- **7 pestañas** en la consola web (Inbox, Requests, Policies, Sandbox, Learning, Dashboard, Config)
+- **40+ endpoints** de API funcionando
+- **11 módulos** de backend (requests, policies, approvals, audit, learning, dashboard, config, shared, actiontypes, delegations + execution_stats en requests)
+- **9 pestañas** en la consola web (Inbox, Requests, Policies, Actions, Agents, Sandbox, Learning, Dashboard, Config)
 - **3 containers** Docker (backend, frontend, base de datos)
+- **9 migraciones** de base de datos
+- **9 action types** pre-configurados (alert.silence, alert.escalate, runbook.execute, incident.resolve, config.update, deploy.trigger, delete, iam.grant_role, treasury.transfer)
 - **i18n** inglés y español con persistencia en localStorage
 - **Cascade risk scoring** con 6 factores y amplificación multiplicativa
+- **Ontología tipada** — action types registrados con schema, riesgo y metadata. Acción desconocida = 403
+- **Delegation graph** — owner delega a agente con scope y expiración. Agente sin delegación = 403
 - **Feedback loop** — resultados de ejecución retroalimentan el scoring de riesgo
 - **Break-glass** — aprobación multi-aprobador para operaciones críticas
 - **Sandbox** — simulate (dry-run) + shadow monitor + replay test
@@ -268,5 +308,7 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 | Fase | Estado | Qué incluye |
 |------|--------|------------|
 | **PoC** | ✅ Completo | Motor de decisión, reglas CEL, inbox con IA, replay, learning, consola web |
-| **MVP** | Próximo | Optimizaciones de performance, validación de reglas al crear, paginación, rate limiting |
-| **Producción** | Futuro | Multi-equipo, webhooks, SDK para integración, CI/CD, monitoring avanzado |
+| **MVP (Q2)** | ✅ Completo | Ontología tipada de acciones, delegation graph, integración en Submit (403 para desconocidos/no delegados), 9 tabs en consola |
+| **Evidence + Attestation** | Próximo | Evidence packs exportables, outcome attestation firmado |
+| **Enforcement (Q3)** | Futuro | Execution leases (JWT), PEP/SDK Go, integración vertical #1 |
+| **Enterprise (Q4)** | Futuro | Multi-tenant, compliance packs, self-hosted |

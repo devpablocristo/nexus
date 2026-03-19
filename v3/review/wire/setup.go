@@ -10,7 +10,9 @@ import (
 	sharedapikey "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/apikey"
 	sharedhandlers "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/handlers"
 	sharedpostgres "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/postgres"
+	"github.com/devpablocristo/nexus/v3/review/internal/actiontypes"
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"
+	"github.com/devpablocristo/nexus/v3/review/internal/delegations"
 	"github.com/devpablocristo/nexus/v3/review/internal/audit"
 	nexusconfig "github.com/devpablocristo/nexus/v3/review/internal/config"
 	"github.com/devpablocristo/nexus/v3/review/internal/dashboard"
@@ -50,6 +52,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	idemStore := requests.NewPostgresIdempotencyStore(db)
 	learningRepo := learning.NewPostgresRepository(db)
 	configRepo := nexusconfig.NewPostgresRepository(db.Pool())
+	actionTypeRepo := actiontypes.NewPostgresRepository(db)
 
 	// Adapters
 	auditSink := requests.NewAuditSinkAdapter(auditRepo)
@@ -82,6 +85,10 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		},
 	}
 
+	actionTypeUC := actiontypes.NewUsecases(actionTypeRepo)
+	delegationRepo := delegations.NewPostgresRepository(db)
+	delegationUC := delegations.NewUsecases(delegationRepo)
+
 	reqUC := requests.NewUsecases(reqRepo, policyLister, approvalRepo, evaluator,
 		requests.WithIdempotencyStore(idemStore),
 		requests.WithAuditSink(auditSink),
@@ -91,6 +98,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		requests.WithShadowHitRecorder(policyRepo),
 		requests.WithExecutionStats(execStats),
 		requests.WithBreakGlassConfig(breakGlassCfg),
+		requests.WithActionTypeChecker(newActionTypeCheckerAdapter(actionTypeUC)),
+		requests.WithDelegationChecker(newDelegationCheckerAdapter(delegationUC)),
 	)
 	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).WithAuditSink(auditSink)
 	replayGetter := newReplayRequestGetter(reqRepo)
@@ -112,6 +121,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	learningHandler := learning.NewHandler(learningUC)
 	dashboardHandler := dashboard.NewHandler(reqRepo)
 	configHandler := nexusconfig.NewHandler(configUC)
+	actionTypeHandler := actiontypes.NewHandler(actionTypeUC)
+	delegationHandler := delegations.NewHandler(delegationUC)
 
 	// Router
 	mux := http.NewServeMux()
@@ -125,6 +136,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	learningHandler.Register(mux)
 	dashboardHandler.Register(mux)
 	configHandler.Register(mux)
+	actionTypeHandler.Register(mux)
+	delegationHandler.Register(mux)
 
 	// Auth middleware
 	authn, err := sharedapikey.NewAuthenticator(cfg.APIKeys)

@@ -29,6 +29,24 @@ type ShadowHitRecorder interface {
 	IncrementShadowHits(ctx context.Context, policyID uuid.UUID) error
 }
 
+// ActionTypeChecker verifica que un action_type existe y está habilitado
+type ActionTypeChecker interface {
+	GetByName(ctx context.Context, name string) (ActionTypeInfo, error)
+}
+
+// ActionTypeInfo contiene lo que Submit necesita de un action_type
+type ActionTypeInfo struct {
+	Name               string
+	RiskClass          string
+	RequiresBreakGlass bool
+	Enabled            bool
+}
+
+// DelegationChecker verifica si un agente tiene delegación para una acción
+type DelegationChecker interface {
+	CheckDelegation(ctx context.Context, agentID, actionType string) (bool, error)
+}
+
 // PolicyForEval contiene solo los campos necesarios para evaluación.
 type PolicyForEval struct {
 	ID           uuid.UUID
@@ -55,18 +73,20 @@ type BreakGlassConfig struct {
 }
 
 type Usecases struct {
-	reqRepo        Repository
-	policyRepo     PolicyLister
-	approvalRepo   approvalCreator
-	idemStore      IdempotencyStore
-	audit          AuditSink
-	evaluator      *PolicyEvaluator
-	riskConfig     RiskConfig
-	ai             AIContextualizer
-	approvalTTL    time.Duration
-	shadowHits     ShadowHitRecorder
-	execStats      ExecutionStatsStore
-	breakGlassCfg  BreakGlassConfig
+	reqRepo         Repository
+	policyRepo      PolicyLister
+	approvalRepo    approvalCreator
+	idemStore       IdempotencyStore
+	audit           AuditSink
+	evaluator       *PolicyEvaluator
+	riskConfig      RiskConfig
+	ai              AIContextualizer
+	approvalTTL     time.Duration
+	shadowHits      ShadowHitRecorder
+	execStats       ExecutionStatsStore
+	breakGlassCfg   BreakGlassConfig
+	actionTypes     ActionTypeChecker
+	delegations     DelegationChecker
 }
 
 // Option configura el constructor de Usecases (functional options pattern — Uber).
@@ -102,6 +122,14 @@ func WithExecutionStats(s ExecutionStatsStore) Option {
 
 func WithBreakGlassConfig(cfg BreakGlassConfig) Option {
 	return func(u *Usecases) { u.breakGlassCfg = cfg }
+}
+
+func WithActionTypeChecker(c ActionTypeChecker) Option {
+	return func(u *Usecases) { u.actionTypes = c }
+}
+
+func WithDelegationChecker(c DelegationChecker) Option {
+	return func(u *Usecases) { u.delegations = c }
 }
 
 // NewUsecases crea Usecases con los 3 repos obligatorios + evaluator, y opciones para el resto.
@@ -186,6 +214,27 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		req.Params = make(map[string]any)
 	}
 
+	// Validar action_type si el checker está configurado
+	if u.actionTypes != nil {
+		atInfo, atErr := u.actionTypes.GetByName(ctx, req.ActionType)
+		if atErr != nil {
+			return SubmitOutput{}, fmt.Errorf("unknown action_type: %s", req.ActionType)
+		}
+		if !atInfo.Enabled {
+			return SubmitOutput{}, fmt.Errorf("action_type %s is disabled", req.ActionType)
+		}
+	}
+
+	// Validar delegación si el checker está configurado
+	if u.delegations != nil {
+		allowed, delErr := u.delegations.CheckDelegation(ctx, req.RequesterID, req.ActionType)
+		if delErr != nil {
+			slog.Error("delegation check failed", "error", delErr, "requester_id", req.RequesterID)
+		} else if !allowed {
+			return SubmitOutput{}, fmt.Errorf("requester %s is not delegated for action %s", req.RequesterID, req.ActionType)
+		}
+	}
+
 	// Audit: best-effort, nunca falla la request
 	logAuditError(
 		u.audit.AppendEvent(ctx, req.ID, auditdomain.EventReceived, "requester", req.RequesterID,
@@ -197,15 +246,6 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 	policyList, err := u.policyRepo.ListActive(ctx)
 	if err != nil {
 		return SubmitOutput{}, fmt.Errorf("list active policies: %w", err)
-	}
-
-	// Obtener success rate del feedback loop (best-effort)
-	successRate := -1.0
-	if u.execStats != nil {
-		stats, statsErr := u.execStats.GetByActionType(ctx, req.ActionType)
-		if statsErr == nil {
-			successRate = stats.SuccessRate()
-		}
 	}
 
 	requestMap := requestToMap(req)
@@ -239,12 +279,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		}
 
 		matched = true
-		signals := RiskSignals{
-			ActionType: req.ActionType, TargetSystem: req.TargetSystem,
-			RequesterID: req.RequesterID, RequesterType: string(req.RequesterType),
-			CurrentHour: now.Hour(), SuccessRate: successRate,
-		}
-		req.RiskLevel, _ = TierRiskFromSignals(signals, u.riskConfig, p.RiskOverride)
+		req.RiskLevel = TierRisk(req.ActionType, p.RiskOverride, u.riskConfig)
 		dec, ok := DecideFromPolicy(p.Effect, req.RiskLevel)
 		if !ok {
 			continue
@@ -255,12 +290,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		break
 	}
 	if !matched {
-		signals := RiskSignals{
-			ActionType: req.ActionType, TargetSystem: req.TargetSystem,
-			RequesterID: req.RequesterID, RequesterType: string(req.RequesterType),
-			CurrentHour: now.Hour(), SuccessRate: successRate,
-		}
-		req.RiskLevel, _ = TierRiskFromSignals(signals, u.riskConfig, nil)
+		req.RiskLevel = TierRisk(req.ActionType, nil, u.riskConfig)
 		req.Decision = DefaultDecision(req.RiskLevel)
 		req.DecisionReason = "No policy matched; default for risk " + string(req.RiskLevel)
 	}

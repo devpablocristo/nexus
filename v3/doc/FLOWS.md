@@ -1,11 +1,29 @@
 # Nexus v3 — Flujos
 
-## 1. Auto-allow (sin policy match, riesgo bajo)
+## 0. Verificación previa (action type + delegación)
 
 ```
 Requester ──POST /v1/requests──▶ Nexus
                                     │
                                Validar + idempotencia
+                                    │
+                               ¿action_type registrado en action_types?
+                               ├── No → 403 FORBIDDEN ("unknown action type")
+                               │
+                               ¿requester tiene delegación vigente?
+                               ├── No → 403 FORBIDDEN ("agent not delegated")
+                               │
+                               Continuar con evaluación normal...
+```
+
+Ambas verificaciones se ejecutan antes de cualquier evaluación de policies o riesgo.
+
+## 1. Auto-allow (sin policy match, riesgo bajo)
+
+```
+Requester ──POST /v1/requests──▶ Nexus
+                                    │
+                               Validar + idempotencia + action_type + delegación
                                     │
                                Evaluar políticas CEL (ninguna matchea)
                                     │
@@ -254,4 +272,33 @@ POST /v1/requests/simulate/replay
    │
    └──▶ Retornar: cuántas habrían matcheado, con qué efecto,
          distribución por action_type/decision
+```
+
+## 13. Action types (ontología tipada)
+
+```
+CRUD: POST/GET/GET/{id}/PATCH/DELETE /v1/action-types
+   │
+   └──▶ Cada action type define: name, category, risk_class, schema, reversible, requires_break_glass
+   │
+   └──▶ 9 action types seeded en migración 0006
+   │
+   └──▶ Integración en Submit:
+         POST /v1/requests → ¿action_type registrado?
+         ├── Sí → continuar evaluación normal
+         └── No → 403 FORBIDDEN
+```
+
+## 14. Delegations (delegation graph)
+
+```
+CRUD: POST/GET/GET/{id}/PATCH/DELETE /v1/delegations
+   │
+   └──▶ Cada delegación define: owner → agent → allowed_action_types → allowed_resources
+   │    → purpose → max_risk_class → expires_at
+   │
+   └──▶ Integración en Submit:
+         POST /v1/requests → ¿requester tiene delegación vigente para este action_type?
+         ├── Sí (enabled=true, no expirada, action_type en allowed_action_types) → continuar
+         └── No → 403 FORBIDDEN
 ```
