@@ -57,6 +57,73 @@ type ReportResultRequest struct {
 	ErrorMessage string         `json:"error_message,omitempty"`
 }
 
+// AttestRequest es el body para registrar una attestation.
+type AttestRequest struct {
+	Status       string         `json:"status"`
+	ProviderRefs map[string]any `json:"provider_refs,omitempty"`
+	Signature    string         `json:"signature"`
+	Attester     string         `json:"attester"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+}
+
+// AttestResponse es la respuesta al registrar una attestation.
+type AttestResponse struct {
+	ID           string         `json:"id"`
+	RequestID    string         `json:"request_id"`
+	Status       string         `json:"status"`
+	ProviderRefs map[string]any `json:"provider_refs,omitempty"`
+	Signature    string         `json:"signature"`
+	Attester     string         `json:"attester"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+	CreatedAt    string         `json:"created_at"`
+}
+
+// BatchSimulateRequest es el body para simulación batch.
+type BatchSimulateRequest struct {
+	Requests []SubmitRequest `json:"requests"`
+}
+
+// BatchSimulateResponse contiene resultados agregados del batch.
+type BatchSimulateResponse struct {
+	Total           int                    `json:"total"`
+	Allowed         int                    `json:"allowed"`
+	Denied          int                    `json:"denied"`
+	RequireApproval int                    `json:"require_approval"`
+	ByRisk          map[string]int         `json:"by_risk"`
+	Results         []BatchSimulateItem    `json:"results"`
+}
+
+// BatchSimulateItem es un resultado individual del batch.
+type BatchSimulateItem struct {
+	ActionType     string  `json:"action_type"`
+	RequesterID    string  `json:"requester_id"`
+	TargetSystem   string  `json:"target_system"`
+	Decision       string  `json:"decision"`
+	RiskLevel      string  `json:"risk_level"`
+	DecisionReason string  `json:"decision_reason"`
+	PolicyMatched  *string `json:"policy_matched,omitempty"`
+}
+
+// ApprovalSimulateRequest es el body para simular aprobación/rechazo.
+type ApprovalSimulateRequest struct {
+	RequestID  string `json:"request_id"`
+	Action     string `json:"action"`
+	ApproverID string `json:"approver_id"`
+}
+
+// ApprovalSimulateResponse muestra el estado resultante simulado.
+type ApprovalSimulateResponse struct {
+	CurrentStatus     string `json:"current_status"`
+	SimulatedStatus   string `json:"simulated_status"`
+	BreakGlass        bool   `json:"break_glass"`
+	RequiredApprovals int    `json:"required_approvals"`
+	CurrentApprovals  int    `json:"current_approvals"`
+	AfterApprovals    int    `json:"after_approvals"`
+	WouldFinalize     bool   `json:"would_finalize"`
+	AlreadyDecided    bool   `json:"already_decided"`
+	Reason            string `json:"reason"`
+}
+
 type RequestResponse struct {
 	ID             string         `json:"id"`
 	RequesterType  string         `json:"requester_type"`

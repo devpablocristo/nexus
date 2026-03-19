@@ -39,6 +39,9 @@ Registro de qué features se trajeron de versiones anteriores para no re-evaluar
 |---------|--------|-----------|--------|
 | **Ontología tipada de acciones** | Roadmap unicornio | Tabla `action_types` con name, category, risk_class (low/medium/high/critical), reversible, requires_break_glass, schema (JSON). 9 action types seeded. CRUD completo: POST/GET/GET/{id}/PATCH/DELETE /v1/action-types. Integrada en Submit: action_type desconocido retorna 403 FORBIDDEN. | ✅ Implementado |
 | **Delegation graph** | Roadmap unicornio | Tabla `delegations`: owner → agent → allowed_action_types → allowed_resources → purpose → max_risk_class → expires_at. CRUD completo: POST/GET/GET/{id}/PATCH/DELETE /v1/delegations. Integrada en Submit: agente sin delegación vigente retorna 403 FORBIDDEN. | ✅ Implementado |
+| **Evidence packs** | Roadmap unicornio | Módulo `evidence/`: genera JSON firmado (HMAC-SHA256) con toda la cadena de una request (request, policy_evaluation, approval, execution, attestation, timeline). Endpoint: `GET /v1/requests/{id}/evidence`. Signing key configurable via `NEXUS_SIGNING_KEY`. Botón de descarga en console. | ✅ Implementado |
+| **Outcome attestation** | Roadmap unicornio | Tabla `attestations`: prueba verificable del executor (status, provider_refs, signature, attester, metadata). Endpoints: `POST /v1/requests/{id}/attest` + `GET /v1/requests/{id}/attestation`. Integrada en evidence packs. Nuevo audit event `attested`. | ✅ Implementado |
+| **Sandbox avanzado** | Roadmap unicornio | 2 nuevos modos: Batch Test (`POST /v1/requests/simulate/batch`, max 100, resultados agregados) + Approval Sim (`POST /v1/requests/simulate/approval`, simula approve/reject con quorum break-glass). Console: 5 tabs (simulate, batch, approval, shadow, replay). | ✅ Implementado |
 
 ## Pendientes de migración (post-MVP)
 
@@ -49,14 +52,12 @@ Registro de qué features se trajeron de versiones anteriores para no re-evaluar
 | **EWMA anomaly detection** | v1 `sentry/worker.go` | Baja | Detección de patrones anómalos en tiempo real |
 | **5-tier decisions** | v2 `evaluator.go` | Baja | allow/enhanced_log/additional_auth/require_approval/deny |
 
-## Roadmap MVP — Sandbox avanzado
+## Roadmap Sandbox — Pendientes post-MVP
 
-Features para el MVP del Sandbox (entorno de pruebas completo):
-
-| Feature | Qué hace | Por qué |
-|---------|----------|---------|
-| **Simular aprobaciones/rechazos** | Ver qué pasa en el sistema si apruebo/rechazo una request pendiente, sin ejecutar | El aprobador necesita ver consecuencias antes de decidir |
-| **Proxy controlado al producto** | Nexus envía la request al producto real, captura la respuesta, la muestra al admin | Probar la integración real sin comprometerse |
-| **Evaluación de respuestas** | Analizar la respuesta del producto (200, 500, timeout) y sugerir ajustes a las reglas | Cerrar el loop: si el producto falla → endurecer reglas automáticamente |
-| **Escenarios batch** | Definir un conjunto de requests de prueba, ejecutarlas todas, ver resultados agregados | Regression testing de policies |
-| **Snapshot de policies** | Guardar un estado de las policies y comparar el impacto entre versiones | "¿Mejoraron o empeoraron las reglas esta semana?" |
+| Feature | Qué hace | Por qué | Estado |
+|---------|----------|---------|----|
+| **Simular aprobaciones/rechazos** | Ver qué pasa si apruebo/rechazo una request pendiente | El aprobador necesita ver consecuencias antes de decidir | ✅ Implementado |
+| **Escenarios batch** | Ejecutar múltiples simulaciones, ver resultados agregados | Regression testing de policies | ✅ Implementado |
+| **Proxy controlado al producto** | Nexus envía la request al producto real, captura la respuesta | Probar la integración real sin comprometerse | Pendiente (Q3) |
+| **Evaluación de respuestas** | Analizar la respuesta del producto y sugerir ajustes | Cerrar el loop: si falla → endurecer reglas | Pendiente (Q3) |
+| **Snapshot de policies** | Guardar estado de policies y comparar impacto entre versiones | "¿Mejoraron las reglas esta semana?" | Pendiente (Q3) |

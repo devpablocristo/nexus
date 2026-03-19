@@ -941,3 +941,485 @@ func TestSubmitRiskLevels(t *testing.T) {
 		})
 	}
 }
+
+// --- Fakes adicionales para Simulate, BatchSimulate, SimulateApproval, Attest ---
+
+type fakeAttestationStore struct {
+	mu      sync.RWMutex
+	byReqID map[uuid.UUID]requestdomain.Attestation
+}
+
+func newFakeAttestationStore() *fakeAttestationStore {
+	return &fakeAttestationStore{byReqID: make(map[uuid.UUID]requestdomain.Attestation)}
+}
+
+func (s *fakeAttestationStore) Create(_ context.Context, a requestdomain.Attestation) (requestdomain.Attestation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now().UTC()
+	}
+	s.byReqID[a.RequestID] = a
+	return a, nil
+}
+
+func (s *fakeAttestationStore) GetByRequestID(_ context.Context, requestID uuid.UUID) (requestdomain.Attestation, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	a, ok := s.byReqID[requestID]
+	if !ok {
+		return requestdomain.Attestation{}, requests.ErrAttestationNotFound
+	}
+	return a, nil
+}
+
+// setupFullMux crea un mux con fakes completos: attestation store + approval getter.
+func setupFullMux() *http.ServeMux {
+	return setupFullMuxWithPolicies(nil)
+}
+
+// setupFullMuxWithPolicies crea un mux con attestation store, approval getter y las políticas indicadas.
+func setupFullMuxWithPolicies(policies []requests.PolicyForEval) *http.ServeMux {
+	reqRepo := newFakeRequestRepo()
+	approvalRepo := newFakeApprovalRepo()
+	auditSink := requests.NewAuditSinkAdapter(&fakeAuditRepo{})
+	evaluator := requests.NewPolicyEvaluator()
+	riskConfig := requests.DefaultRiskConfig()
+	ai := requests.NewStubContextualizer()
+	attestStore := newFakeAttestationStore()
+
+	uc := requests.NewUsecases(reqRepo, &fakePolicyLister{policies: policies}, approvalRepo, evaluator,
+		requests.WithIdempotencyStore(newFakeIdemStore()),
+		requests.WithAuditSink(auditSink),
+		requests.WithRiskConfig(riskConfig),
+		requests.WithAI(ai),
+		requests.WithApprovalTTL(time.Hour),
+		requests.WithAttestationStore(attestStore),
+		requests.WithApprovalGetter(approvalRepo),
+	)
+	mux := http.NewServeMux()
+	requests.NewHandler(uc).Register(mux)
+	return mux
+}
+
+// --- Tests de Simulate ---
+
+func TestSimulateHappyPath(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	// Simular alert.escalate (low risk → allow)
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate",
+		`{"requester_type":"agent","requester_id":"ops-bot","action_type":"alert.escalate"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp requestdto.SimulateResponse
+	decJSON(t, rec, &resp)
+	if resp.Decision != "allow" {
+		t.Fatalf("esperaba decision allow, obtuvo %s", resp.Decision)
+	}
+	if resp.RiskLevel == "" {
+		t.Fatal("esperaba risk_level no vacio")
+	}
+	if resp.Status != "allowed" {
+		t.Fatalf("esperaba status allowed, obtuvo %s", resp.Status)
+	}
+	if resp.DecisionReason == "" {
+		t.Fatal("esperaba decision_reason no vacio")
+	}
+}
+
+func TestSimulateValidation(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	tests := []struct {
+		name   string
+		body   string
+		status int
+	}{
+		{"falta action_type", `{"requester_type":"agent","requester_id":"bot"}`, http.StatusBadRequest},
+		{"json invalido", `{bad`, http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate", tt.body)
+			if rec.Code != tt.status {
+				t.Fatalf("esperaba %d, obtuvo %d: %s", tt.status, rec.Code, rec.Body.String())
+			}
+			var errResp struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			}
+			decJSON(t, rec, &errResp)
+			if errResp.Code != "VALIDATION" {
+				t.Fatalf("esperaba code VALIDATION, obtuvo %s", errResp.Code)
+			}
+		})
+	}
+}
+
+func TestSimulateWithPolicy(t *testing.T) {
+	t.Parallel()
+
+	// Política que deniega deploy.execute
+	actionType := "deploy.execute"
+	policies := []requests.PolicyForEval{
+		{
+			ID:         uuid.New(),
+			Name:       "deny-deploys",
+			ActionType: &actionType,
+			Expression: "true",
+			Effect:     "deny",
+		},
+	}
+	mux := setupRequestMuxWithPolicies(policies)
+
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate",
+		`{"requester_type":"agent","requester_id":"ci-bot","action_type":"deploy.execute"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp requestdto.SimulateResponse
+	decJSON(t, rec, &resp)
+	if resp.Decision != "deny" {
+		t.Fatalf("esperaba decision deny, obtuvo %s", resp.Decision)
+	}
+	if resp.Status != "denied" {
+		t.Fatalf("esperaba status denied, obtuvo %s", resp.Status)
+	}
+	if resp.PolicyMatched == nil {
+		t.Fatal("esperaba policy_matched no nil")
+	}
+	if *resp.PolicyMatched != "deny-deploys" {
+		t.Fatalf("esperaba policy_matched deny-deploys, obtuvo %s", *resp.PolicyMatched)
+	}
+}
+
+// --- Tests de BatchSimulate ---
+
+func TestBatchSimulateHappyPath(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	body := `{
+		"requests": [
+			{"requester_type":"agent","requester_id":"bot-1","action_type":"alert.escalate"},
+			{"requester_type":"agent","requester_id":"bot-2","action_type":"alert.silence"},
+			{"requester_type":"human","requester_id":"user@co","action_type":"incident.resolve"}
+		]
+	}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate/batch", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp requestdto.BatchSimulateResponse
+	decJSON(t, rec, &resp)
+	if resp.Total != 3 {
+		t.Fatalf("esperaba total 3, obtuvo %d", resp.Total)
+	}
+	if len(resp.Results) != 3 {
+		t.Fatalf("esperaba 3 results, obtuvo %d", len(resp.Results))
+	}
+	// Verificar que los contadores suman el total
+	sum := resp.Allowed + resp.Denied + resp.RequireApproval
+	if sum != resp.Total {
+		t.Fatalf("contadores no suman: allowed=%d + denied=%d + require_approval=%d != total=%d",
+			resp.Allowed, resp.Denied, resp.RequireApproval, resp.Total)
+	}
+	// alert.silence es high risk → require_approval
+	if resp.RequireApproval < 1 {
+		t.Fatal("esperaba al menos 1 require_approval (alert.silence)")
+	}
+	// by_risk debe tener al menos una entrada
+	if len(resp.ByRisk) == 0 {
+		t.Fatal("esperaba by_risk con al menos una entrada")
+	}
+}
+
+func TestBatchSimulateEmpty(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate/batch", `{"requests":[]}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("esperaba 400, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	decJSON(t, rec, &errResp)
+	if errResp.Code != "VALIDATION" {
+		t.Fatalf("esperaba code VALIDATION, obtuvo %s", errResp.Code)
+	}
+}
+
+func TestBatchSimulateValidation(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate/batch", `{bad json`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("esperaba 400, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	decJSON(t, rec, &errResp)
+	if errResp.Code != "VALIDATION" {
+		t.Fatalf("esperaba code VALIDATION, obtuvo %s", errResp.Code)
+	}
+}
+
+// --- Tests de SimulateApproval ---
+
+func TestSimulateApprovalReject(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	// Crear request que requiera aprobación (alert.silence → high risk → pending_approval)
+	createRec := doReq(t, mux, http.MethodPost, "/v1/requests",
+		`{"requester_type":"agent","requester_id":"ops-bot","action_type":"alert.silence","target_resource":"CPU"}`)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("esperaba 201, obtuvo %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+	if submitResp.Status != "pending_approval" {
+		t.Fatalf("esperaba status pending_approval, obtuvo %s", submitResp.Status)
+	}
+
+	// Simular rechazo
+	simBody := fmt.Sprintf(`{"request_id":"%s","action":"reject","approver_id":"admin@co"}`, submitResp.RequestID)
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate/approval", simBody)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var simResp requestdto.ApprovalSimulateResponse
+	decJSON(t, rec, &simResp)
+	if simResp.CurrentStatus != "pending_approval" {
+		t.Fatalf("esperaba current_status pending_approval, obtuvo %s", simResp.CurrentStatus)
+	}
+	if !simResp.WouldFinalize {
+		t.Fatal("esperaba would_finalize=true para reject")
+	}
+	if simResp.SimulatedStatus != "rejected" {
+		t.Fatalf("esperaba simulated_status rejected, obtuvo %s", simResp.SimulatedStatus)
+	}
+}
+
+func TestSimulateApprovalNotPending(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	// Crear request allowed (alert.escalate → low risk → allowed)
+	createRec := doReq(t, mux, http.MethodPost, "/v1/requests",
+		`{"requester_type":"agent","requester_id":"bot","action_type":"alert.escalate"}`)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("esperaba 201, obtuvo %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+
+	// Simular aprobación sobre request que ya está allowed (no pending_approval)
+	simBody := fmt.Sprintf(`{"request_id":"%s","action":"approve","approver_id":"admin@co"}`, submitResp.RequestID)
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate/approval", simBody)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var simResp requestdto.ApprovalSimulateResponse
+	decJSON(t, rec, &simResp)
+	if simResp.Reason == "" {
+		t.Fatal("esperaba reason no vacio indicando que no esta pending")
+	}
+	// El status no debería cambiar
+	if simResp.CurrentStatus != simResp.SimulatedStatus {
+		t.Fatalf("esperaba current_status == simulated_status para request no pending, obtuvo %s vs %s",
+			simResp.CurrentStatus, simResp.SimulatedStatus)
+	}
+}
+
+func TestSimulateApprovalValidation(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	tests := []struct {
+		name   string
+		body   string
+		status int
+	}{
+		{"json invalido", `{bad`, http.StatusBadRequest},
+		{"falta request_id", `{"action":"approve","approver_id":"admin"}`, http.StatusBadRequest},
+		{"falta action", `{"request_id":"00000000-0000-0000-0000-000000000001","approver_id":"admin"}`, http.StatusBadRequest},
+		{"falta approver_id", `{"request_id":"00000000-0000-0000-0000-000000000001","action":"approve"}`, http.StatusBadRequest},
+		{"action invalida", `{"request_id":"00000000-0000-0000-0000-000000000001","action":"cancel","approver_id":"admin"}`, http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rec := doReq(t, mux, http.MethodPost, "/v1/requests/simulate/approval", tt.body)
+			if rec.Code != tt.status {
+				t.Fatalf("esperaba %d, obtuvo %d: %s", tt.status, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// --- Tests de Attest ---
+
+func TestAttestHappyPath(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	// 1. Crear request (allowed)
+	createRec := doReq(t, mux, http.MethodPost, "/v1/requests",
+		`{"requester_type":"agent","requester_id":"bot","action_type":"alert.escalate"}`)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("esperaba 201, obtuvo %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+
+	// 2. Reportar resultado exitoso → status ejecutado
+	resultRec := doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/result",
+		`{"success":true,"result":{"output":"done"},"duration_ms":100}`)
+	if resultRec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuvo %d: %s", resultRec.Code, resultRec.Body.String())
+	}
+
+	// 3. Attestar
+	attestBody := `{"status":"success","provider_refs":{"tx_id":"abc123"},"signature":"sig-hash-xyz","attester":"pep:treasury","metadata":{"env":"prod"}}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/attest", attestBody)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("esperaba 201, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var attestResp requestdto.AttestResponse
+	decJSON(t, rec, &attestResp)
+	if attestResp.ID == "" {
+		t.Fatal("esperaba id de attestation no vacio")
+	}
+	if attestResp.RequestID != submitResp.RequestID {
+		t.Fatalf("esperaba request_id %s, obtuvo %s", submitResp.RequestID, attestResp.RequestID)
+	}
+	if attestResp.Status != "success" {
+		t.Fatalf("esperaba status success, obtuvo %s", attestResp.Status)
+	}
+	if attestResp.Attester != "pep:treasury" {
+		t.Fatalf("esperaba attester pep:treasury, obtuvo %s", attestResp.Attester)
+	}
+	if attestResp.Signature != "sig-hash-xyz" {
+		t.Fatalf("esperaba signature sig-hash-xyz, obtuvo %s", attestResp.Signature)
+	}
+	if attestResp.CreatedAt == "" {
+		t.Fatal("esperaba created_at no vacio")
+	}
+
+	// 4. Verificar con GET attestation
+	getRec := doReq(t, mux, http.MethodGet, "/v1/requests/"+submitResp.RequestID+"/attestation", "")
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("esperaba 200, obtuvo %d: %s", getRec.Code, getRec.Body.String())
+	}
+	var getResp requestdto.AttestResponse
+	decJSON(t, getRec, &getResp)
+	if getResp.ID != attestResp.ID {
+		t.Fatalf("esperaba mismo id, obtuvo %s vs %s", getResp.ID, attestResp.ID)
+	}
+}
+
+func TestAttestNotExecuted(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	// Crear request allowed (sin reportar resultado — status "allowed", no "executed")
+	createRec := doReq(t, mux, http.MethodPost, "/v1/requests",
+		`{"requester_type":"agent","requester_id":"bot","action_type":"alert.escalate"}`)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("esperaba 201, obtuvo %d: %s", createRec.Code, createRec.Body.String())
+	}
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+
+	// Intentar attestar sin haber ejecutado
+	attestBody := `{"status":"success","signature":"sig","attester":"pep:test"}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/attest", attestBody)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("esperaba 409, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	decJSON(t, rec, &errResp)
+	if errResp.Code != "CONFLICT" {
+		t.Fatalf("esperaba code CONFLICT, obtuvo %s", errResp.Code)
+	}
+}
+
+func TestAttestValidation(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	// Crear y ejecutar una request para tener un ID válido
+	createRec := doReq(t, mux, http.MethodPost, "/v1/requests",
+		`{"requester_type":"agent","requester_id":"bot","action_type":"alert.escalate"}`)
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+	doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/result",
+		`{"success":true,"result":{"ok":true}}`)
+
+	tests := []struct {
+		name   string
+		body   string
+		status int
+	}{
+		{"json invalido", `{bad`, http.StatusBadRequest},
+		{"falta status", `{"signature":"sig","attester":"pep"}`, http.StatusBadRequest},
+		{"falta signature", `{"status":"success","attester":"pep"}`, http.StatusBadRequest},
+		{"falta attester", `{"status":"success","signature":"sig"}`, http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			rec := doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/attest", tt.body)
+			if rec.Code != tt.status {
+				t.Fatalf("esperaba %d, obtuvo %d: %s", tt.status, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAttestNotFound(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	attestBody := `{"status":"success","signature":"sig","attester":"pep:test"}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/00000000-0000-0000-0000-000000000000/attest", attestBody)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("esperaba 404, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	decJSON(t, rec, &errResp)
+	if errResp.Code != "NOT_FOUND" {
+		t.Fatalf("esperaba code NOT_FOUND, obtuvo %s", errResp.Code)
+	}
+}

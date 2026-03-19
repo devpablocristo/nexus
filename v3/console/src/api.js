@@ -45,7 +45,13 @@ export const simulateRequest = (data) =>
   request('/v1/requests/simulate', { method: 'POST', body: JSON.stringify(data) })
 export const replaySimulate = (data) =>
   request('/v1/requests/simulate/replay', { method: 'POST', body: JSON.stringify(data) })
+export const batchSimulate = (data) =>
+  request('/v1/requests/simulate/batch', { method: 'POST', body: JSON.stringify(data) })
+export const simulateApproval = (data) =>
+  request('/v1/requests/simulate/approval', { method: 'POST', body: JSON.stringify(data) })
 export const fetchReplay = (id) => request(`/v1/requests/${id}/replay`)
+export const fetchEvidence = (id) => request(`/v1/requests/${id}/evidence`)
+export const fetchAttestation = (id) => request(`/v1/requests/${id}/attestation`)
 
 // Learning
 export const fetchProposals = () => request('/v1/learning/proposals')

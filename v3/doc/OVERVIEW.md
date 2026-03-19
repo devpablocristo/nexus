@@ -190,7 +190,7 @@ La interfaz web tiene 9 pestañas:
 | **Policies** | Crear, editar, archivar, eliminar reglas. Soporte shadow mode (evalúa sin actuar) con contador de hits y botón "Promote to enforced" |
 | **Actions** | CRUD de action types: nombre, categoría, clase de riesgo, reversible, break-glass, schema JSON. 9 tipos pre-configurados |
 | **Agents** | CRUD de delegaciones: owner → agente → action types permitidos → recursos → propósito → riesgo máximo → expiración |
-| **Sandbox** | Tres sub-tabs: Simulate (dry-run con templates), Shadow Monitor (seguimiento de policies en modo shadow), Replay Test (probar expresión CEL contra historial) |
+| **Sandbox** | 5 modos: Simulate (dry-run), Batch Test (regression testing), Approval Sim (simular approve/reject), Shadow Monitor (policies en modo shadow), Replay Test (CEL contra historial) |
 | **Learning** | Propuestas automáticas de nuevas reglas |
 | **Dashboard** | Métricas: cuántas acciones, cuántas aprobadas, cuántas denegadas |
 | **Config** | Configuración de riesgo, aprobaciones, learning, IA y general (5 secciones expandibles) |
@@ -215,16 +215,63 @@ Ejemplo: *"Borrar tabla en producción requiere 3 aprobadores. Si uno rechaza, s
 
 ---
 
+## Evidence packs (evidencia exportable)
+
+Nexus puede generar un **paquete de evidencia** completo y firmado para cualquier request. El evidence pack incluye toda la cadena:
+
+- **Request**: quién pidió qué, cuándo, con qué parámetros
+- **Policy evaluation**: qué reglas se evaluaron y cuál aplicó
+- **Approval**: quién aprobó/rechazó, cuándo, con qué nota
+- **Execution**: resultado reportado (éxito/fallo, duración)
+- **Attestation**: prueba verificable del executor (ver siguiente sección)
+- **Timeline**: todos los eventos de audit ordenados cronológicamente
+- **Firma HMAC-SHA256**: garantiza integridad del pack
+
+Endpoint: `GET /v1/requests/{id}/evidence`. También disponible como botón de descarga en la consola.
+
+Es lo que un auditor o regulador necesita ver: no solo "tenemos logs", sino **evidencia verificable y estructurada**.
+
+---
+
+## Outcome attestation (prueba de ejecución)
+
+Después de que una acción se ejecuta, el executor (PEP, gateway, o servicio) puede **attestar** qué hizo realmente. No es solo "success: true" — es una prueba verificable con:
+
+- **Status**: qué pasó (success, failure, partial)
+- **Provider refs**: IDs externos que vinculan al registro real (ej: `{"tx_id": "bank_tx_555"}`)
+- **Signature**: firma del executor
+- **Attester**: identidad de quién attesta (ej: `pep:treasury_gateway`)
+- **Metadata**: información adicional del executor
+
+Endpoints: `POST /v1/requests/{id}/attest` + `GET /v1/requests/{id}/attestation`
+
+Solo requests con status `executed` o `failed` pueden ser attestadas. La attestation se incluye automáticamente en los evidence packs.
+
+---
+
 ## Simular antes de actuar
 
-El modo simulación permite enviar una request de prueba ("dry-run"). Nexus la evalúa exactamente igual que una real, pero no la persiste ni la envía a aprobación. El resultado muestra:
+El **Sandbox** ofrece 5 modos de simulación:
+
+### Simulate (dry-run)
+Enviar una request de prueba. Nexus la evalúa exactamente igual que una real, pero no la persiste. El resultado muestra:
 
 - **Decisión**: qué haría Nexus (aprobar, denegar, pedir aprobación)
 - **Factores de riesgo**: cuáles se activaron y por qué
 - **Amplificación**: si hay combinaciones sospechosas que potenciaron el riesgo
 - **Score final**: el puntaje numérico y el nivel resultante
 
-Esto permite validar reglas, probar escenarios, y entender el comportamiento del motor de decisión sin efectos secundarios.
+### Batch Test (regression testing)
+Definir un conjunto de requests de prueba (hasta 100) y ejecutarlas todas a la vez. Nexus devuelve resultados agregados: cuántas permitidas, denegadas, requieren aprobación, desglose por nivel de riesgo. Ideal para regression testing de policies.
+
+### Approval Simulation
+Simular qué pasa si apruebo o rechazo una request pendiente, sin ejecutarlo. Muestra el resultado esperado incluyendo quorum de break-glass y decisiones parciales previas.
+
+### Shadow Monitor
+Seguimiento en tiempo real de policies en modo shadow: cuántos hits acumulan, qué requests afectarían, con botón para promover a enforced.
+
+### Replay Test
+Probar una expresión CEL propuesta contra el historial real de requests. Muestra cuántas serían afectadas y cómo cambiaría el resultado.
 
 ---
 
@@ -264,9 +311,11 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
    - Si es break-glass → requiere N aprobadores (un rechazo cancela todo)
    - El aprobador decide (con confirmación obligatoria)
 9. El requester ejecuta y reporta resultado (éxito/fallo)
-10. El resultado retroalimenta el factor de éxito → mejora futuras evaluaciones
-11. Todo queda registrado paso a paso
-12. Con el tiempo, Nexus propone nuevas reglas basadas en lo que los humanos aprobaron
+10. El executor attesta qué hizo realmente (firma + refs del provider)
+11. El resultado retroalimenta el factor de éxito → mejora futuras evaluaciones
+12. Todo queda registrado paso a paso
+13. Se puede exportar un evidence pack firmado con toda la cadena
+14. Con el tiempo, Nexus propone nuevas reglas basadas en lo que los humanos aprobaron
 ```
 
 ---
@@ -286,8 +335,8 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 
 ## Métricas clave del MVP (Q2)
 
-- **40+ endpoints** de API funcionando
-- **11 módulos** de backend (requests, policies, approvals, audit, learning, dashboard, config, shared, actiontypes, delegations + execution_stats en requests)
+- **45+ endpoints** de API funcionando
+- **12 módulos** de backend (requests, policies, approvals, audit, learning, dashboard, config, shared, actiontypes, delegations, evidence + execution_stats/attestation en requests)
 - **9 pestañas** en la consola web (Inbox, Requests, Policies, Actions, Agents, Sandbox, Learning, Dashboard, Config)
 - **3 containers** Docker (backend, frontend, base de datos)
 - **9 migraciones** de base de datos
@@ -296,9 +345,11 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 - **Cascade risk scoring** con 6 factores y amplificación multiplicativa
 - **Ontología tipada** — action types registrados con schema, riesgo y metadata. Acción desconocida = 403
 - **Delegation graph** — owner delega a agente con scope y expiración. Agente sin delegación = 403
+- **Evidence packs** — JSON firmado (HMAC-SHA256) exportable con toda la cadena de evidencia
+- **Outcome attestation** — prueba verificable del executor con signature y provider refs
 - **Feedback loop** — resultados de ejecución retroalimentan el scoring de riesgo
 - **Break-glass** — aprobación multi-aprobador para operaciones críticas
-- **Sandbox** — simulate (dry-run) + shadow monitor + replay test
+- **Sandbox** — 5 modos: simulate, batch test, approval sim, shadow monitor, replay test
 - **Shadow policies** — evalúan sin actuar, con contador de hits y promoción a enforced
 
 ---
@@ -308,7 +359,6 @@ Los cambios se aplican inmediatamente. Se puede restaurar la configuración por 
 | Fase | Estado | Qué incluye |
 |------|--------|------------|
 | **PoC** | ✅ Completo | Motor de decisión, reglas CEL, inbox con IA, replay, learning, consola web |
-| **MVP (Q2)** | ✅ Completo | Ontología tipada de acciones, delegation graph, integración en Submit (403 para desconocidos/no delegados), 9 tabs en consola |
-| **Evidence + Attestation** | Próximo | Evidence packs exportables, outcome attestation firmado |
-| **Enforcement (Q3)** | Futuro | Execution leases (JWT), PEP/SDK Go, integración vertical #1 |
+| **MVP (Q2)** | ✅ Completo | Ontología tipada, delegation graph, evidence packs, outcome attestation, sandbox avanzado (5 modos), tests 50%+ |
+| **Enforcement (Q3)** | Próximo | Execution leases (JWT), PEP/SDK Go, integración vertical #1 |
 | **Enterprise (Q4)** | Futuro | Multi-tenant, compliance packs, self-hosted |

@@ -27,6 +27,7 @@ services:
       NEXUS_API_KEYS: "admin=${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key},prometheus=${NEXUS_REVIEW_PROMETHEUS_API_KEY:-nexus-review-prometheus-dev-key}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       APPROVAL_DEFAULT_TTL: "${NEXUS_REVIEW_APPROVAL_TTL:-3600}"
+      NEXUS_SIGNING_KEY: "${NEXUS_SIGNING_KEY:-nexus-dev-signing-key-change-in-production}"
     ports:
       - "${NEXUS_REVIEW_PORT:-18084}:8080"
     depends_on:

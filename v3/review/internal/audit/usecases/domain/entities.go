@@ -29,4 +29,5 @@ const (
 	EventExecuted       = "executed"
 	EventExecutionFailed = "execution_failed"
 	EventCancelled      = "cancelled"
+	EventAttested       = "attested"
 )

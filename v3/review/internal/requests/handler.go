@@ -24,6 +24,10 @@ type requestUsecase interface {
 	GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Request, error)
 	List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error)
 	ReportResult(ctx context.Context, requestID uuid.UUID, in ReportResultInput) error
+	Attest(ctx context.Context, requestID uuid.UUID, in AttestInput) (requestdomain.Attestation, error)
+	GetAttestation(ctx context.Context, requestID uuid.UUID) (requestdomain.Attestation, error)
+	BatchSimulate(ctx context.Context, in BatchSimulateInput) (BatchSimulateOutput, error)
+	SimulateApproval(ctx context.Context, in ApprovalSimulateInput) (ApprovalSimulateOutput, error)
 }
 
 type Handler struct {
@@ -41,6 +45,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/requests", h.list)
 	mux.HandleFunc("GET /v1/requests/{id}", h.getByID)
 	mux.HandleFunc("POST /v1/requests/{id}/result", h.reportResult)
+	mux.HandleFunc("POST /v1/requests/{id}/attest", h.attest)
+	mux.HandleFunc("GET /v1/requests/{id}/attestation", h.getAttestation)
+	mux.HandleFunc("POST /v1/requests/simulate/batch", h.batchSimulate)
+	mux.HandleFunc("POST /v1/requests/simulate/approval", h.simulateApproval)
 }
 
 func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
@@ -233,6 +241,182 @@ func (h *Handler) reportResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) attest(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	var body requestdto.AttestRequest
+	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	if body.Status == "" || body.Attester == "" || body.Signature == "" {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "status, attester and signature are required")
+		return
+	}
+
+	attestation, err := h.uc.Attest(r.Context(), id, AttestInput{
+		Status:       body.Status,
+		ProviderRefs: body.ProviderRefs,
+		Signature:    body.Signature,
+		Attester:     body.Attester,
+		Metadata:     body.Metadata,
+	})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+			return
+		}
+		if strings.Contains(err.Error(), "status must be") {
+			shared.WriteError(w, http.StatusConflict, "CONFLICT", "request must be executed or failed to attest")
+			return
+		}
+		shared.WriteInternalError(w, err, "attest failed")
+		return
+	}
+
+	sharedhandlers.WriteJSON(w, http.StatusCreated, toAttestResponse(attestation))
+}
+
+func (h *Handler) getAttestation(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	attestation, err := h.uc.GetAttestation(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrAttestationNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "attestation not found")
+			return
+		}
+		shared.WriteInternalError(w, err, "get attestation failed")
+		return
+	}
+	sharedhandlers.WriteJSON(w, http.StatusOK, toAttestResponse(attestation))
+}
+
+func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
+	var body requestdto.BatchSimulateRequest
+	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	if len(body.Requests) == 0 {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "requests array is required")
+		return
+	}
+	if len(body.Requests) > 100 {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "max 100 requests per batch")
+		return
+	}
+
+	inputs := make([]SubmitInput, 0, len(body.Requests))
+	for _, req := range body.Requests {
+		inputs = append(inputs, SubmitInput{
+			RequesterType:  req.RequesterType,
+			RequesterID:    req.RequesterID,
+			RequesterName:  req.RequesterName,
+			ActionType:     req.ActionType,
+			TargetSystem:   req.TargetSystem,
+			TargetResource: req.TargetResource,
+			Params:         req.Params,
+			Reason:         req.Reason,
+			Context:        req.Context,
+		})
+	}
+
+	out, err := h.uc.BatchSimulate(r.Context(), BatchSimulateInput{Requests: inputs})
+	if err != nil {
+		shared.WriteInternalError(w, err, "batch simulate failed")
+		return
+	}
+
+	resp := requestdto.BatchSimulateResponse{
+		Total:           out.Total,
+		Allowed:         out.Allowed,
+		Denied:          out.Denied,
+		RequireApproval: out.RequireApproval,
+		ByRisk:          out.ByRisk,
+		Results:         make([]requestdto.BatchSimulateItem, 0, len(out.Results)),
+	}
+	for _, item := range out.Results {
+		resp.Results = append(resp.Results, requestdto.BatchSimulateItem{
+			ActionType:     item.ActionType,
+			RequesterID:    item.RequesterID,
+			TargetSystem:   item.TargetSystem,
+			Decision:       item.Decision,
+			RiskLevel:      item.RiskLevel,
+			DecisionReason: item.DecisionReason,
+			PolicyMatched:  item.PolicyMatched,
+		})
+	}
+	sharedhandlers.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) simulateApproval(w http.ResponseWriter, r *http.Request) {
+	var body requestdto.ApprovalSimulateRequest
+	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	if body.RequestID == "" || body.Action == "" || body.ApproverID == "" {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "request_id, action and approver_id are required")
+		return
+	}
+	if body.Action != "approve" && body.Action != "reject" {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "action must be approve or reject")
+		return
+	}
+
+	reqID, err := uuid.Parse(body.RequestID)
+	if err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid request_id")
+		return
+	}
+
+	out, err := h.uc.SimulateApproval(r.Context(), ApprovalSimulateInput{
+		RequestID:  reqID,
+		Action:     body.Action,
+		ApproverID: body.ApproverID,
+	})
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+			return
+		}
+		shared.WriteInternalError(w, err, "simulate approval failed")
+		return
+	}
+
+	sharedhandlers.WriteJSON(w, http.StatusOK, requestdto.ApprovalSimulateResponse{
+		CurrentStatus:     out.CurrentStatus,
+		SimulatedStatus:   out.SimulatedStatus,
+		BreakGlass:        out.BreakGlass,
+		RequiredApprovals: out.RequiredApprovals,
+		CurrentApprovals:  out.CurrentApprovals,
+		AfterApprovals:    out.AfterApprovals,
+		WouldFinalize:     out.WouldFinalize,
+		AlreadyDecided:    out.AlreadyDecided,
+		Reason:            out.Reason,
+	})
+}
+
+func toAttestResponse(a requestdomain.Attestation) requestdto.AttestResponse {
+	return requestdto.AttestResponse{
+		ID:           a.ID.String(),
+		RequestID:    a.RequestID.String(),
+		Status:       a.Status,
+		ProviderRefs: a.ProviderRefs,
+		Signature:    a.Signature,
+		Attester:     a.Attester,
+		Metadata:     a.Metadata,
+		CreatedAt:    a.CreatedAt.Format(time.RFC3339),
+	}
 }
 
 // --- Helpers ---

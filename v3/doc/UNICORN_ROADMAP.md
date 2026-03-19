@@ -24,15 +24,18 @@ La aprobación es un subproducto. El producto es **autoridad efímera + evidenci
 | Audit trail | ✅ Completo | Append-only events, replay timeline |
 | Ontología tipada | ✅ Completo | action_types con schema, risk_class, 9 seeded, CRUD, verificación en Submit |
 | Delegation graph | ✅ Completo | delegations: owner → agent → action_types → resources → TTL, verificación en Submit |
-| Console | ✅ Completo | 9 tabs (+ Actions, Agents), i18n EN/ES, Sandbox |
+| Evidence packs | ✅ Completo | JSON firmado (HMAC-SHA256), exportable, toda la cadena de evidencia |
+| Outcome attestation | ✅ Completo | Prueba verificable del executor (status, provider_refs, signature, attester) |
+| Sandbox avanzado | ✅ Completo | 5 modos: simulate, batch test, approval sim, shadow monitor, replay test |
+| Console | ✅ Completo | 9 tabs (+ Actions, Agents), i18n EN/ES, Sandbox con 5 modos |
 
 ---
 
 ## Gap: PoC → Unicornio
 
-### Primitives faltantes (ordenadas por impacto en defensibilidad)
+### Primitives — estado actual
 
-### 1. Execution Leases (JWT firmados)
+### 1. Execution Leases (JWT firmados) — PENDIENTE (Q3)
 
 **Qué es:** Un token firmado criptográficamente que autoriza UNA acción específica con TTL corto. Sin lease válido, el sistema target no puede ejecutar.
 
@@ -50,56 +53,44 @@ Lease es single-use (jti tracking)
 
 **Esfuerzo:** Alto (2-3 semanas). Requiere key management, signing, verification.
 
-### 2. PEP / SDK (Enforcement Point)
+### 2. PEP / SDK (Enforcement Point) — PENDIENTE (Q3)
 
 **Qué es:** Un componente que corre cerca del sistema target (sidecar, proxy, o SDK embebido) que intercepta la acción y verifica el lease antes de dejar pasar.
 
 **Por qué importa:** Sin PEP, el sistema target puede ignorar a Nexus. Con PEP, Nexus es un gate físico, no lógico.
 
-**Implementación:**
+**Implementación planificada:**
 - SDK Go: `nexus.Authorize(ctx, action) → lease` + `nexus.Execute(ctx, lease, fn) → result`
 - SDK Python/JS: misma interfaz
 - Proxy HTTP: intercepta requests al target, verifica lease en header
 
 **Esfuerzo:** Alto (3-4 semanas por SDK). Empezar con Go SDK.
 
-### 3. Evidence Packs (exportables y firmados)
+### 3. Evidence Packs — IMPLEMENTADO (Q2 MVP)
 
-**Qué es:** Empaquetar el audit trail de una request como un JSON estructurado, firmado, exportable. Incluye: actores, request, policy evaluation, approvals, lease, execution, outcome attestation.
+**Qué es:** Empaquetar el audit trail de una request como un JSON estructurado, firmado, exportable. Incluye: actores, request, policy evaluation, approvals, execution, outcome attestation, timeline.
 
 **Por qué importa:** Es lo que el auditor/regulador quiere ver. Transforma "tenemos logs" en "tenemos evidencia verificable".
 
-**Qué ya tenemos:** El audit trail tiene toda la data. Solo falta estructurarla como pack + firmar.
+**Implementación (completada):**
+- Módulo `evidence/`: genera JSON firmado (HMAC-SHA256) con toda la cadena
+- Endpoint: `GET /v1/requests/{id}/evidence`
+- Signing key configurable via `NEXUS_SIGNING_KEY`
+- Secciones: request, policy_evaluation, approval, execution, attestation, timeline
+- Botón de descarga en console (pestaña Requests)
 
-**Implementación:**
-```
-GET /v1/requests/{id}/evidence → JSON firmado con toda la cadena
-Campos: actors, request, policy_evaluation, approvals, lease, execution, attestation
-Opcionalmente: hash-chain entre events (como v1)
-```
-
-**Esfuerzo:** Medio (1-2 semanas). Es mayormente formateo + firma.
-
-### 4. Outcome Attestation
+### 4. Outcome Attestation — IMPLEMENTADO (Q2 MVP)
 
 **Qué es:** El sistema target (o el PEP) reporta qué ejecutó realmente, firmado. No es solo "success: true" — es una prueba verificable de qué pasó.
 
-**Por qué importa:** Sin esto, Nexus sabe que aprobó algo pero no puede demostrar qué pasó después. Con attestation, la cadena es completa: request → decision → lease → execution → proof.
+**Por qué importa:** Sin esto, Nexus sabe que aprobó algo pero no puede demostrar qué pasó después. Con attestation, la cadena es completa: request → decision → execution → proof.
 
-**Qué ya tenemos:** `POST /v1/requests/{id}/result` recibe success/failure. Falta firma y refs del provider.
-
-**Implementación:**
-```
-POST /v1/requests/{id}/attest
-{
-  "status": "success",
-  "provider_refs": {"tx_id": "bank_tx_555"},
-  "signature": "jws_or_hash",
-  "attester": "pep:treasury_gateway"
-}
-```
-
-**Esfuerzo:** Medio (1-2 semanas).
+**Implementación (completada):**
+- Tabla `attestations`: status, provider_refs (JSONB), signature, attester, metadata (JSONB)
+- Endpoints: `POST /v1/requests/{id}/attest` + `GET /v1/requests/{id}/attestation`
+- Validación: solo requests con status `executed` o `failed` pueden ser attestadas
+- Integrada en evidence packs (sección attestation)
+- Nuevo audit event `attested`
 
 ### 5. Delegation Graph -- IMPLEMENTADO (Q2 MVP)
 
@@ -136,11 +127,11 @@ POST /v1/requests/{id}/attest
 |--------|-----------|--------|
 | 1-2 | Ontología tipada de acciones (schema + validación) | ✅ Completo |
 | 3-4 | Delegation graph (tabla + verificación en Submit) | ✅ Completo |
-| 5-6 | Evidence packs (export JSON firmado) | Pendiente |
-| 7-8 | Outcome attestation (attest endpoint + firma) | Pendiente |
-| 8 | Sandbox avanzado: simular aprobaciones, batch | Pendiente |
+| 5-6 | Evidence packs (export JSON firmado) | ✅ Completo |
+| 7-8 | Outcome attestation (attest endpoint + firma) | ✅ Completo |
+| 8 | Sandbox avanzado: simular aprobaciones, batch | ✅ Completo |
 
-**Resultado parcial:** Nexus tiene identidad de agentes y acciones tipadas. Falta evidencia exportable para pilotos enterprise.
+**Resultado:** MVP Q2 completo. Nexus tiene identidad de agentes, acciones tipadas, evidencia exportable firmada, attestation verificable y sandbox completo con 5 modos de simulación.
 
 ### Q3 2026 — Enforcement (el moat)
 

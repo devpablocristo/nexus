@@ -26,6 +26,12 @@ const translations = {
     // Requests detail
     timeline: 'Timeline',
     noTimeline: 'No timeline available.',
+    downloadEvidence: 'Download Evidence Pack',
+    attestation: 'Outcome Attestation',
+    attester: 'Attester',
+    attestStatus: 'Status',
+    providerRefs: 'Provider Refs',
+    attestSignature: 'Signature',
 
     // Learning
     learningProposals: 'Learning Proposals',
@@ -198,6 +204,8 @@ const translations = {
     sandbox: 'Sandbox',
     sandboxTitle: 'Sandbox',
     sandbox_simulate: 'Simulate',
+    sandbox_batch: 'Batch Test',
+    sandbox_approval: 'Approval Sim',
     sandbox_shadow: 'Shadow Monitor',
     sandbox_replay: 'Replay Test',
     runSimulation: 'Run Simulation',
@@ -222,6 +230,25 @@ const translations = {
     replayOriginal: 'Original',
     replayWouldBe: 'Would Be',
     replayChanged: 'Changed',
+
+    // Batch
+    batchDesc: 'Run multiple simulations at once to regression-test your policies.',
+    batchJson: 'Requests (JSON array)',
+    runBatch: 'Run Batch',
+    batchTotal: 'Total',
+    batchByRisk: 'By Risk',
+
+    // Approval Simulation
+    approvalSimDesc: 'Preview what happens when you approve or reject a pending request.',
+    pendingRequests: 'Pending Requests',
+    selectRequest: 'Select a pending request to simulate.',
+    approverID: 'Approver ID',
+    simApprove: 'Simulate Approve',
+    simReject: 'Simulate Reject',
+    wouldFinalize: 'Would finalize',
+    approvalsBefore: 'Approvals before',
+    approvalsAfter: 'Approvals after',
+    alreadyDecided: 'This approver already decided on this request.',
   },
   es: {
     // Nav
@@ -250,6 +277,12 @@ const translations = {
     // Requests detail
     timeline: 'Línea de tiempo',
     noTimeline: 'Sin línea de tiempo.',
+    downloadEvidence: 'Descargar Evidence Pack',
+    attestation: 'Attestation de Resultado',
+    attester: 'Attestador',
+    attestStatus: 'Estado',
+    providerRefs: 'Refs del proveedor',
+    attestSignature: 'Firma',
 
     // Learning
     learningProposals: 'Propuestas de aprendizaje',
@@ -422,6 +455,8 @@ const translations = {
     sandbox: 'Sandbox',
     sandboxTitle: 'Sandbox',
     sandbox_simulate: 'Simular',
+    sandbox_batch: 'Batch Test',
+    sandbox_approval: 'Sim. Aprobación',
     sandbox_shadow: 'Monitor Shadow',
     sandbox_replay: 'Replay Test',
     runSimulation: 'Ejecutar simulación',
@@ -446,6 +481,25 @@ const translations = {
     replayOriginal: 'Original',
     replayWouldBe: 'Sería',
     replayChanged: 'Cambió',
+
+    // Batch
+    batchDesc: 'Ejecutá múltiples simulaciones a la vez para testear regresión de policies.',
+    batchJson: 'Requests (array JSON)',
+    runBatch: 'Ejecutar Batch',
+    batchTotal: 'Total',
+    batchByRisk: 'Por Riesgo',
+
+    // Approval Simulation
+    approvalSimDesc: 'Previsualizá qué pasa si aprobás o rechazás una request pendiente.',
+    pendingRequests: 'Requests Pendientes',
+    selectRequest: 'Seleccioná una request pendiente para simular.',
+    approverID: 'ID del Aprobador',
+    simApprove: 'Simular Aprobar',
+    simReject: 'Simular Rechazar',
+    wouldFinalize: 'Finalizaría',
+    approvalsBefore: 'Aprobaciones antes',
+    approvalsAfter: 'Aprobaciones después',
+    alreadyDecided: 'Este aprobador ya decidió sobre esta request.',
   },
 }
 

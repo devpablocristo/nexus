@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchRequests, fetchReplay } from '../api'
+import { fetchRequests, fetchReplay, fetchEvidence, fetchAttestation } from '../api'
 import { t } from '../i18n'
 import StatusBadge from '../components/StatusBadge'
 import RiskBadge from '../components/RiskBadge'
@@ -28,6 +28,7 @@ export default function Requests({ lang }) {
   const [expanded, setExpanded] = useState(null)
   const [replay, setReplay] = useState(null)
   const [replayLoading, setReplayLoading] = useState(false)
+  const [attestation, setAttestation] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -51,11 +52,15 @@ export default function Requests({ lang }) {
     }
     setExpanded(id)
     setReplay(null)
+    setAttestation(null)
     setReplayLoading(true)
     fetchReplay(id)
       .then((r) => setReplay(r))
       .catch(() => setReplay(null))
       .finally(() => setReplayLoading(false))
+    fetchAttestation(id)
+      .then((a) => setAttestation(a))
+      .catch(() => setAttestation(null))
   }
 
   const formatDate = (d) => {
@@ -195,6 +200,56 @@ export default function Requests({ lang }) {
                   {!replayLoading && (!replay || !replay.timeline) && (
                     <p className="text-gray-600 text-xs">{t(lang, 'noTimeline')}</p>
                   )}
+
+                  {/* Attestation */}
+                  {attestation && (
+                    <div className="mt-4 pt-3 border-t border-gray-800">
+                      <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">{t(lang, 'attestation')}</h4>
+                      <div className="bg-gray-800/50 rounded p-3 text-xs space-y-1">
+                        <div>
+                          <span className="text-gray-500">{t(lang, 'attester')}:</span>{' '}
+                          <span className="text-blue-400 font-mono">{attestation.attester}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">{t(lang, 'attestStatus')}:</span>{' '}
+                          <span className={attestation.status === 'success' ? 'text-green-400' : 'text-red-400'}>{attestation.status}</span>
+                        </div>
+                        {attestation.provider_refs && Object.keys(attestation.provider_refs).length > 0 && (
+                          <div>
+                            <span className="text-gray-500">{t(lang, 'providerRefs')}:</span>{' '}
+                            <span className="text-gray-300 font-mono">{JSON.stringify(attestation.provider_refs)}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-gray-500">{t(lang, 'attestSignature')}:</span>{' '}
+                          <span className="text-gray-500 font-mono text-[10px]">{attestation.signature.slice(0, 32)}...</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Evidence Pack download */}
+                  <div className="mt-4 pt-3 border-t border-gray-800">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        fetchEvidence(r.id)
+                          .then((pack) => {
+                            const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' })
+                            const url = URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = `evidence-${r.id.slice(0, 8)}.json`
+                            a.click()
+                            URL.revokeObjectURL(url)
+                          })
+                          .catch((err) => setError(err.message))
+                      }}
+                      className="px-3 py-1.5 bg-indigo-900 text-indigo-300 text-xs rounded hover:bg-indigo-800 font-medium"
+                    >
+                      {t(lang, 'downloadEvidence')}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

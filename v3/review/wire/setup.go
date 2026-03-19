@@ -13,6 +13,7 @@ import (
 	"github.com/devpablocristo/nexus/v3/review/internal/actiontypes"
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"
 	"github.com/devpablocristo/nexus/v3/review/internal/delegations"
+	"github.com/devpablocristo/nexus/v3/review/internal/evidence"
 	"github.com/devpablocristo/nexus/v3/review/internal/audit"
 	nexusconfig "github.com/devpablocristo/nexus/v3/review/internal/config"
 	"github.com/devpablocristo/nexus/v3/review/internal/dashboard"
@@ -26,6 +27,7 @@ type Config struct {
 	APIKeys        string
 	ApprovalTTL    time.Duration
 	AnthropicKey   string
+	SigningKey     string
 	MigrationFiles fs.FS
 }
 
@@ -89,6 +91,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	delegationRepo := delegations.NewPostgresRepository(db)
 	delegationUC := delegations.NewUsecases(delegationRepo)
 
+	attestationStore := requests.NewPostgresAttestationStore(db.Pool())
+
 	reqUC := requests.NewUsecases(reqRepo, policyLister, approvalRepo, evaluator,
 		requests.WithIdempotencyStore(idemStore),
 		requests.WithAuditSink(auditSink),
@@ -100,6 +104,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		requests.WithBreakGlassConfig(breakGlassCfg),
 		requests.WithActionTypeChecker(newActionTypeCheckerAdapter(actionTypeUC)),
 		requests.WithDelegationChecker(newDelegationCheckerAdapter(delegationUC)),
+		requests.WithAttestationStore(attestationStore),
+		requests.WithApprovalGetter(approvalRepo),
 	)
 	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).WithAuditSink(auditSink)
 	replayGetter := newReplayRequestGetter(reqRepo)
@@ -124,6 +130,20 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	actionTypeHandler := actiontypes.NewHandler(actionTypeUC)
 	delegationHandler := delegations.NewHandler(delegationUC)
 
+	// Evidence packs
+	signingKey := cfg.SigningKey
+	if signingKey == "" {
+		signingKey = "nexus-dev-signing-key-change-in-production"
+	}
+	signer, err := evidence.NewSigner(signingKey, "default")
+	if err != nil {
+		db.Close()
+		return nil, nil, fmt.Errorf("create evidence signer: %w", err)
+	}
+	evidenceUC := evidence.NewUsecases(reqRepo, approvalRepo, auditRepo, signer).
+		WithAttestationReader(attestationStore)
+	evidenceHandler := evidence.NewHandler(evidenceUC)
+
 	// Router
 	mux := http.NewServeMux()
 	sharedhandlers.RegisterHealthEndpoints(mux, func(ctx context.Context) error {
@@ -138,6 +158,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	configHandler.Register(mux)
 	actionTypeHandler.Register(mux)
 	delegationHandler.Register(mux)
+	evidenceHandler.Register(mux)
 
 	// Auth middleware
 	authn, err := sharedapikey.NewAuthenticator(cfg.APIKeys)

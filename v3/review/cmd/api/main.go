@@ -43,6 +43,7 @@ func main() {
 		APIKeys:        os.Getenv("NEXUS_API_KEYS"),
 		ApprovalTTL:    approvalTTL,
 		AnthropicKey:   os.Getenv("ANTHROPIC_API_KEY"),
+		SigningKey:     os.Getenv("NEXUS_SIGNING_KEY"),
 		MigrationFiles: migrations.Files,
 	}
 	if cfg.APIKeys == "" {

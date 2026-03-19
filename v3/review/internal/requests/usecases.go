@@ -47,6 +47,11 @@ type DelegationChecker interface {
 	CheckDelegation(ctx context.Context, agentID, actionType string) (bool, error)
 }
 
+// ApprovalGetter obtiene una approval por ID (para simular decisiones).
+type ApprovalGetter interface {
+	GetByID(ctx context.Context, id uuid.UUID) (approvaldomain.Approval, error)
+}
+
 // PolicyForEval contiene solo los campos necesarios para evaluación.
 type PolicyForEval struct {
 	ID           uuid.UUID
@@ -87,6 +92,8 @@ type Usecases struct {
 	breakGlassCfg   BreakGlassConfig
 	actionTypes     ActionTypeChecker
 	delegations     DelegationChecker
+	attestations    AttestationStore
+	approvalGetter  ApprovalGetter
 }
 
 // Option configura el constructor de Usecases (functional options pattern — Uber).
@@ -130,6 +137,14 @@ func WithActionTypeChecker(c ActionTypeChecker) Option {
 
 func WithDelegationChecker(c DelegationChecker) Option {
 	return func(u *Usecases) { u.delegations = c }
+}
+
+func WithAttestationStore(s AttestationStore) Option {
+	return func(u *Usecases) { u.attestations = s }
+}
+
+func WithApprovalGetter(g ApprovalGetter) Option {
+	return func(u *Usecases) { u.approvalGetter = g }
 }
 
 // NewUsecases crea Usecases con los 3 repos obligatorios + evaluator, y opciones para el resto.
@@ -643,6 +658,192 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 	return out, nil
 }
 
+// BatchSimulateInput es el input para simular múltiples requests a la vez.
+type BatchSimulateInput struct {
+	Requests []SubmitInput
+}
+
+// BatchSimulateOutput contiene los resultados agregados y por request.
+type BatchSimulateOutput struct {
+	Total          int                  `json:"total"`
+	Allowed        int                  `json:"allowed"`
+	Denied         int                  `json:"denied"`
+	RequireApproval int                 `json:"require_approval"`
+	ByRisk         map[string]int       `json:"by_risk"`
+	Results        []BatchSimulateItem  `json:"results"`
+}
+
+// BatchSimulateItem es el resultado de una simulación individual dentro de un batch.
+type BatchSimulateItem struct {
+	ActionType     string `json:"action_type"`
+	RequesterID    string `json:"requester_id"`
+	TargetSystem   string `json:"target_system"`
+	Decision       string `json:"decision"`
+	RiskLevel      string `json:"risk_level"`
+	DecisionReason string `json:"decision_reason"`
+	PolicyMatched  *string `json:"policy_matched,omitempty"`
+}
+
+// BatchSimulate ejecuta múltiples simulaciones y agrega resultados.
+func (u *Usecases) BatchSimulate(ctx context.Context, in BatchSimulateInput) (BatchSimulateOutput, error) {
+	out := BatchSimulateOutput{
+		ByRisk:  make(map[string]int),
+		Results: make([]BatchSimulateItem, 0, len(in.Requests)),
+	}
+
+	for _, req := range in.Requests {
+		simOut, err := u.Simulate(ctx, req)
+		if err != nil {
+			// Registrar error pero continuar con el resto
+			out.Results = append(out.Results, BatchSimulateItem{
+				ActionType:     req.ActionType,
+				RequesterID:    req.RequesterID,
+				TargetSystem:   req.TargetSystem,
+				Decision:       "error",
+				DecisionReason: "simulation failed",
+			})
+			out.Total++
+			continue
+		}
+
+		out.Total++
+		switch simOut.Decision {
+		case "allow":
+			out.Allowed++
+		case "deny":
+			out.Denied++
+		case "require_approval":
+			out.RequireApproval++
+		}
+		out.ByRisk[simOut.RiskLevel]++
+
+		out.Results = append(out.Results, BatchSimulateItem{
+			ActionType:     req.ActionType,
+			RequesterID:    req.RequesterID,
+			TargetSystem:   req.TargetSystem,
+			Decision:       simOut.Decision,
+			RiskLevel:      simOut.RiskLevel,
+			DecisionReason: simOut.DecisionReason,
+			PolicyMatched:  simOut.PolicyMatched,
+		})
+	}
+
+	return out, nil
+}
+
+// ApprovalSimulateInput es el input para simular qué pasa si se aprueba/rechaza una request.
+type ApprovalSimulateInput struct {
+	RequestID  uuid.UUID
+	Action     string // "approve" o "reject"
+	ApproverID string
+}
+
+// ApprovalSimulateOutput muestra el estado resultante sin ejecutar.
+type ApprovalSimulateOutput struct {
+	CurrentStatus      string `json:"current_status"`
+	SimulatedStatus    string `json:"simulated_status"`
+	BreakGlass         bool   `json:"break_glass"`
+	RequiredApprovals  int    `json:"required_approvals"`
+	CurrentApprovals   int    `json:"current_approvals"`
+	AfterApprovals     int    `json:"after_approvals"`
+	WouldFinalize      bool   `json:"would_finalize"`
+	AlreadyDecided     bool   `json:"already_decided"`
+	Reason             string `json:"reason"`
+}
+
+// SimulateApproval simula qué pasa si un aprobador aprueba o rechaza una request pendiente.
+func (u *Usecases) SimulateApproval(ctx context.Context, in ApprovalSimulateInput) (ApprovalSimulateOutput, error) {
+	req, err := u.reqRepo.GetByID(ctx, in.RequestID)
+	if err != nil {
+		return ApprovalSimulateOutput{}, fmt.Errorf("get request: %w", err)
+	}
+
+	if req.Status != requestdomain.StatusPendingApproval {
+		return ApprovalSimulateOutput{
+			CurrentStatus:   string(req.Status),
+			SimulatedStatus: string(req.Status),
+			Reason:          "request is not pending approval",
+		}, nil
+	}
+
+	if req.ApprovalID == nil {
+		return ApprovalSimulateOutput{
+			CurrentStatus:   string(req.Status),
+			SimulatedStatus: string(req.Status),
+			Reason:          "no approval linked to this request",
+		}, nil
+	}
+
+	// Necesitamos leer la approval — usamos el approvalRepo
+	// Para esto necesitamos un port nuevo, o reusar el existente
+	// Simplificación: accedemos via el approvalReader del wire
+	out := ApprovalSimulateOutput{
+		CurrentStatus: string(req.Status),
+	}
+
+	// Obtener approval info. Usamos la interfaz approvalGetter.
+	if u.approvalGetter == nil {
+		return ApprovalSimulateOutput{
+			CurrentStatus:   string(req.Status),
+			SimulatedStatus: string(req.Status),
+			Reason:          "approval reader not configured",
+		}, nil
+	}
+
+	approval, err := u.approvalGetter.GetByID(ctx, *req.ApprovalID)
+	if err != nil {
+		return ApprovalSimulateOutput{}, fmt.Errorf("get approval: %w", err)
+	}
+
+	out.BreakGlass = approval.BreakGlass
+	out.RequiredApprovals = approval.RequiredApprovals
+	out.CurrentApprovals = countApprovals(approval.Decisions)
+
+	// Verificar si este approver ya decidió
+	for _, d := range approval.Decisions {
+		if d.ApproverID == in.ApproverID {
+			out.AlreadyDecided = true
+			out.SimulatedStatus = string(req.Status)
+			out.AfterApprovals = out.CurrentApprovals
+			out.Reason = "approver already decided on this request"
+			return out, nil
+		}
+	}
+
+	if in.Action == "reject" {
+		// Un rechazo siempre finaliza
+		out.SimulatedStatus = "rejected"
+		out.AfterApprovals = out.CurrentApprovals
+		out.WouldFinalize = true
+		out.Reason = "reject always finalizes the approval chain"
+		return out, nil
+	}
+
+	// Approve
+	out.AfterApprovals = out.CurrentApprovals + 1
+	if out.AfterApprovals >= out.RequiredApprovals {
+		out.SimulatedStatus = "approved"
+		out.WouldFinalize = true
+		out.Reason = fmt.Sprintf("quorum reached: %d/%d approvals", out.AfterApprovals, out.RequiredApprovals)
+	} else {
+		out.SimulatedStatus = "pending_approval"
+		out.WouldFinalize = false
+		out.Reason = fmt.Sprintf("partial: %d/%d approvals (need %d more)", out.AfterApprovals, out.RequiredApprovals, out.RequiredApprovals-out.AfterApprovals)
+	}
+
+	return out, nil
+}
+
+func countApprovals(decisions []approvaldomain.ApprovalDecision) int {
+	count := 0
+	for _, d := range decisions {
+		if d.Action == "approve" {
+			count++
+		}
+	}
+	return count
+}
+
 // ReplaySimulateInput es el input para re-evaluar requests históricas contra una policy propuesta
 type ReplaySimulateInput struct {
 	Expression string // expresión CEL a probar
@@ -787,4 +988,64 @@ func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in Rep
 		return fmt.Errorf("update request: %w", err)
 	}
 	return nil
+}
+
+// AttestInput es el input para registrar una attestation verificable.
+type AttestInput struct {
+	Status       string         // success, failure, partial
+	ProviderRefs map[string]any // refs externas (tx_id, deploy_id, etc.)
+	Signature    string         // firma del attester
+	Attester     string         // identidad del attester (pep:treasury_gateway)
+	Metadata     map[string]any // contexto adicional
+}
+
+// Attest registra una prueba verificable de qué ejecutó el sistema target.
+func (u *Usecases) Attest(ctx context.Context, requestID uuid.UUID, in AttestInput) (requestdomain.Attestation, error) {
+	if u.attestations == nil {
+		return requestdomain.Attestation{}, fmt.Errorf("attestation store not configured")
+	}
+
+	// Verificar que la request existe
+	req, err := u.reqRepo.GetByID(ctx, requestID)
+	if err != nil {
+		return requestdomain.Attestation{}, fmt.Errorf("get request: %w", err)
+	}
+
+	// Solo se puede attestar requests ejecutadas o fallidas
+	if req.Status != requestdomain.StatusExecuted && req.Status != requestdomain.StatusFailed {
+		return requestdomain.Attestation{}, fmt.Errorf("request status must be executed or failed to attest, got: %s", req.Status)
+	}
+
+	attestation := requestdomain.Attestation{
+		ID:           uuid.New(),
+		RequestID:    requestID,
+		Status:       in.Status,
+		ProviderRefs: in.ProviderRefs,
+		Signature:    in.Signature,
+		Attester:     in.Attester,
+		Metadata:     in.Metadata,
+	}
+
+	created, err := u.attestations.Create(ctx, attestation)
+	if err != nil {
+		return requestdomain.Attestation{}, fmt.Errorf("create attestation: %w", err)
+	}
+
+	// Audit trail
+	logAuditError(
+		u.audit.AppendEvent(ctx, requestID, auditdomain.EventAttested, "attester", in.Attester,
+			"Outcome attested by "+in.Attester+": "+in.Status,
+			map[string]any{"provider_refs": in.ProviderRefs, "attester": in.Attester}),
+		requestID, auditdomain.EventAttested,
+	)
+
+	return created, nil
+}
+
+// GetAttestation obtiene la attestation de una request.
+func (u *Usecases) GetAttestation(ctx context.Context, requestID uuid.UUID) (requestdomain.Attestation, error) {
+	if u.attestations == nil {
+		return requestdomain.Attestation{}, fmt.Errorf("attestation store not configured")
+	}
+	return u.attestations.GetByRequestID(ctx, requestID)
 }
