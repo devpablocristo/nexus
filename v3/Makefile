@@ -32,6 +32,13 @@ e2e:
 
 acceptance: smoke e2e
 
-# --- Dev ---
+# --- Dev (hot reload) ---
 dev:
-	bash scripts/dev/run-api.sh
+	@test -f .env || cp .env.example .env
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+dev-logs:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
+
+dev-down:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml down

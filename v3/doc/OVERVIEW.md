@@ -45,7 +45,7 @@ Nexus evalúa cada acción contra un conjunto de **reglas** (policies). Cada reg
 
 Ejemplo de regla: *"Si alguien quiere silenciar una alerta crítica fuera de horario laboral → pedir aprobación humana"*
 
-También clasifica el **riesgo** de la acción (bajo, medio, alto). Una acción de riesgo alto siempre requiere aprobación, aunque no haya regla que la bloquee.
+También clasifica el **riesgo** de la acción evaluando 6 factores simultáneamente (tipo de acción, horario, historial del actor, frecuencia, tasa de éxito, sensibilidad del sistema destino). Cuando varios factores coinciden, el riesgo se amplifica — similar a como funciona la cascada de coagulación en biología. Una acción de riesgo alto siempre requiere aprobación, aunque no haya regla que la bloquee.
 
 ### 2. Registrar
 
@@ -147,17 +147,51 @@ Si el administrador acepta, la regla se crea automáticamente y futuras acciones
 
 ## La consola
 
-La interfaz web tiene 5 secciones:
+La interfaz web tiene 6 pestañas principales y un botón flotante de simulación:
 
 | Sección | Qué muestra |
 |---------|-------------|
 | **Inbox** | Acciones pendientes de aprobación con resumen IA |
+| **Requests** | Todas las requests con timeline inline y replay integrado |
 | **Policies** | Crear, editar, archivar, eliminar reglas |
-| **Replay** | Historia completa de cualquier acción (quién, cuándo, qué pasó) |
 | **Learning** | Propuestas automáticas de nuevas reglas |
 | **Dashboard** | Métricas: cuántas acciones, cuántas aprobadas, cuántas denegadas |
+| **Config** | Configuración de riesgo, aprobaciones, learning, IA y general |
 
-Disponible en **inglés y español** (selector en la barra superior).
+Además, hay un **botón flotante "Simulate"** visible desde cualquier pestaña. Al presionarlo, se abre un panel lateral donde se puede probar una request sin ejecutarla: Nexus muestra qué decisión tomaría, qué factores de riesgo se activarían, y qué amplificación aplicaría. Útil para validar reglas antes de que lleguen requests reales.
+
+La pestaña activa se mantiene al refrescar la página (F5).
+
+Disponible en **inglés y español** (selector en la barra superior, con persistencia en localStorage).
+
+---
+
+## Simular antes de actuar
+
+El modo simulación permite enviar una request de prueba ("dry-run"). Nexus la evalúa exactamente igual que una real, pero no la persiste ni la envía a aprobación. El resultado muestra:
+
+- **Decisión**: qué haría Nexus (aprobar, denegar, pedir aprobación)
+- **Factores de riesgo**: cuáles se activaron y por qué
+- **Amplificación**: si hay combinaciones sospechosas que potenciaron el riesgo
+- **Score final**: el puntaje numérico y el nivel resultante
+
+Esto permite validar reglas, probar escenarios, y entender el comportamiento del motor de decisión sin efectos secundarios.
+
+---
+
+## Configuración
+
+Todo es configurable desde la pestaña Config de la consola (o via API):
+
+| Sección | Qué se configura |
+|---------|-----------------|
+| **Risk** | Qué acciones son alto/medio riesgo, umbrales de decisión |
+| **Approvals** | TTL de aprobaciones, comportamiento de expiración |
+| **Learning** | Umbrales de confianza, tamaño mínimo de muestra, ventana de tiempo |
+| **AI** | Parámetros del contextualizador IA |
+| **General** | Configuraciones generales del servicio |
+
+Los cambios se aplican inmediatamente. Se puede restaurar la configuración por defecto con un solo click.
 
 ---
 
@@ -168,7 +202,10 @@ Disponible en **inglés y español** (selector en la barra superior).
 2. Nexus busca si alguna regla aplica
 3. Si una regla dice "denegar" → deniega
 4. Si una regla dice "pedir aprobación" → va al inbox
-5. Si ninguna regla aplica → clasifica riesgo:
+5. Si ninguna regla aplica → clasifica riesgo con 6 factores:
+   - Tipo de acción, horario, historial del actor, frecuencia,
+     tasa de éxito, sensibilidad del destino
+   - Si hay combinaciones sospechosas → amplifica el riesgo
    - Riesgo alto → va al inbox
    - Riesgo bajo/medio → aprueba automáticamente
 6. Si va al inbox:
@@ -195,13 +232,13 @@ Disponible en **inglés y español** (selector en la barra superior).
 
 ## Métricas clave del PoC
 
-- **21 endpoints** de API funcionando
-- **6 módulos** de backend (requests, policies, approvals, audit, learning, dashboard)
-- **5 secciones** en la consola web
-- **28 tests** automatizados de smoke y end-to-end
-- **~60% cobertura** de tests unitarios
+- **28 endpoints** de API funcionando (26 de módulos + 2 health)
+- **8 módulos** de backend (requests, policies, approvals, audit, learning, dashboard, config, shared)
+- **6 pestañas** en la consola web + panel flotante de simulación
 - **3 containers** Docker (backend, frontend, base de datos)
-- **i18n** inglés y español
+- **i18n** inglés y español con persistencia en localStorage
+- **Cascade risk scoring** con 6 factores y amplificación multiplicativa
+- **Simulation mode** dry-run disponible desde cualquier pestaña
 
 ---
 

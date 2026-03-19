@@ -44,31 +44,36 @@ El engine es generico. La primera superficie de venta cubre requests sobre alert
 ```
 Request llega (de agente, servicio, o humano)
   → CEL evalua politicas → decision: allow / deny / require_approval
+  → Cascade risk scoring (6 factores + amplificacion multiplicativa)
   → Si require_approval: Claude genera resumen contextualizado
   → Aprobador decide en el inbox (con confirmacion obligatoria)
   → Requester recibe resultado
   → Todo queda registrado (audit trail)
   → Nexus analiza patrones y sugiere nuevas politicas
+  → Config module: todos los valores configurables via API + UI
 ```
 
 | Componente | En el PoC | Por que |
 |------------|-----------|---------|
 | CEL policy engine | Si | Sin esto no hay evaluacion |
+| Cascade risk scoring (6 factores) | Si | Evaluacion multi-factor con amplificacion multiplicativa |
 | Audit trail append-only | Si | Sin esto no hay replay ni learning |
 | Approval workflow | Si | Sin esto no hay producto |
 | AI contextualizer | Si | Es el diferenciador |
 | AI policy proposals (learning) | Si | Es el tercer pilar |
+| Simulation mode (dry-run) | Si | Probar requests sin persistir |
+| Config module | Si | Todos los parametros configurables via API + UI |
 | Idempotency-Key | Si | Requests duplicadas son criticas |
 | API key auth | Si | Minimo para operar |
 | Hexagonal (ports & adapters) | Si | Base de calidad |
-| Console UI (inbox, policies, replay, learning, dashboard) | Si | Sin UI no hay demo |
+| Console UI (6 tabs + simulate flotante) | Si | Sin UI no hay demo |
+| i18n (EN + ES) | Si | Soporte bilingue con persistencia localStorage |
 | Confirmacion segura (nota + APPROVE/REJECT) | Si | Previene clicks accidentales |
 
 ### Lo que NO hace el PoC
 
 - No ejecuta la accion (el requester ejecuta y reporta resultado)
 - No tiene leases
-- No tiene risk cascade multi-factor (tiering simple)
 - No tiene multi-tenancy
 - No tiene billing
 - No tiene webhooks de notificacion (polling)
@@ -94,7 +99,7 @@ Requester (agente / servicio / humano)
   │  ├── handler/dto/           DTOs                    │
   │  ├── repository.go          port + pgx impl         │
   │  ├── policy_evaluator.go    CEL evaluation          │
-  │  ├── risk.go                risk tiering            │
+  │  ├── risk.go                cascade risk scoring    │
   │  ├── ai_contextualizer.go   port+adapter: Claude    │
   │  └── audit_sink.go          emision de eventos      │
   │                                                      │
@@ -104,6 +109,7 @@ Requester (agente / servicio / humano)
   │  internal/learning/         (pattern detection +    │
   │                              policy proposals)      │
   │  internal/dashboard/        (metricas agregadas)    │
+  │  internal/config/           (configuracion global)  │
   │                                                      │
   │  wire/setup.go              (DI manual)             │
   │  cmd/api/main.go            (entry point)           │
@@ -128,7 +134,7 @@ v3/
 │   │   │   ├── handler/dto/dto.go
 │   │   │   ├── repository.go
 │   │   │   ├── policy_evaluator.go
-│   │   │   ├── risk.go
+│   │   │   ├── risk.go               # cascade risk scoring (6 factores)
 │   │   │   ├── ai_contextualizer.go
 │   │   │   ├── ai_contextualizer/types.go
 │   │   │   └── audit_sink.go
@@ -137,6 +143,7 @@ v3/
 │   │   ├── audit/                     # trail + replay
 │   │   ├── learning/                  # patrones + propuestas
 │   │   ├── dashboard/                 # metricas
+│   │   ├── config/                    # configuracion global via API
 │   │   └── shared/                    # codigo transversal
 │   ├── wire/setup.go
 │   ├── migrations/
@@ -382,13 +389,32 @@ POST   /v1/learning/proposals/{id}/dismiss
 POST   /v1/learning/analyze
 ```
 
-### 5.9 Dashboard
+### 5.9 Simulation (dry-run)
+
+```
+POST /v1/requests/simulate
+```
+
+Evalua una request sin persistirla. Retorna la decision, los factores de la cascada de riesgo, y la amplificacion aplicada. Util para probar politicas antes de enviar requests reales.
+
+### 5.10 Dashboard
 
 ```
 GET /v1/metrics/summary?period=7d
 ```
 
-### 5.10 Health
+### 5.11 Config
+
+```
+GET    /v1/config                    -- 200 (toda la configuracion)
+PATCH  /v1/config                    -- 200 (actualizar multiples secciones)
+PATCH  /v1/config/{section}          -- 200 (actualizar una seccion)
+POST   /v1/config/reset              -- 200 (restaurar defaults)
+```
+
+Secciones configurables: risk, approvals, learning, AI, general. Todos los valores son modificables via API y via la UI de la consola (tab Config).
+
+### 5.12 Health
 
 ```
 GET /healthz
@@ -415,7 +441,45 @@ time.hour (0-23 UTC), time.day_of_week (0-6)
 4. First-match-wins
 5. Si ninguna matchea: decision por riesgo default
 
-### Risk Tiering
+### Cascade Risk Scoring (inspirado en cascada de coagulacion)
+
+El riesgo se evalua mediante 6 factores independientes con amplificacion multiplicativa por combinaciones sospechosas. Cada factor produce un score parcial; la suma se multiplica por un factor de amplificacion cuando ciertos factores coinciden.
+
+**6 factores:**
+
+| Factor | Que evalua | Score max |
+|--------|-----------|-----------|
+| `action_type` | Riesgo base de la accion (high/medium/low) | 0.4 |
+| `off_hours` | Fuera de horario laboral (antes 9h, despues 18h) | 0.2 |
+| `actor_unknown` | Actor sin historial o con pocas requests previas | 0.3 |
+| `frequency_anomaly` | Demasiadas requests del mismo tipo en la ultima hora | 0.3 |
+| `execution_history` | Tasa de exito/fallo historica de requests similares | 0.3 (-0.15 si excelente) |
+| `target_sensitivity` | Sistema destino es produccion o staging | 0.3 |
+
+**Amplificaciones (combinaciones que se potencian):**
+
+| Combinacion | Multiplicador | Razon |
+|-------------|---------------|-------|
+| off_hours + actor_unknown | 1.8x | Fuera de horario + desconocido = sospechoso |
+| action_type + frequency_anomaly | 1.5x | Accion riesgosa + frecuencia anomala |
+| actor_unknown + target_sensitivity | 1.6x | Desconocido atacando prod |
+| off_hours + actor_unknown + frequency_anomaly | 2.5x | Cascada completa |
+| action_type + off_hours + target_sensitivity | 2.0x | Accion peligrosa + off-hours + prod |
+| 4+ factores activos | 2.5x | Amplificacion maxima |
+
+Cap maximo de amplificacion: 3.0x.
+
+**Umbrales de score final → decision:**
+
+| Score | Nivel | Decision |
+|-------|-------|----------|
+| < 0.5 | low | allow |
+| 0.5 — 1.0 | medium | allow |
+| 1.0 — 1.5 | medium | allow |
+| 1.5 — 2.0 | high | require_approval |
+| >= 2.0 | critical | deny |
+
+**Decision por policy + riesgo (compatibilidad):**
 
 | Policy effect | Risk | Decision |
 |---------------|------|----------|
@@ -474,13 +538,16 @@ Containers:
 
 | Area | PoC (actual) | MVP |
 |------|-------------|-----|
-| Risk config | Hardcodeado | DB o env vars |
+| Risk scoring | Cascade 6 factores + amplificacion | Feedback loop (resultado → riesgo) |
+| Risk config | Configurable via API + UI (config module) | — (ya implementado) |
+| Simulation | `POST /v1/requests/simulate` (dry-run) | — (ya implementado) |
+| Config module | API CRUD + UI (5 secciones) | — (ya implementado) |
 | Proposer | Stub (template) | Claude real |
-| Analyzer | In-memory | SQL GROUP BY |
+| Analyzer | SQL GROUP BY | — (ya implementado) |
 | Rate limiting | No | Por IP/key |
 | Paginacion | Limit simple | Cursor |
 | Indices DB | Basicos | Optimizados |
-| Dashboard | Cuenta en Go | SQL aggregation |
+| Dashboard | SQL aggregation | — (ya implementado) |
 | Validacion CEL | No | Al crear policy |
 | Approval TTL | Global | Por policy |
 | Claude retry | No | Circuit breaker |

@@ -16,7 +16,7 @@ const dotColors = {
   sent_to_approval: 'bg-yellow-500', expired: 'bg-gray-600', cancelled: 'bg-gray-600',
 }
 
-export default function Replay({ lang, requestId, onBack }) {
+export default function Replay({ lang, requestId }) {
   const [replay, setReplay] = useState(null)
   const [requests, setRequests] = useState([])
   const [selectedId, setSelectedId] = useState(requestId)
@@ -65,7 +65,7 @@ export default function Replay({ lang, requestId, onBack }) {
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => { setSelectedId(null); setReplay(null); onBack?.() }} className="text-gray-400 hover:text-white text-sm">&larr; {t(lang, 'back')}</button>
+        <button onClick={() => { setSelectedId(null); setReplay(null) }} className="text-gray-400 hover:text-white text-sm">&larr; {t(lang, 'back')}</button>
         <h2 className="text-xl font-bold">{t(lang, 'replayTitle')}</h2>
       </div>
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-6">

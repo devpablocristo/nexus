@@ -28,6 +28,21 @@ type ApprovalPayload struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+// SimulateRequest es idéntico a SubmitRequest — mismos campos
+type SimulateRequest = SubmitRequest
+
+// SimulateResponse muestra qué habría hecho Nexus sin ejecutar nada
+type SimulateResponse struct {
+	Decision             string      `json:"decision"`
+	RiskLevel            string      `json:"risk_level"`
+	DecisionReason       string      `json:"decision_reason"`
+	Status               string      `json:"status"`
+	PolicyMatched        *string     `json:"policy_matched,omitempty"`
+	RiskAssessment       any         `json:"risk_assessment"`
+	WouldRequireApproval bool        `json:"would_require_approval"`
+	AISummary            string      `json:"ai_summary,omitempty"`
+}
+
 type ReportResultRequest struct {
 	Success      bool           `json:"success"`
 	Result       map[string]any `json:"result,omitempty"`

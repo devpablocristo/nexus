@@ -1,0 +1,17 @@
+FROM golang:1.26-alpine
+
+RUN apk add --no-cache git wget
+RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
+
+WORKDIR /src
+
+COPY review/go.mod review/go.sum ./review/
+COPY pkgs/go-pkg/go.mod pkgs/go-pkg/go.sum ./pkgs/go-pkg/
+WORKDIR /src/review
+RUN go mod download
+
+WORKDIR /src/review
+
+EXPOSE 8080
+
+CMD ["air", "-c", ".air.toml"]

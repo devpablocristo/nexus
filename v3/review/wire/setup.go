@@ -12,6 +12,7 @@ import (
 	sharedpostgres "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/postgres"
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"
 	"github.com/devpablocristo/nexus/v3/review/internal/audit"
+	nexusconfig "github.com/devpablocristo/nexus/v3/review/internal/config"
 	"github.com/devpablocristo/nexus/v3/review/internal/dashboard"
 	"github.com/devpablocristo/nexus/v3/review/internal/learning"
 	"github.com/devpablocristo/nexus/v3/review/internal/policies"
@@ -48,6 +49,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	reqRepo := requests.NewPostgresRepository(db)
 	idemStore := requests.NewPostgresIdempotencyStore(db)
 	learningRepo := learning.NewPostgresRepository(db)
+	configRepo := nexusconfig.NewPostgresRepository(db.Pool())
 
 	// Adapters
 	auditSink := requests.NewAuditSinkAdapter(auditRepo)
@@ -66,6 +68,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	}
 
 	// Usecases
+	configUC := nexusconfig.NewUsecases(configRepo)
 	policyUC := policies.NewUsecases(policyRepo)
 	policyLister := newPolicyListerAdapter(policyUC)
 	reqUC := requests.NewUsecases(reqRepo, policyLister, approvalRepo, evaluator,
@@ -94,6 +97,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	approvalHandler := approvals.NewHandler(approvalUC)
 	learningHandler := learning.NewHandler(learningUC)
 	dashboardHandler := dashboard.NewHandler(reqRepo)
+	configHandler := nexusconfig.NewHandler(configUC)
 
 	// Router
 	mux := http.NewServeMux()
@@ -106,6 +110,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	approvalHandler.Register(mux)
 	learningHandler.Register(mux)
 	dashboardHandler.Register(mux)
+	configHandler.Register(mux)
 
 	// Auth middleware
 	authn, err := sharedapikey.NewAuthenticator(cfg.APIKeys)

@@ -1,0 +1,20 @@
+services:
+  review:
+    build:
+      context: .
+      dockerfile: review/Dockerfile.dev
+    working_dir: /src/review
+    volumes:
+      - ./review:/src/review
+      - ./pkgs:/src/pkgs
+    command: ["air", "-c", ".air.toml"]
+
+  console:
+    build:
+      context: ./console
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./console/src:/app/src
+      - ./console/index.html:/app/index.html
+      - ./console/vite.config.js:/app/vite.config.js
+    command: ["npx", "vite", "--host", "0.0.0.0", "--port", "80"]

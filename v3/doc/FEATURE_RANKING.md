@@ -1,6 +1,6 @@
-# Feature Ranking: v1 + v2 → Review v1
+# Feature Ranking: v1 + v2 → Review v3
 
-Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" hasta "descartar". Contexto: Review v1 es un PoC para monitoring/incident response con 3 personas.
+Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" hasta "descartar". Contexto: Review v3 es un PoC para monitoring/incident response con 3 personas.
 
 ## TIER 1: Imprescindible (implementar en el PoC)
 
@@ -22,13 +22,13 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 | # | Feature | Origen | Por que es muy importante |
 |---|---------|--------|--------------------------|
 | 11 | **Hash-chained audit** | v1 | Prueba criptografica de no-alteracion. Cuando el cliente pregunta "como se que no editaron el log?" |
-| 12 | **Policy proposals (IA sugiere reglas)** | v1 | El loop de feedback. "Aprobaste 94% de ticket.update — queres auto-aprobar?" Convierte herramienta en plataforma. |
+| 12 | **Policy proposals (IA sugiere reglas)** | v1 | ✅ Implementado. Loop de feedback: deteccion de patrones → propuestas → humano acepta → auto-crear policy. |
 | 13 | **Break-glass approval** | v1 | 3am, nadie aprueba, el agente necesita silenciar una alerta. Admin override con logging reforzado. |
 | 14 | **Rate limiting por agente** | v1 | Agente con bug manda 10K propuestas/minuto. Sliding window en memoria, sin Redis. |
 | 15 | **Background job: expiracion de approvals** | nuevo | Sin esto, approvals pendientes quedan para siempre. Job cada 1min que expira TTL vencidos. |
 | 16 | **DegradationCollector per-request** | v2 | Marca `ai_degraded: true` cuando Claude no respondio. El SRE sabe que decide sin contexto IA. |
 | 17 | **Canary agents** | v2 adaptado | Agente de prueba que propone acciones falsas. Si pasan, las reglas tienen huecos. Cero codigo especial. |
-| 18 | **Dashboard (metricas agregadas)** | nuevo | Total propuestas, approvals, rechazos, tiempos, top policies. Necesario para vender y para operar. |
+| 18 | **Dashboard (metricas agregadas)** | nuevo | ✅ Implementado. `GET /v1/metrics/summary` + tab Dashboard en consola. |
 | 19 | **Prometheus metrics (RED)** | v2 | Requests, errors, duration. pkgs/go-pkg/observability ya lo tiene. |
 | 20 | **JWT auth para UI** | nuevo | Los aprobadores necesitan auth real, no solo API key. |
 
@@ -53,10 +53,10 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 |---|---------|--------|-------|
 | 31 | **SDK Go** | v1 | Para agentes escritos en Go. Menos prioritario que Python. |
 | 32 | **SDK TypeScript** | v1 | Para agentes en Node.js. Menos comun en ops. |
-| 33 | **Simulacion de politicas** | v2 Fase 1C | "Si activo esta politica, cuantas acciones de la semana pasada hubiera frenado?" |
+| 33 | **Simulacion de politicas** | v2 Fase 1C | ✅ Implementado como `POST /v1/requests/simulate` + panel flotante en consola |
 | 34 | **Replay de incidentes** | v2 Fase 1C | "Con esta politica, hubieramos detectado este incidente 20 min antes?" |
 | 35 | **Backtest de politicas** | v2 Fase 1C | "Si bajo el threshold, cuantas mas acciones se frenan?" |
-| 36 | **Risk tiering configurable** | nuevo | Permitir que el usuario configure que action_types son high/medium/low. |
+| 36 | **Risk tiering configurable** | nuevo | ✅ Implementado via config module (API + UI). El usuario configura action_types high/medium/low. |
 | 37 | **Approval TTL configurable por policy** | v2 | Diferentes TTLs segun la politica (5min para criticos, 1h para bajos). |
 | 38 | **Grafana dashboards pre-provisioned** | v2 | Dashboard listo con metricas de Review. |
 | 39 | **Docker Compose con observability** | v2 | Compose con Prometheus + Grafana + exporters. |
@@ -66,10 +66,10 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 
 | # | Feature | Origen | Cuando tiene sentido |
 |---|---------|--------|---------------------|
-| 41 | **Risk cascade multi-factor** | v2 Fase 1A | Cuando Review entre en dominios criticos (finance, infra destructiva). |
+| 41 | **Risk cascade multi-factor** | v2 Fase 1A | ✅ Implementado: 6 factores + amplificacion multiplicativa (coagulacion). |
 | 42 | **Baselines estadisticas** | v2 Fase 1A | Cuando haya suficiente volumen para que las baselines tengan confidence. |
 | 43 | **Hysteresis en decision bands** | v2 Fase 1A | Solo con cascada continua. Review usa tiering discreto. |
-| 44 | **Amplificaciones no-lineales** | v2 Fase 1A | Solo con cascada multi-factor. |
+| 44 | **Amplificaciones no-lineales** | v2 Fase 1A | ✅ Implementado como parte de la cascada (combinaciones de factores con multiplicadores). |
 | 45 | **Confidence saturation** | v2 Fase 1A | Solo con baselines. |
 | 46 | **Bucketed counters (sliding windows)** | v2 Fase 1B | "Mas de 10 silences en 2 horas → bloquear." Util pero no MVP. |
 | 47 | **Multi-step approvals (4-eyes, quorum)** | v2 Fase 1B | Cuando los clientes lo pidan. Overkill para v1. |

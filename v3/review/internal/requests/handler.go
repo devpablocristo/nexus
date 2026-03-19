@@ -18,6 +18,7 @@ import (
 // Port mínimo: solo lo que el handler necesita
 type requestUsecase interface {
 	Submit(ctx context.Context, in SubmitInput) (SubmitOutput, error)
+	Simulate(ctx context.Context, in SubmitInput) (SimulateOutput, error)
 	GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Request, error)
 	List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error)
 	ReportResult(ctx context.Context, requestID uuid.UUID, in ReportResultInput) error
@@ -33,9 +34,50 @@ func NewHandler(uc requestUsecase) *Handler {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/requests", h.submit)
+	mux.HandleFunc("POST /v1/requests/simulate", h.simulate)
 	mux.HandleFunc("GET /v1/requests", h.list)
 	mux.HandleFunc("GET /v1/requests/{id}", h.getByID)
 	mux.HandleFunc("POST /v1/requests/{id}/result", h.reportResult)
+}
+
+func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
+	var body requestdto.SimulateRequest
+	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	if body.ActionType == "" {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "action_type is required")
+		return
+	}
+
+	out, err := h.uc.Simulate(r.Context(), SubmitInput{
+		RequesterType:  body.RequesterType,
+		RequesterID:    body.RequesterID,
+		RequesterName:  body.RequesterName,
+		ActionType:     body.ActionType,
+		TargetSystem:   body.TargetSystem,
+		TargetResource: body.TargetResource,
+		Params:         body.Params,
+		Reason:         body.Reason,
+		Context:        body.Context,
+	})
+	if err != nil {
+		slog.Error("simulate failed", "error", err)
+		shared.WriteInternalError(w, err, "simulate request")
+		return
+	}
+
+	sharedhandlers.WriteJSON(w, http.StatusOK, requestdto.SimulateResponse{
+		Decision:             out.Decision,
+		RiskLevel:            out.RiskLevel,
+		DecisionReason:       out.DecisionReason,
+		Status:               out.Status,
+		PolicyMatched:        out.PolicyMatched,
+		RiskAssessment:       out.RiskAssessment,
+		WouldRequireApproval: out.WouldRequireApproval,
+		AISummary:            out.AISummary,
+	})
 }
 
 func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {

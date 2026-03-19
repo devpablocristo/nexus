@@ -389,6 +389,117 @@ func requestToMap(r requestdomain.Request) map[string]any {
 	}
 }
 
+// SimulateOutput es el resultado de una simulación (dry-run)
+type SimulateOutput struct {
+	Decision       string         `json:"decision"`
+	RiskLevel      string         `json:"risk_level"`
+	DecisionReason string         `json:"decision_reason"`
+	Status         string         `json:"status"`
+	PolicyMatched  *string        `json:"policy_matched,omitempty"`
+	RiskAssessment *RiskAssessment `json:"risk_assessment"`
+	WouldRequireApproval bool     `json:"would_require_approval"`
+	AISummary      string         `json:"ai_summary,omitempty"`
+}
+
+// Simulate evalúa una request sin persistir nada. Dry-run puro.
+func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput, error) {
+	now := time.Now().UTC()
+
+	req := requestdomain.Request{
+		RequesterType:  requestdomain.RequesterType(in.RequesterType),
+		RequesterID:    in.RequesterID,
+		ActionType:     in.ActionType,
+		TargetSystem:   in.TargetSystem,
+		TargetResource: in.TargetResource,
+		Params:         in.Params,
+		Reason:         in.Reason,
+		Context:        in.Context,
+	}
+	if req.RequesterType == "" {
+		req.RequesterType = requestdomain.RequesterTypeAgent
+	}
+	if req.Params == nil {
+		req.Params = make(map[string]any)
+	}
+
+	// Evaluar políticas (misma lógica que Submit)
+	policyList, err := u.policyRepo.ListActive(ctx)
+	if err != nil {
+		return SimulateOutput{}, fmt.Errorf("list active policies: %w", err)
+	}
+
+	requestMap := requestToMap(req)
+	matched := false
+	var matchedPolicyName string
+	var policyRiskOverride *string
+
+	for _, p := range policyList {
+		if (p.ActionType != nil && *p.ActionType != "" && *p.ActionType != req.ActionType) ||
+			(p.TargetSystem != nil && *p.TargetSystem != "" && *p.TargetSystem != req.TargetSystem) {
+			continue
+		}
+		match, evalErr := u.evaluator.Matches(p.Expression, requestMap, now)
+		if evalErr != nil {
+			continue
+		}
+		if !match {
+			continue
+		}
+		matched = true
+		matchedPolicyName = p.Name
+		policyRiskOverride = p.RiskOverride
+		req.RiskLevel = TierRisk(req.ActionType, p.RiskOverride, u.riskConfig)
+		dec, ok := DecideFromPolicy(p.Effect, req.RiskLevel)
+		if !ok {
+			continue
+		}
+		req.Decision = dec
+		req.DecisionReason = "Policy '" + p.Name + "'"
+		break
+	}
+	if !matched {
+		req.RiskLevel = TierRisk(req.ActionType, nil, u.riskConfig)
+		req.Decision = DefaultDecision(req.RiskLevel)
+		req.DecisionReason = "No policy matched; default for risk " + string(req.RiskLevel)
+	}
+
+	// Calcular assessment completo de cascada
+	signals := RiskSignals{
+		ActionType:    req.ActionType,
+		TargetSystem:  req.TargetSystem,
+		RequesterID:   req.RequesterID,
+		RequesterType: string(req.RequesterType),
+		CurrentHour:   now.Hour(),
+		SuccessRate:   -1,
+	}
+	_, assessment := TierRiskFromSignals(signals, u.riskConfig, policyRiskOverride)
+
+	// Determinar status que tendría
+	var status string
+	switch req.Decision {
+	case requestdomain.DecisionAllow:
+		status = string(requestdomain.StatusAllowed)
+	case requestdomain.DecisionDeny:
+		status = string(requestdomain.StatusDenied)
+	default:
+		status = string(requestdomain.StatusPendingApproval)
+	}
+
+	out := SimulateOutput{
+		Decision:             string(req.Decision),
+		RiskLevel:            string(req.RiskLevel),
+		DecisionReason:       req.DecisionReason,
+		Status:               status,
+		RiskAssessment:       &assessment,
+		WouldRequireApproval: req.Decision == requestdomain.DecisionRequireApproval,
+	}
+	if matched {
+		out.PolicyMatched = &matchedPolicyName
+	}
+
+	return out, nil
+}
+
 func (u *Usecases) GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Request, error) {
 	return u.reqRepo.GetByID(ctx, id)
 }

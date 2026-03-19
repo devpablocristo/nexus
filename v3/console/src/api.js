@@ -41,6 +41,8 @@ export const fetchRequests = (params = {}) => {
   return request(`/v1/requests${q ? '?' + q : ''}`)
 }
 export const fetchRequest = (id) => request(`/v1/requests/${id}`)
+export const simulateRequest = (data) =>
+  request('/v1/requests/simulate', { method: 'POST', body: JSON.stringify(data) })
 export const fetchReplay = (id) => request(`/v1/requests/${id}/replay`)
 
 // Learning
@@ -68,3 +70,10 @@ export const restorePolicy = (id) =>
 
 // Dashboard
 export const fetchMetrics = (period = '7d') => request(`/v1/metrics/summary?period=${period}`)
+
+// Config
+export const fetchConfig = () => request('/v1/config')
+export const updateConfigSection = (section, data) =>
+  request(`/v1/config/${section}`, { method: 'PATCH', body: JSON.stringify(data) })
+export const resetConfig = () =>
+  request('/v1/config/reset', { method: 'POST' })
