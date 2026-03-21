@@ -1,9 +1,0 @@
-environment            = "production"
-core_db_instance_class = "db.t4g.small"
-saas_db_instance_class = "db.t4g.small"
-redis_node_type        = "cache.t4g.small"
-core_desired_count     = 2
-saas_desired_count     = 2
-control_desired_count  = 2
-ai_desired_count       = 2
-single_nat_gateway     = false

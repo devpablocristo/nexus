@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	sharedhandlers "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/handlers"
-	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
+	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
 	requestdto "github.com/devpablocristo/nexus/v3/review/internal/requests/handler/dto"
+	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
 	"github.com/devpablocristo/nexus/v3/review/internal/shared"
+	"github.com/google/uuid"
 )
 
 // Port mínimo: solo lo que el handler necesita
@@ -442,7 +442,6 @@ func toRequestResponse(req requestdomain.Request) requestdto.RequestResponse {
 		UpdatedAt:      req.UpdatedAt.Format(time.RFC3339),
 	}
 }
-
 
 // logAuditError loguea errores de audit sin fallar la request (best-effort).
 func logAuditError(err error, requestID uuid.UUID, event string) {

@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/devpablocristo/nexus/v3/pkgs/go-pkg/httpserver"
-	sharedobservability "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/observability"
+	"github.com/devpablocristo/core/backend/go/httpserver"
+	sharedobservability "github.com/devpablocristo/core/backend/go/observability"
 	"github.com/devpablocristo/nexus/v3/review/migrations"
 	"github.com/devpablocristo/nexus/v3/review/wire"
 )
@@ -65,10 +65,10 @@ func main() {
 		handler.ServeHTTP(w, r)
 	})
 
-	metrics := sharedobservability.NewMetrics()
+	metrics := sharedobservability.NewMetrics(sharedobservability.DefaultMetricsConfig("nexus_review"))
 	appHandler := sharedobservability.WithMetricsEndpoint(limitedHandler, metrics.Handler())
 	securedHandler := httpserver.SecurityMiddleware(
-		httpserver.SecurityConfigFromEnv(),
+		httpserver.SecurityConfigFromEnv("NEXUS"),
 		sharedobservability.MiddlewareWithMetrics(logger, metrics, appHandler),
 	)
 	server := httpserver.New(addr, securedHandler)

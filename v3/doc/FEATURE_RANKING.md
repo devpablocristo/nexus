@@ -29,7 +29,7 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 | 16 | **DegradationCollector per-request** | v2 | Marca `ai_degraded: true` cuando Claude no respondio. El SRE sabe que decide sin contexto IA. |
 | 17 | **Canary agents** | v2 adaptado | Agente de prueba que propone acciones falsas. Si pasan, las reglas tienen huecos. Cero codigo especial. |
 | 18 | **Dashboard (metricas agregadas)** | nuevo | ✅ Implementado. `GET /v1/metrics/summary` + tab Dashboard en consola. |
-| 19 | **Prometheus metrics (RED)** | v2 | Requests, errors, duration. pkgs/go-pkg/observability ya lo tiene. |
+| 19 | **Prometheus metrics (RED)** | v2 | Requests, errors, duration. `core/backend/go/observability` ya lo tiene. |
 | 20 | **JWT auth para UI** | nuevo | Los aprobadores necesitan auth real, no solo API key. |
 
 ## TIER 3: Importante (implementar en v1.1 o v1.2)
@@ -43,9 +43,9 @@ Todas las funcionalidades de Nexus v1 y v2, ordenadas desde "imprescindible" has
 | 25 | **Multi-tenancy basico (org_id)** | v2 saas | Para vender SaaS a multiples clientes. org_id en todas las tablas (ya preparado en schema). |
 | 26 | **Billing (Stripe)** | v1+v2 saas | Para cobrar. Starter $1.5K, Growth $4K. |
 | 27 | **Slack/PagerDuty alert routing** | v2 workers | Cuando una accion es denegada o expira, notificar por Slack/PagerDuty ademas del inbox. |
-| 28 | **Security headers middleware** | v2 | X-Content-Type-Options, X-Frame-Options, Referrer-Policy. Cero esfuerzo, viene en pkgs/go-pkg. |
+| 28 | **Security headers middleware** | v2 | X-Content-Type-Options, X-Frame-Options, Referrer-Policy. Cero esfuerzo, viene en `core/backend/go/httpserver`. |
 | 29 | **Graceful shutdown** | v2 | Signal handling, connection draining. Necesario para deploys sin downtime. |
-| 30 | **Request ID propagation (X-Request-Id)** | v2 | Tracing end-to-end. Viene en pkgs/go-pkg. |
+| 30 | **Request ID propagation (X-Request-Id)** | v2 | Tracing end-to-end. Viene en `core/backend/go/observability`. |
 
 ## TIER 4: Nice-to-have (implementar si hay tiempo)
 

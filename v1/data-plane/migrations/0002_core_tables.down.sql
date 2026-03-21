@@ -1,6 +1,0 @@
-DROP TABLE IF EXISTS audit_events;
-DROP TABLE IF EXISTS policies;
-DROP TABLE IF EXISTS tools;
-DROP TABLE IF EXISTS org_api_keys;
-DROP TABLE IF EXISTS orgs;
-

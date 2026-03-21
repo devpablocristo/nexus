@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/google/uuid"
-	sharedhandlers "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/handlers"
-	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
+	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
 	approvaldto "github.com/devpablocristo/nexus/v3/review/internal/approvals/handler/dto"
+	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	"github.com/devpablocristo/nexus/v3/review/internal/shared"
+	"github.com/google/uuid"
 )
 
 type approvalUsecase interface {

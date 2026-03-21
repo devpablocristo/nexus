@@ -1,8 +1,0 @@
-go 1.26.1
-
-use (
-	./control-plane
-	./control-workers
-	./data-plane
-	./pkgs/go-pkg
-)

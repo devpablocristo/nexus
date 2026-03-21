@@ -1,8 +1,8 @@
-# v2 es la unica linea activa. v1 queda solo como referencia temporal.
+# `v3` es la unica linea activa en este repo.
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: /v2/data-plane
+    directory: /v3/review
     schedule:
       interval: weekly
     groups:
@@ -10,57 +10,30 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: gomod
-    directory: /v2/control-plane
+  - package-ecosystem: npm
+    directory: /v3/console
     schedule:
       interval: weekly
     groups:
-      go-mod:
-        patterns:
-          - "*"
-
-  - package-ecosystem: gomod
-    directory: /v2/control-workers
-    schedule:
-      interval: weekly
-    groups:
-      go-mod:
-        patterns:
-          - "*"
-
-  - package-ecosystem: gomod
-    directory: /v2/pkgs/go-pkg
-    schedule:
-      interval: weekly
-    groups:
-      go-mod:
+      npm:
         patterns:
           - "*"
 
   - package-ecosystem: docker
-    directory: /v2/data-plane
+    directory: /v3/review
     schedule:
       interval: monthly
     groups:
-      docker:
+      docker-review:
         patterns:
           - "*"
 
   - package-ecosystem: docker
-    directory: /v2/control-plane
+    directory: /v3/console
     schedule:
       interval: monthly
     groups:
-      docker:
-        patterns:
-          - "*"
-
-  - package-ecosystem: docker
-    directory: /v2/control-workers
-    schedule:
-      interval: monthly
-    groups:
-      docker:
+      docker-console:
         patterns:
           - "*"
 

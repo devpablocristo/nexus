@@ -1,0 +1,76 @@
+name: V3 CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/v3-ci.yml"
+      - "v3/**"
+  pull_request:
+    paths:
+      - ".github/workflows/v3-ci.yml"
+      - "v3/**"
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: review tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout nexus
+        uses: actions/checkout@v4
+        with:
+          path: nexus
+
+      - name: Checkout core
+        uses: actions/checkout@v4
+        with:
+          repository: devpablocristo/core
+          path: core
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: nexus/v3/review/go.mod
+          cache-dependency-path: |
+            nexus/v3/review/go.sum
+            core/backend/go/go.sum
+            core/databases/postgres/go/go.sum
+
+      - name: Run go test
+        working-directory: nexus/v3/review
+        run: go test ./...
+
+      - name: Run go vet
+        working-directory: nexus/v3/review
+        run: go vet ./...
+
+  console:
+    name: console build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout nexus
+        uses: actions/checkout@v4
+        with:
+          path: nexus
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: nexus/v3/console/package-lock.json
+
+      - name: Install deps
+        working-directory: nexus/v3/console
+        run: npm ci
+
+      - name: Build console
+        working-directory: nexus/v3/console
+        run: npm run build

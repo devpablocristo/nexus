@@ -169,7 +169,7 @@ v3/
 │   ├── src/
 │   ├── Dockerfile
 │   └── nginx.conf
-├── pkgs/go-pkg/                       # codigo compartido agnostico
+├── ../../../core/                     # capacidades compartidas externas a nexus
 ├── scripts/
 │   ├── lib/common.sh
 │   ├── quality/check-api.sh
@@ -194,15 +194,15 @@ handler/dto/dto.go             # DTOs (separados del dominio)
 
 PostgreSQL siempre — no hay repositorios in-memory. Un solo archivo `repository.go` por modulo.
 
-### Reutilizacion de pkgs/go-pkg
+### Reutilizacion de `core`
 
 | Paquete | Uso |
 |---------|-----|
-| `pkgs/go-pkg/handlers` | DecodeJSON, WriteJSON, health endpoints |
-| `pkgs/go-pkg/postgres` | pgxpool, MigrateUp, ConfigFromEnv |
-| `pkgs/go-pkg/apikey` | Auth SHA256 middleware |
-| `pkgs/go-pkg/httpserver` | Security headers, CORS, graceful shutdown |
-| `pkgs/go-pkg/observability` | slog JSON, Prometheus, RED middleware |
+| `core/backend/go/httpjson` | DecodeJSON, WriteJSON, health endpoints |
+| `core/databases/postgres/go` | pgxpool, MigrateUp, ConfigFromEnv |
+| `core/backend/go/apikey` | Auth SHA256 middleware |
+| `core/backend/go/httpserver` | Security headers, CORS, graceful shutdown |
+| `core/backend/go/observability` | slog JSON, Prometheus, RED middleware |
 
 ## 4. Data Model
 

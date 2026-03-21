@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 
-	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
+	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
 	dashboarddto "github.com/devpablocristo/nexus/v3/review/internal/dashboard/handler/dto"
+	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
 	"github.com/devpablocristo/nexus/v3/review/internal/shared"
-	sharedhandlers "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/handlers"
 )
 
 type requestLister interface {

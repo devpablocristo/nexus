@@ -71,12 +71,9 @@ v3/
 │   │   └── i18n.js      # EN/ES con persistencia
 │   ├── nginx.conf       # proxy /v1/* → review
 │   └── Dockerfile
-├── pkgs/go-pkg/         # código Go compartido (agnóstico al proyecto)
-│   ├── handlers/        # DecodeJSON, WriteJSON, health
-│   ├── postgres/        # pgxpool, MigrateUp
-│   ├── apikey/          # auth SHA256 middleware
-│   ├── httpserver/      # security headers, CORS, graceful shutdown
-│   └── observability/   # slog JSON, Prometheus, RED middleware
+├── ../../../core/       # capacidades compartidas externas a nexus
+│   ├── backend/go/      # httpjson, apikey, httpserver, observability
+│   └── databases/postgres/go/ # pgxpool, MigrateUp
 ├── scripts/
 │   ├── lib/common.sh
 │   ├── quality/check-api.sh

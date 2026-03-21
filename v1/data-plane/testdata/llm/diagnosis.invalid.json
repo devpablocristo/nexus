@@ -1,8 +1,0 @@
-{
-  "summary_30s": "Se sospecha rate limit.",
-  "root_cause": "rate_limit_bucket_saturated",
-  "confidence": 0.9,
-  "hypotheses": [],
-  "recommended_actions": [],
-  "missing_info": []
-}

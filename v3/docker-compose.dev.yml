@@ -1,12 +1,12 @@
 services:
   review:
     build:
-      context: .
-      dockerfile: review/Dockerfile.dev
-    working_dir: /src/review
+      context: ../../
+      dockerfile: nexus/v3/review/Dockerfile.dev
+    working_dir: /workspace/nexus/v3/review
     volumes:
-      - ./review:/src/review
-      - ./pkgs:/src/pkgs
+      - ../../core:/workspace/core
+      - ./review:/workspace/nexus/v3/review
     command: ["air", "-c", ".air.toml"]
 
   console:

@@ -17,7 +17,7 @@ Registro de qué features se trajeron de versiones anteriores para no re-evaluar
 | **Sandbox (Simulate + Shadow + Replay)** | Nuevo | Tab unificada: simulate request con templates e historial, shadow monitor, replay test contra historial con expresión CEL propuesta. | ✅ Implementado |
 | **Feedback loop (execution → risk)** | Nuevo (inspirado en v2 baselines) | `execution_stats` table acumula success/failure por action_type. Factor F5 del cascade usa success_rate real. `ReportResult` alimenta las stats automáticamente. | ✅ Implementado |
 | **Break-glass approval** | v1 `approval/usecases.go` | Multi-aprobador: `break_glass: true`, `required_approvals: N`. Aprobación parcial (N-1 no finaliza), rechazo de cualquiera cancela, mismo aprobador no puede decidir dos veces. Configurable por action_type + risk_level. | ✅ Implementado |
-| **pkgs/go-pkg** | v2 `pkgs/go-pkg/` | Copiado directo: handlers, postgres, apikey, httpserver, observability. | ✅ Copiado |
+| **core backend/databases** | v2 `pkgs/go-pkg/` | Absorbido en `core/backend/go` y `core/databases/postgres/go`; `v3/review` ya consume esos módulos. | ✅ Migrado |
 
 ## Evaluadas y descartadas (para PoC/MVP)
 

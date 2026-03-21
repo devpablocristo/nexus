@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/handlers"
+	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
 )
 
 // ErrorResponse es la estructura estándar de error HTTP para todos los handlers.
@@ -27,8 +27,8 @@ func WriteInternalError(w http.ResponseWriter, err error, context string) {
 
 // Constantes de límites
 const (
-	DefaultListLimit = 50
-	MaxListLimit     = 1000
-	MaxExpressionLen = 5000
+	DefaultListLimit     = 50
+	MaxListLimit         = 1000
+	MaxExpressionLen     = 5000
 	MaxIdempotencyKeyLen = 256
 )

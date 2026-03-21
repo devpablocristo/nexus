@@ -18,8 +18,8 @@ services:
 
   review:
     build:
-      context: .
-      dockerfile: review/Dockerfile
+      context: ../../
+      dockerfile: nexus/v3/review/Dockerfile
     restart: unless-stopped
     environment:
       PORT: "8080"

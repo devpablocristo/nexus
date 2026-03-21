@@ -38,7 +38,7 @@ Cada capa tiene sus propios tipos. NUNCA expone los de otra.
 ## Código compartido
 
 - `internal/shared/` — transversal del negocio (específico del proyecto)
-- `pkgs/go-pkg/` — agnóstico al proyecto (se puede usar en cualquier otro)
+- `core/` — capacidades reutilizables externas al proyecto
 
 ## Persistencia
 

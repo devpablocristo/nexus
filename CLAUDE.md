@@ -2,7 +2,9 @@
 
 ## 1. Contexto
 
-Monorepo con tres proyectos: `v1/` (legacy), `v2/` (producción), `review-v1/` (PoC).
+Repositorio activo de Nexus: `v3/` (`review/` + `console/`).
+
+Las capacidades reutilizables ya viven en el repo externo `core/`.
 
 ---
 
@@ -118,7 +120,7 @@ Los **mappers** viven en el adapter que los necesita:
 | Ubicación | Qué contiene | Criterio |
 |-----------|-------------|----------|
 | `internal/shared/` | Código transversal del negocio | Específico de este proyecto, usado por varios módulos |
-| `pkgs/go-pkg/` | Código agnóstico al proyecto | Se puede llevar a otro proyecto sin cambios |
+| `core/` | Capacidades reutilizables externas al proyecto | Se consumen por módulo (`backend`, `databases`, etc.) |
 
 `pkgs/` no importa código de ningún servicio. `internal/shared/` no sale del servicio.
 

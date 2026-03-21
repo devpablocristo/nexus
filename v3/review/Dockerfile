@@ -1,11 +1,12 @@
 FROM golang:1.26-alpine AS builder
 
-WORKDIR /app
+WORKDIR /workspace
 
-COPY pkgs/go-pkg/ pkgs/go-pkg/
-COPY review/ review/
+COPY core/backend/go/ core/backend/go/
+COPY core/databases/postgres/go/ core/databases/postgres/go/
+COPY nexus/v3/review/ nexus/v3/review/
 
-WORKDIR /app/review
+WORKDIR /workspace/nexus/v3/review
 RUN go mod download
 RUN CGO_ENABLED=0 go build -o /nexus-review ./cmd/api
 

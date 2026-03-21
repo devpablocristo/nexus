@@ -1,8 +1,0 @@
-{
-  "summary_30s": "No hay evidencia suficiente para concluir causa raiz.",
-  "root_cause": "unknown",
-  "confidence": 0,
-  "hypotheses": [],
-  "recommended_actions": [],
-  "missing_info": ["falta correlacion de cambios recientes", "falta error budget por tool"]
-}

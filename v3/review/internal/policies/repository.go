@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	sharedpostgres "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/postgres"
+	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	policydomain "github.com/devpablocristo/nexus/v3/review/internal/policies/usecases/domain"
 )
 

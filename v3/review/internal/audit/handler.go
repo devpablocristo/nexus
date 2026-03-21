@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/google/uuid"
-	sharedhandlers "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/handlers"
+	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
 	auditdto "github.com/devpablocristo/nexus/v3/review/internal/audit/handler/dto"
 	"github.com/devpablocristo/nexus/v3/review/internal/shared"
+	"github.com/google/uuid"
 )
 
 type replayUsecase interface {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	sharedpostgres "github.com/devpablocristo/nexus/v3/pkgs/go-pkg/postgres"
+	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	auditdomain "github.com/devpablocristo/nexus/v3/review/internal/audit/usecases/domain"
 )
 
@@ -66,4 +66,3 @@ func (r *PostgresRepository) ListByRequestID(ctx context.Context, requestID uuid
 
 // Compilar verifica que PostgresRepository implementa Repository.
 var _ Repository = (*PostgresRepository)(nil)
-
