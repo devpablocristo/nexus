@@ -1,3 +1,5 @@
+import { getSavedLang as getStoredLang, saveLang as saveStoredLang } from './storage'
+
 const translations = {
   en: {
     // Nav
@@ -503,14 +505,12 @@ const translations = {
   },
 }
 
-const STORAGE_KEY = 'nexus-review-lang'
-
 export function getSavedLang() {
-  return localStorage.getItem(STORAGE_KEY) || 'en'
+  return getStoredLang()
 }
 
 export function saveLang(lang) {
-  localStorage.setItem(STORAGE_KEY, lang)
+  saveStoredLang(lang)
 }
 
 export function t(lang, key) {

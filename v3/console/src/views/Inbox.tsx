@@ -4,7 +4,7 @@ import { t } from '../i18n'
 import RiskBadge from '../components/RiskBadge'
 
 function timeRemaining(expiresAt, lang) {
-  const diff = new Date(expiresAt) - new Date()
+  const diff = new Date(expiresAt).getTime() - Date.now()
   if (diff <= 0) return t(lang, 'expired')
   const min = Math.floor(diff / 60000)
   if (min < 60) return `${min}min ${t(lang, 'timeLeft')}`
@@ -162,7 +162,7 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay }) {
   )
 }
 
-export default function Inbox({ lang, onViewReplay }) {
+export default function Inbox({ lang, onViewReplay = (_requestId: string) => {} }: { lang: any, onViewReplay?: (requestId: string) => void }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)

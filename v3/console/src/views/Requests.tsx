@@ -20,7 +20,7 @@ const dotColors = {
 }
 
 export default function Requests({ lang }) {
-  const [requests, setRequests] = useState([])
+  const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -33,7 +33,7 @@ export default function Requests({ lang }) {
   const load = () => {
     setLoading(true)
     setError(null)
-    const params = {}
+    const params: Record<string, string> = {}
     if (statusFilter) params.status = statusFilter
     if (actionFilter) params.action_type = actionFilter
     fetchRequests(params)

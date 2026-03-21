@@ -7,7 +7,7 @@ const RISK_LEVELS = ['', 'low', 'medium', 'high']
 
 const emptyForm = {
   name: '', description: '', expression: '', effect: 'allow',
-  priority: 10, mode: 'enforced', enabled: true, action_type: '', target_system: '', risk_override: '',
+  priority: '10', mode: 'enforced', enabled: true, action_type: '', target_system: '', risk_override: '',
 }
 
 export default function Policies({ lang }) {
@@ -46,7 +46,7 @@ export default function Policies({ lang }) {
       description: p.description || '',
       expression: p.expression,
       effect: p.effect,
-      priority: p.priority,
+      priority: String(p.priority ?? '10'),
       mode: p.mode || 'enforced',
       enabled: p.enabled,
       action_type: p.action_type || '',
@@ -60,7 +60,7 @@ export default function Policies({ lang }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      const data = {
+      const data: Record<string, any> = {
         name: form.name,
         description: form.description,
         expression: form.expression,

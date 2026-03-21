@@ -243,8 +243,8 @@ function BatchTab({ lang }) {
             <Stat label={t(lang, 'replayWouldRequire')} value={result.require_approval} color="text-yellow-400" />
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
               <div className="flex justify-center gap-2 text-xs">
-                {Object.entries(result.by_risk || {}).map(([k, v]) => (
-                  <span key={k} className="text-gray-400">{k}: <span className="text-white font-bold">{v}</span></span>
+                  {Object.entries(result.by_risk || {}).map(([k, v]) => (
+                  <span key={k} className="text-gray-400">{k}: <span className="text-white font-bold">{String(v)}</span></span>
                 ))}
               </div>
               <p className="text-gray-500 text-xs mt-1">{t(lang, 'batchByRisk')}</p>

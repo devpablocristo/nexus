@@ -1,31 +1,19 @@
+import { request as httpRequest } from '@devpablocristo/core-http/fetch'
+
 const API_KEY = 'nexus-review-admin-dev-key'
 
-async function request(path, options = {}) {
-  const res = await fetch(path, {
+type RequestOptions = Omit<RequestInit, 'headers'> & {
+  headers?: Record<string, string>
+}
+
+async function request(path: string, options: RequestOptions = {}): Promise<any> {
+  return httpRequest(path, {
     ...options,
     headers: {
       'X-API-Key': API_KEY,
-      'Content-Type': 'application/json',
       ...options.headers,
     },
   })
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText)
-    let msg = res.statusText
-    try {
-      const body = JSON.parse(text)
-      if (body.error && typeof body.error === 'object') {
-        msg = body.error.message || body.error.code || res.statusText
-      } else {
-        msg = body.message || body.error || res.statusText
-      }
-    } catch {
-      msg = text || res.statusText
-    }
-    throw new Error(msg)
-  }
-  if (res.status === 204) return null
-  return res.json()
 }
 
 // Approvals
@@ -36,22 +24,24 @@ export const rejectApproval = (id, decidedBy, note = '') =>
   request(`/v1/approvals/${id}/reject`, { method: 'POST', body: JSON.stringify({ decided_by: decidedBy, note }) })
 
 // Requests
-export const fetchRequests = (params = {}) => {
-  const q = new URLSearchParams(params).toString()
+export const fetchRequests = (params: Record<string, string | number | boolean> = {}) => {
+  const q = new URLSearchParams(
+    Object.entries(params).map(([key, value]) => [key, String(value)])
+  ).toString()
   return request(`/v1/requests${q ? '?' + q : ''}`)
 }
-export const fetchRequest = (id) => request(`/v1/requests/${id}`)
-export const simulateRequest = (data) =>
+export const fetchRequest = (id: string) => request(`/v1/requests/${id}`)
+export const simulateRequest = (data: unknown) =>
   request('/v1/requests/simulate', { method: 'POST', body: JSON.stringify(data) })
-export const replaySimulate = (data) =>
+export const replaySimulate = (data: unknown) =>
   request('/v1/requests/simulate/replay', { method: 'POST', body: JSON.stringify(data) })
-export const batchSimulate = (data) =>
+export const batchSimulate = (data: unknown) =>
   request('/v1/requests/simulate/batch', { method: 'POST', body: JSON.stringify(data) })
-export const simulateApproval = (data) =>
+export const simulateApproval = (data: unknown) =>
   request('/v1/requests/simulate/approval', { method: 'POST', body: JSON.stringify(data) })
-export const fetchReplay = (id) => request(`/v1/requests/${id}/replay`)
-export const fetchEvidence = (id) => request(`/v1/requests/${id}/evidence`)
-export const fetchAttestation = (id) => request(`/v1/requests/${id}/attestation`)
+export const fetchReplay = (id: string) => request(`/v1/requests/${id}/replay`)
+export const fetchEvidence = (id: string) => request(`/v1/requests/${id}/evidence`)
+export const fetchAttestation = (id: string) => request(`/v1/requests/${id}/attestation`)
 
 // Learning
 export const fetchProposals = () => request('/v1/learning/proposals')

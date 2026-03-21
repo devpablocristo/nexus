@@ -16,10 +16,10 @@ const dotColors = {
   sent_to_approval: 'bg-yellow-500', expired: 'bg-gray-600', cancelled: 'bg-gray-600',
 }
 
-export default function Replay({ lang, requestId }) {
-  const [replay, setReplay] = useState(null)
-  const [requests, setRequests] = useState([])
-  const [selectedId, setSelectedId] = useState(requestId)
+export default function Replay({ lang, requestId }: { lang: any, requestId?: string | null }) {
+  const [replay, setReplay] = useState<any>(null)
+  const [requests, setRequests] = useState<any[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(requestId ?? null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -43,7 +43,7 @@ export default function Replay({ lang, requestId }) {
         {requests.length === 0 && <p className="text-gray-500">{t(lang, 'noRequests')}</p>}
         <div className="space-y-2">
           {requests.map((r) => (
-            <button key={r.id} onClick={() => setSelectedId(r.id)}
+            <button key={r.id} onClick={() => setSelectedId(String(r.id))}
               className="w-full text-left bg-gray-900 border border-gray-800 rounded p-3 hover:bg-gray-800 transition-colors">
               <div className="flex items-center gap-3">
                 <StatusBadge status={r.status} />
