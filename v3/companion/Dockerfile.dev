@@ -1,0 +1,18 @@
+FROM golang:1.26-alpine
+
+RUN apk add --no-cache git wget
+RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
+
+WORKDIR /workspace
+
+COPY core/backend/go/go.mod ./core/backend/go/go.mod
+COPY core/databases/postgres/go/go.mod ./core/databases/postgres/go/go.mod
+COPY nexus/v3/companion/go.mod nexus/v3/companion/go.sum ./nexus/v3/companion/
+WORKDIR /workspace/nexus/v3/companion
+RUN go mod download
+
+WORKDIR /workspace/nexus/v3/companion
+
+EXPOSE 8080
+
+CMD ["air", "-c", ".air.toml"]

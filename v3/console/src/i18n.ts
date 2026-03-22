@@ -98,6 +98,26 @@ const translations = {
     aiSummary: 'AI Summary',
     errorMsg: 'Error',
 
+    // Tasks (Companion)
+    tasks: 'Tasks',
+    tasksTitle: 'Tasks',
+    tasksSubtitle: 'Work items governed via Review',
+    noTasks: 'No tasks yet.',
+    createTask: 'Create task',
+    taskTitle: 'Title',
+    taskGoal: 'Goal',
+    taskCreatedBy: 'Created by',
+    taskStatus: 'Status',
+    proposeToReview: 'Propose to Review',
+    investigateTask: 'Investigate',
+    linkedReview: 'Linked Review request',
+    taskTimeline: 'Timeline',
+    proposeNote: 'Note (optional)',
+    proposeRunning: 'Submitting…',
+    syncFromReview: 'Sync from Review',
+    backToList: 'Back to list',
+    actionType: 'Type',
+
     // Dashboard
     dashboardTitle: 'Dashboard',
     totalRequests: 'Total Requests',
@@ -348,6 +368,26 @@ const translations = {
     targetResource: 'Recurso',
     aiSummary: 'Resumen IA',
     errorMsg: 'Error',
+
+    // Tasks (Companion)
+    tasks: 'Tareas',
+    tasksTitle: 'Tareas',
+    tasksSubtitle: 'Ítems de trabajo gobernados vía Review',
+    noTasks: 'No hay tareas todavía.',
+    createTask: 'Crear tarea',
+    taskTitle: 'Título',
+    taskGoal: 'Objetivo',
+    taskCreatedBy: 'Creado por',
+    taskStatus: 'Estado',
+    proposeToReview: 'Proponer a Review',
+    investigateTask: 'Investigar',
+    linkedReview: 'Request de Review vinculada',
+    taskTimeline: 'Línea de tiempo',
+    proposeNote: 'Nota (opcional)',
+    proposeRunning: 'Enviando…',
+    syncFromReview: 'Sincronizar con Review',
+    backToList: 'Volver al listado',
+    actionType: 'Tipo',
 
     // Dashboard
     dashboardTitle: 'Panel',

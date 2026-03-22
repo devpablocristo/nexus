@@ -1,0 +1,82 @@
+# Nexus Companion
+
+Servicio Go que modela **tareas** del “compañero de trabajo” y las integra con **Review** (governance core) mediante HTTP.
+
+## Requisitos
+
+- PostgreSQL (base dedicada `nexus_companion` en la misma instancia que Review).
+- Review accesible con `REVIEW_BASE_URL` y `REVIEW_API_KEY` (misma clave que un rol válido en `NEXUS_API_KEYS` de Review, p. ej. `admin`).
+
+## Variables de entorno
+
+| Variable | Obligatoria | Descripción |
+|----------|-------------|-------------|
+| `PORT` | no | Default `8080` |
+| `DATABASE_URL` | sí | Postgres `nexus_companion` |
+| `NEXUS_API_KEYS` | sí | Mismo patrón que Review (`admin=...`) |
+| `REVIEW_BASE_URL` | sí | Ej. `http://review:8080` |
+| `REVIEW_API_KEY` | sí | Valor de la API key hacia Review |
+| `COMPANION_REVIEW_SYNC_INTERVAL_SEC` | no | Segundos entre polls de sync; `0` = sin loop. Default `30` |
+
+## Routing detrás del console (nginx / Vite)
+
+- Review: `/v1/...`
+- Companion: `/companion/v1/...` (el proxy quita el prefijo `/companion/` y reenvía `/v1/...` al servicio Companion).
+
+La UI usa solo la key de Companion en el navegador; **no** llama a Review directamente para el flujo de tareas.
+
+## Cliente HTTP reutilizable (core)
+
+En el repo **core**:
+
+- `backend/go/httpclient`: `Caller.DoJSON` — usado por `internal/reviewclient` contra Review.
+- `backend/go/fsm`: máquina de estados declarativa (From+Event→To) — reglas de transición de tareas en Companion.
+
+## Flujo “Propose”
+
+1. `POST /v1/tasks/{id}/propose` crea un `TaskAction` y envía `POST /v1/requests` a Review con `action_type: companion.propose` (requiere migración Review `0009_companion_action_type`).
+2. Metadata en `params.nexus`: `origin`, `task_id`, `proposed_by`, `human_owner`, etc.
+3. Se persiste `review_request_id` en la acción. El **estado de la tarea** se deriva de la respuesta de Review vía FSM: `allowed` → `done` (con `closed_at`), `denied` → `failed`, `pending_approval` → `waiting_for_approval`.
+
+## Sincronización con Review
+
+- **Loop** (opcional): `COMPANION_REVIEW_SYNC_INTERVAL_SEC` — intervalo en segundos; por defecto `30`. `0` desactiva el ticker en segundo plano.
+- **Manual**: `POST /v1/tasks/{id}/sync` — para tareas en `waiting_for_approval`, consulta el último `review_request_id` del último `propose` y aplica la misma FSM si Review ya resolvió (`approved`, `rejected`, `expired`, etc.).
+
+## Postgres: volumen ya inicializado
+
+Si el volumen de Postgres existía **antes** de añadir `postgres-init`, creá la base manualmente:
+
+```bash
+docker compose exec postgres psql -U postgres -c 'CREATE DATABASE nexus_companion;'
+```
+
+O recreá el volumen `postgres-data`.
+
+## Arranque local (desde `v3/`)
+
+```bash
+docker compose up -d --build
+```
+
+Si el volumen de Postgres es antiguo y falta la base:
+
+```bash
+bash scripts/dev/ensure-companion-db.sh
+```
+
+Smoke E2E Companion → Review (con APIs levantadas):
+
+```bash
+bash scripts/smoke/run-companion-review-flow.sh
+```
+
+- Review: `http://localhost:${NEXUS_REVIEW_PORT:-18084}`
+- Companion: `http://localhost:${NEXUS_COMPANION_PORT:-18085}`
+- Console: `http://localhost:${NEXUS_CONSOLE_PORT:-13001}`
+
+## Limitaciones (slice)
+
+- Sin websockets: la UI hace polling del detalle de tarea; el servidor además puede sincronizar estados en background.
+- `investigate` solo cambia estado y opcionalmente agrega mensaje; sin lógica de investigación real.
+- Políticas CEL en Review aplican a `companion.propose` como a cualquier otro `action_type`.

@@ -9,10 +9,11 @@ import Sandbox from './views/Sandbox'
 import ActionTypes from './views/ActionTypes'
 import Agents from './views/Agents'
 import Replay from './views/Replay'
+import Tasks from './views/Tasks'
 import { getSavedLang, saveLang, t } from './i18n'
 import { getSavedView, saveView } from './storage'
 
-const tabIds = ['inbox', 'requests', 'replay', 'policies', 'actionTypes', 'agents', 'sandbox', 'learning', 'dashboard', 'config']
+const tabIds = ['inbox', 'requests', 'tasks', 'replay', 'policies', 'actionTypes', 'agents', 'sandbox', 'learning', 'dashboard', 'config']
 
 export default function App() {
   const [view, setView] = useState(getSavedView)
@@ -76,6 +77,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 py-6">
         {view === 'inbox' && <Inbox lang={lang} onViewReplay={viewReplay} />}
         {view === 'requests' && <Requests lang={lang} />}
+        {view === 'tasks' && <Tasks lang={lang} />}
         {view === 'replay' && <Replay lang={lang} requestId={replayRequestId} />}
         {view === 'policies' && <Policies lang={lang} />}
         {view === 'actionTypes' && <ActionTypes lang={lang} />}

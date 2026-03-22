@@ -1,0 +1,83 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/devpablocristo/core/backend/go/httpserver"
+	sharedobservability "github.com/devpablocristo/core/backend/go/observability"
+	"github.com/devpablocristo/nexus/v3/companion/migrations"
+	"github.com/devpablocristo/nexus/v3/companion/wire"
+)
+
+func main() {
+	logger := sharedobservability.NewJSONLogger("nexus-companion")
+	addr := os.Getenv("PORT")
+	if addr == "" {
+		addr = "8080"
+	}
+	if addr[0] != ':' {
+		addr = ":" + addr
+	}
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		logger.Error("DATABASE_URL is required")
+		os.Exit(1)
+	}
+	reviewBase := os.Getenv("REVIEW_BASE_URL")
+	if reviewBase == "" {
+		logger.Error("REVIEW_BASE_URL is required")
+		os.Exit(1)
+	}
+	reviewKey := os.Getenv("REVIEW_API_KEY")
+	if reviewKey == "" {
+		logger.Error("REVIEW_API_KEY is required")
+		os.Exit(1)
+	}
+	apiKeys := os.Getenv("NEXUS_API_KEYS")
+	if apiKeys == "" {
+		logger.Error("NEXUS_API_KEYS is required")
+		os.Exit(1)
+	}
+
+	cfg := wire.Config{
+		DatabaseURL:    databaseURL,
+		APIKeys:        apiKeys,
+		ReviewBaseURL:  reviewBase,
+		ReviewAPIKey:   reviewKey,
+		MigrationFiles: migrations.Files,
+	}
+
+	handler, cleanup, err := wire.NewServer(cfg)
+	if err != nil {
+		logger.Error("startup failed", "error", err)
+		os.Exit(1)
+	}
+	defer cleanup()
+
+	const maxBodySize = 1 << 20
+	limitedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+		handler.ServeHTTP(w, r)
+	})
+
+	metrics := sharedobservability.NewMetrics(sharedobservability.DefaultMetricsConfig("nexus_companion"))
+	appHandler := sharedobservability.WithMetricsEndpoint(limitedHandler, metrics.Handler())
+	securedHandler := httpserver.SecurityMiddleware(
+		httpserver.SecurityConfigFromEnv("NEXUS"),
+		sharedobservability.MiddlewareWithMetrics(logger, metrics, appHandler),
+	)
+	server := httpserver.New(addr, securedHandler)
+
+	logger.Info("http server listening", "addr", addr)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := httpserver.Serve(ctx, server, logger); err != nil && err != http.ErrServerClosed {
+		logger.Error("server stopped", "error", err)
+		os.Exit(1)
+	}
+}

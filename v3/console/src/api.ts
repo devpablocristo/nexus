@@ -93,3 +93,30 @@ export const updateConfigSection = (section, data) =>
   request(`/v1/config/${section}`, { method: 'PATCH', body: JSON.stringify(data) })
 export const resetConfig = () =>
   request('/v1/config/reset', { method: 'POST' })
+
+// Companion (API key propia; rutas bajo /companion → nginx/Vite proxy)
+const COMPANION_API_KEY = 'nexus-companion-admin-dev-key'
+
+async function companionRequest(path: string, options: RequestOptions = {}): Promise<any> {
+  return httpRequest(path, {
+    ...options,
+    headers: {
+      'X-API-Key': COMPANION_API_KEY,
+      ...options.headers,
+    },
+  })
+}
+
+export const fetchCompanionTasks = () => companionRequest('/companion/v1/tasks')
+export const fetchCompanionTask = (id: string) => companionRequest(`/companion/v1/tasks/${id}`)
+export const createCompanionTask = (data: unknown) =>
+  companionRequest('/companion/v1/tasks', { method: 'POST', body: JSON.stringify(data) })
+export const proposeCompanionTask = (id: string, data: Record<string, unknown> = {}) =>
+  companionRequest(`/companion/v1/tasks/${id}/propose`, { method: 'POST', body: JSON.stringify(data) })
+export const investigateCompanionTask = (id: string, note = '') =>
+  companionRequest(`/companion/v1/tasks/${id}/investigate`, {
+    method: 'POST',
+    body: JSON.stringify({ note }),
+  })
+export const syncCompanionTaskFromReview = (id: string) =>
+  companionRequest(`/companion/v1/tasks/${id}/sync`, { method: 'POST' })

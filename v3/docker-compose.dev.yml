@@ -9,6 +9,16 @@ services:
       - ./review:/workspace/nexus/v3/review
     command: ["air", "-c", ".air.toml"]
 
+  companion:
+    build:
+      context: ../../
+      dockerfile: nexus/v3/companion/Dockerfile.dev
+    working_dir: /workspace/nexus/v3/companion
+    volumes:
+      - ../../core:/workspace/core
+      - ./companion:/workspace/nexus/v3/companion
+    command: ["air", "-c", ".air.toml"]
+
   console:
     build:
       context: ./console

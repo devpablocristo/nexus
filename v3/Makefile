@@ -4,6 +4,7 @@
 # --- Quality ---
 test:
 	cd review && go test ./... -count=1
+	cd companion && go test ./... -count=1
 
 qa:
 	bash scripts/quality/check-api.sh
@@ -26,6 +27,7 @@ logs:
 smoke:
 	bash scripts/smoke/run-policies-crud.sh
 	bash scripts/smoke/run-requests-flow.sh
+	bash scripts/smoke/run-companion-review-flow.sh
 
 e2e:
 	bash scripts/e2e/run-full-lifecycle.sh

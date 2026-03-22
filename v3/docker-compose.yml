@@ -10,6 +10,7 @@ services:
       - "${NEXUS_POSTGRES_PORT:-15434}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_review"]
       interval: 2s
@@ -39,6 +40,31 @@ services:
       timeout: 3s
       retries: 30
 
+  companion:
+    build:
+      context: ../../
+      dockerfile: nexus/v3/companion/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/nexus_companion?sslmode=disable"
+      NEXUS_API_KEYS: "admin=${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}"
+      REVIEW_BASE_URL: "http://review:8080"
+      REVIEW_API_KEY: "${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key}"
+      COMPANION_REVIEW_SYNC_INTERVAL_SEC: "${COMPANION_REVIEW_SYNC_INTERVAL_SEC:-30}"
+    ports:
+      - "${NEXUS_COMPANION_PORT:-18085}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      review:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   console:
     build:
       context: ./console
@@ -47,6 +73,8 @@ services:
       - "${NEXUS_CONSOLE_PORT:-13001}:80"
     depends_on:
       review:
+        condition: service_healthy
+      companion:
         condition: service_healthy
 
 volumes:

@@ -6,6 +6,10 @@ set -euo pipefail
 API_BASE="${API_BASE:-http://localhost:18084}"
 API_KEY="${API_KEY:-nexus-review-admin-dev-key}"
 
+# Companion (puerto host por defecto alineado con docker-compose)
+COMPANION_BASE="${COMPANION_BASE:-http://localhost:18085}"
+COMPANION_API_KEY="${COMPANION_API_KEY:-nexus-companion-admin-dev-key}"
+
 # Esperar a que un endpoint HTTP responda 200
 wait_for_http() {
   local url="$1"
@@ -70,6 +74,16 @@ assert_status() {
 green() { echo -e "\033[32m$1\033[0m"; }
 red() { echo -e "\033[31m$1\033[0m"; }
 yellow() { echo -e "\033[33m$1\033[0m"; }
+
+# GET Companion
+companion_get() {
+  curl -sf -H "X-API-Key: $COMPANION_API_KEY" "$COMPANION_BASE$1"
+}
+
+# POST Companion JSON
+companion_post() {
+  curl -sf -X POST -H "X-API-Key: $COMPANION_API_KEY" -H "Content-Type: application/json" -d "$2" "$COMPANION_BASE$1"
+}
 
 pass() { green "PASS: $1"; }
 fail() { red "FAIL: $1" >&2; exit 1; }
