@@ -11,9 +11,9 @@ Referencia de diseño: [NEXUS_ECOSYSTEM_DESIGN.md](./NEXUS_ECOSYSTEM_DESIGN.md).
 ## Estado actual (línea base)
 
 - Review: governance core operativo.
-- Companion: tasks, messages, actions, `propose` → Review, `review_request_id`, UI Tasks, compose + proxy.
+- Companion: tasks, messages, actions, `propose` → Review, `review_request_id`, **FSM** (`core/backend/go/fsm` + reglas en Companion), estado de tarea derivado de la **respuesta** Review (allow/deny/pending_approval), **worker de sync** (`COMPANION_REVIEW_SYNC_INTERVAL_SEC`), **`POST /v1/tasks/{id}/sync`**, UI Tasks con botón sync.
 - Console: múltiples vistas técnicas + Tasks aislada.
-- Falta: motor de estados + sync, Memory, Connectors, UX unificada, auth/observabilidad/E2E serios.
+- Falta: Memory, Connectors, UX unificada (Workspace), auth/observabilidad/E2E en CI, `TaskAction sync_review` persistido (opcional Fase 1.3).
 
 ---
 
@@ -48,6 +48,19 @@ Referencia de diseño: [NEXUS_ECOSYSTEM_DESIGN.md](./NEXUS_ECOSYSTEM_DESIGN.md).
 **Salida:** task pasa de “esperando” a “desbloqueada” o “fallida” según Review **sin** nueva propuesta; tests de usecase + smoke actualizado.
 
 **Depende de:** Fase 0 (smoke).
+
+### Progreso Fase 1 en repo
+
+| # | Estado | Notas |
+|---|--------|--------|
+| 1.1 | Hecho | FSM en core + transiciones Companion + tests; conflicto HTTP `409` mensaje genérico |
+| 1.2 | Hecho | `Propose` usa `review_submit.status` → `done` / `failed` / `waiting_for_approval` |
+| 1.3 | Pendiente | Sin acción `sync_review` ni tabla `companion_review_sync` (opcional) |
+| 1.4 | Parcial | Ticker + batch; sin backoff ni métricas dedicadas |
+| 1.5 | Hecho | `POST /v1/tasks/{id}/sync` + uso en UI |
+| 1.6 | Parcial | Estado en listado/detalle; polling UI 4s; server sync reduce necesidad de sync manual |
+
+**Smoke:** `scripts/smoke/run-companion-review-flow.sh` valida vínculo + **estado coherente** con Review y llama a `/sync`.
 
 ---
 
@@ -155,7 +168,7 @@ Orden de magnitud **4–8 meses** con 1–2 devs backend + 0.5–1 frontend, asu
 
 ## Criterio de “Nexus visión base completa”
 
-- [ ] Task con ciclo de vida gobernado por Review (sync incluida).
+- [x] Task con ciclo de vida gobernado por Review (sync incluida) — *slice Companion v1: FSM + pull + API sync; sin webhooks Review→Companion*.
 - [ ] Memory v1 en uso para al menos resumen de task.
 - [ ] Al menos un execute externo gated (aunque sea mock + uno real trivial).
 - [ ] Workspace con home + enlaces task ↔ request.

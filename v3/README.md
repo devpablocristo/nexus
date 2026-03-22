@@ -36,7 +36,7 @@ make test          # Go unit (review + companion)
 make smoke         # Requiere APIs levantadas (compose)
 ```
 
-Smoke incluye flujo **Companion → Review** (`scripts/smoke/run-companion-review-flow.sh`).
+Smoke incluye flujo **Companion → Review** (`scripts/smoke/run-companion-review-flow.sh`): comprueba el vínculo `review_request_id`, que el **estado de la tarea** coincida con el resultado de Review (`allowed` → `done`, `pending_approval` → `waiting_for_approval`, etc.) y que responda `POST /v1/tasks/{id}/sync`.
 
 ## Documentación
 

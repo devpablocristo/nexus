@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/google/uuid"
@@ -11,7 +12,8 @@ import (
 )
 
 type fakeRepo struct {
-	tasks map[uuid.UUID]domain.Task
+	tasks       map[uuid.UUID]domain.Task
+	lastPropose map[uuid.UUID]uuid.UUID
 }
 
 func (f *fakeRepo) CreateTask(ctx context.Context, t domain.Task) (domain.Task, error) {
@@ -60,7 +62,14 @@ func (f *fakeRepo) ListTasksByStatus(ctx context.Context, status string, limit i
 }
 
 func (f *fakeRepo) LatestProposeReviewRequestID(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error) {
-	return uuid.Nil, ErrNotFound
+	if f.lastPropose == nil {
+		return uuid.Nil, ErrNotFound
+	}
+	rid, ok := f.lastPropose[taskID]
+	if !ok {
+		return uuid.Nil, ErrNotFound
+	}
+	return rid, nil
 }
 
 func (f *fakeRepo) InsertMessage(ctx context.Context, m domain.TaskMessage) (domain.TaskMessage, error) {
@@ -93,13 +102,18 @@ func (f *fakeRepo) ListArtifactsByTaskID(ctx context.Context, taskID uuid.UUID) 
 	return nil, nil
 }
 
-type stubReview struct{}
+type stubReview struct {
+	getFn func(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error)
+}
 
 func (s *stubReview) SubmitRequest(ctx context.Context, idempotencyKey string, body reviewclient.SubmitRequestBody) (reviewclient.SubmitResponse, error) {
 	return reviewclient.SubmitResponse{}, nil
 }
 
 func (s *stubReview) GetRequest(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error) {
+	if s.getFn != nil {
+		return s.getFn(ctx, id)
+	}
 	return reviewclient.RequestSummary{}, 404, nil
 }
 
@@ -122,5 +136,42 @@ func TestUsecases_Create_ok(t *testing.T) {
 	}
 	if out.Title != "x" || out.Status != domain.TaskStatusNew {
 		t.Fatalf("task %+v", out)
+	}
+}
+
+func TestUsecases_SyncTaskReview_approvedToDone(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	rid := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	r := &fakeRepo{lastPropose: make(map[uuid.UUID]uuid.UUID)}
+	rev := &stubReview{
+		getFn: func(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error) {
+			if id != rid {
+				return reviewclient.RequestSummary{}, http.StatusNotFound, nil
+			}
+			return reviewclient.RequestSummary{ID: rid.String(), Status: "approved"}, http.StatusOK, nil
+		},
+	}
+	uc := NewUsecases(r, rev)
+	created, err := uc.Create(ctx, CreateTaskInput{Title: "sync-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tid := created.ID
+	created.Status = domain.TaskStatusWaitingForApproval
+	if _, err := r.UpdateTask(ctx, created); err != nil {
+		t.Fatal(err)
+	}
+	r.lastPropose[tid] = rid
+
+	out, err := uc.SyncTaskReview(ctx, tid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != domain.TaskStatusDone {
+		t.Fatalf("expected done, got %q", out.Status)
+	}
+	if out.ClosedAt == nil {
+		t.Fatal("expected ClosedAt on terminal state")
 	}
 }

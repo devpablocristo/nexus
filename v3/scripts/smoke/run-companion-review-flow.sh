@@ -44,8 +44,33 @@ else
   fail "Task detail missing review_request_id on action"
 fi
 
+RS=$(echo "$PROP" | json_get 'review_submit.status')
+case "$RS" in
+  pending_approval)
+    EXPECTED_ST="waiting_for_approval"
+    ;;
+  allowed|approved|executed)
+    EXPECTED_ST="done"
+    ;;
+  denied|rejected)
+    EXPECTED_ST="failed"
+    ;;
+  *)
+    fail "Unexpected review_submit.status from propose: $RS (expected pending_approval, allowed, denied, …)"
+    ;;
+esac
+
 TASK_ST=$(echo "$DETAIL" | json_get 'task.status')
-[ "$TASK_ST" = "waiting_for_approval" ] && pass "Task status waiting_for_approval" || fail "Unexpected task status: $TASK_ST (expected waiting_for_approval)"
+if [ "$TASK_ST" = "$EXPECTED_ST" ]; then
+  pass "Task status matches Review outcome ($RS → $TASK_ST)"
+else
+  fail "Task status $TASK_ST != expected $EXPECTED_ST for review_submit.status=$RS"
+fi
+
+echo "POST /v1/tasks/{id}/sync (manual / idempotent)..."
+SYNC_BODY=$(companion_post "/v1/tasks/$TASK_ID/sync" '{}')
+SYNC_ID=$(echo "$SYNC_BODY" | json_get 'id')
+[ "$SYNC_ID" = "$TASK_ID" ] && pass "Sync returned task with same id" || fail "Sync id mismatch: $SYNC_ID vs $TASK_ID"
 
 echo ""
 green "=== Companion ↔ Review smoke passed ==="
