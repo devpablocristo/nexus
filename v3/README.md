@@ -40,6 +40,7 @@ Smoke incluye flujo **Companion → Review** (`scripts/smoke/run-companion-revie
 
 ## Documentación
 
+- [doc/NEXUS_COWORKER_VISION.md](doc/NEXUS_COWORKER_VISION.md) — visión: de capa de control a **compañero de trabajo completo**
 - [companion/README.md](companion/README.md)
 - [review/README.md](review/README.md)
 - [doc/NEXUS_COMPLETION_ROADMAP.md](doc/NEXUS_COMPLETION_ROADMAP.md)

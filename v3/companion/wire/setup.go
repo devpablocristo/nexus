@@ -15,6 +15,8 @@ import (
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	"github.com/devpablocristo/nexus/v3/companion/internal/reviewclient"
 	"github.com/devpablocristo/nexus/v3/companion/internal/tasks"
+	"github.com/devpablocristo/nexus/v3/companion/internal/watchers"
+	"github.com/devpablocristo/nexus/v3/companion/internal/watchers/pymesclient"
 )
 
 func reviewSyncInterval() time.Duration {
@@ -29,12 +31,26 @@ func reviewSyncInterval() time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
+func watcherInterval() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("COMPANION_WATCHER_INTERVAL_SEC"))
+	if raw == "" {
+		return 0
+	}
+	sec, err := strconv.Atoi(raw)
+	if err != nil || sec <= 0 {
+		return 0
+	}
+	return time.Duration(sec) * time.Second
+}
+
 // Config arranque del servicio Companion.
 type Config struct {
 	DatabaseURL    string
 	APIKeys        string
 	ReviewBaseURL  string
 	ReviewAPIKey   string
+	PymesBaseURL   string
+	PymesAPIKey    string
 	MigrationFiles fs.FS
 }
 
@@ -57,11 +73,18 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	uc := tasks.NewUsecases(repo, rc)
 	h := tasks.NewHandler(uc)
 
+	// Watchers module
+	watcherRepo := watchers.NewPostgresRepository(db)
+	pymesClient := pymesclient.NewClient(cfg.PymesBaseURL, cfg.PymesAPIKey)
+	watcherUC := watchers.NewUsecases(watcherRepo, pymesClient, rc)
+	watcherHandler := watchers.NewHandler(watcherUC)
+
 	mux := http.NewServeMux()
 	sharedhandlers.RegisterHealthEndpoints(mux, func(c context.Context) error {
 		return db.Ping(c)
 	})
 	h.Register(mux)
+	watcherHandler.Register(mux)
 
 	authn, err := sharedapikey.NewAuthenticator(cfg.APIKeys)
 	if err != nil {
@@ -78,6 +101,15 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		prev := cleanup
 		cleanup = func() {
 			syncCancel()
+			prev()
+		}
+	}
+	if d := watcherInterval(); d > 0 {
+		watcherCtx, watcherCancel := context.WithCancel(context.Background())
+		go watcherUC.RunWatcherLoop(watcherCtx, d, 50)
+		prev := cleanup
+		cleanup = func() {
+			watcherCancel()
 			prev()
 		}
 	}

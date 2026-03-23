@@ -1,6 +1,6 @@
 # Nexus — diseño de piezas faltantes (Companion, Memory, Connectors, Workspace)
 
-Documento de referencia para decisiones técnicas. Complementa la visión de producto (Nexus = compañero IA gobernado; Review = núcleo soberano).
+Documento de referencia para decisiones técnicas. Complementa la **visión de producto** en [NEXUS_COWORKER_VISION.md](./NEXUS_COWORKER_VISION.md) (Nexus como compañero de trabajo completo gobernado; Review = núcleo soberano de decisión).
 
 ---
 
