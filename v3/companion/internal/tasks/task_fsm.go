@@ -7,7 +7,7 @@ import (
 
 	"github.com/devpablocristo/core/backend/go/fsm"
 
-	"github.com/devpablocristo/nexus/v3/companion/internal/reviewclient"
+	"github.com/devpablocristo/core/governance/go/reviewclient"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/tasks/usecases/domain"
 )
 

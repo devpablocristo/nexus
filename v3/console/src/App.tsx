@@ -10,10 +10,35 @@ import ActionTypes from './views/ActionTypes'
 import Agents from './views/Agents'
 import Replay from './views/Replay'
 import Tasks from './views/Tasks'
+import Memory from './views/Memory'
+import Connectors from './views/Connectors'
 import { getSavedLang, saveLang, t } from './i18n'
 import { getSavedView, saveView } from './storage'
+import { AuthTokenBridge, ProtectedRoute } from './AuthTokenBridge'
 
-const tabIds = ['inbox', 'requests', 'tasks', 'replay', 'policies', 'actionTypes', 'agents', 'sandbox', 'learning', 'dashboard', 'config']
+// Navegación agrupada por áreas de trabajo (Workspace)
+const areas = [
+  {
+    key: 'areaWork',
+    tabs: ['inbox', 'tasks', 'memory'],
+  },
+  {
+    key: 'areaGovernance',
+    tabs: ['requests', 'replay'],
+  },
+  {
+    key: 'areaOperations',
+    tabs: ['policies', 'actionTypes', 'agents', 'connectors'],
+  },
+  {
+    key: 'areaTools',
+    tabs: ['sandbox', 'learning', 'dashboard'],
+  },
+  {
+    key: 'areaSettings',
+    tabs: ['config'],
+  },
+]
 
 export default function App() {
   const [view, setView] = useState(getSavedView)
@@ -41,39 +66,51 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <nav className="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center gap-8">
-        <h1 className="text-lg font-bold text-white tracking-tight">Nexus Review</h1>
-        <div className="flex gap-1">
-          {tabIds.map((id) => (
-            <button
-              key={id}
-              onClick={() => changeView(id)}
-              className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                view === id
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              {t(lang, id)}
-            </button>
-          ))}
+      <nav className="bg-gray-900 border-b border-gray-800 px-6 py-3">
+        <div className="flex items-center gap-8 mb-2">
+          <h1 className="text-lg font-bold text-white tracking-tight">Nexus Workspace</h1>
+          <div className="ml-auto flex items-center gap-3">
+            <AuthTokenBridge />
+            {['en', 'es'].map((l) => (
+              <button
+                key={l}
+                onClick={() => changeLang(l)}
+                className={`px-2 py-1 rounded text-xs font-medium uppercase transition-colors ${
+                  lang === l
+                    ? 'bg-gray-700 text-white'
+                    : 'text-gray-500 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="ml-auto flex gap-1">
-          {['en', 'es'].map((l) => (
-            <button
-              key={l}
-              onClick={() => changeLang(l)}
-              className={`px-2 py-1 rounded text-xs font-medium uppercase transition-colors ${
-                lang === l
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-500 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              {l}
-            </button>
+        <div className="flex gap-6">
+          {areas.map((area) => (
+            <div key={area.key} className="flex items-center gap-1">
+              <span className="text-xs text-gray-500 uppercase tracking-wider mr-1">
+                {t(lang, area.key)}
+              </span>
+              {area.tabs.map((id) => (
+                <button
+                  key={id}
+                  onClick={() => changeView(id)}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    view === id
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                  }`}
+                >
+                  {t(lang, id)}
+                </button>
+              ))}
+              <span className="text-gray-700 ml-1">|</span>
+            </div>
           ))}
         </div>
       </nav>
+      <ProtectedRoute>
       <main className="max-w-7xl mx-auto px-6 py-6">
         {view === 'inbox' && <Inbox lang={lang} onViewReplay={viewReplay} />}
         {view === 'requests' && <Requests lang={lang} />}
@@ -86,7 +123,10 @@ export default function App() {
         {view === 'learning' && <Learning lang={lang} />}
         {view === 'dashboard' && <Dashboard lang={lang} />}
         {view === 'config' && <Config lang={lang} />}
+        {view === 'memory' && <Memory lang={lang} />}
+        {view === 'connectors' && <Connectors lang={lang} />}
       </main>
+      </ProtectedRoute>
     </div>
   )
 }

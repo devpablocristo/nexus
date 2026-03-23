@@ -209,6 +209,21 @@ const translations = {
     disable: 'Disable',
     enable: 'Enable',
 
+    // Memory
+    memory: 'Memory',
+    memoryTitle: 'Operational Memory',
+
+    // Connectors
+    connectors: 'Connectors',
+    connectorsTitle: 'Connectors',
+
+    // Workspace areas
+    areaWork: 'Work',
+    areaGovernance: 'Governance',
+    areaOperations: 'Operations',
+    areaTools: 'Tools',
+    areaSettings: 'Settings',
+
     // Agents / Delegations
     agents: 'Agents',
     agentsTitle: 'Agent Delegations',
@@ -479,6 +494,21 @@ const translations = {
     atBreakGlass: 'Requiere Break-glass',
     disable: 'Deshabilitar',
     enable: 'Habilitar',
+
+    // Memory
+    memory: 'Memoria',
+    memoryTitle: 'Memoria operativa',
+
+    // Connectors
+    connectors: 'Conectores',
+    connectorsTitle: 'Conectores',
+
+    // Workspace areas
+    areaWork: 'Trabajo',
+    areaGovernance: 'Gobernanza',
+    areaOperations: 'Operación',
+    areaTools: 'Herramientas',
+    areaSettings: 'Ajustes',
 
     // Agents / Delegations
     agents: 'Agentes',

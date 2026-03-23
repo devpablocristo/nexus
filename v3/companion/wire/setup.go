@@ -4,16 +4,22 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	sharedapikey "github.com/devpablocristo/core/backend/go/apikey"
 	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
-	"github.com/devpablocristo/nexus/v3/companion/internal/reviewclient"
+	"github.com/devpablocristo/nexus/v3/companion/internal/connectors"
+	"github.com/devpablocristo/nexus/v3/companion/internal/connectors/registry"
+	"github.com/devpablocristo/nexus/v3/companion/internal/memory"
+	"github.com/devpablocristo/core/governance/go/reviewclient"
 	"github.com/devpablocristo/nexus/v3/companion/internal/tasks"
 	"github.com/devpablocristo/nexus/v3/companion/internal/watchers"
 	"github.com/devpablocristo/nexus/v3/companion/internal/watchers/pymesclient"
@@ -79,12 +85,41 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	watcherUC := watchers.NewUsecases(watcherRepo, pymesClient, rc)
 	watcherHandler := watchers.NewHandler(watcherUC)
 
+	// Memory module
+	memRepo := memory.NewPostgresRepository(db)
+	memUC := memory.NewUsecases(memRepo)
+	memHandler := memory.NewHandler(memUC)
+
+	// Connectors module
+	connReg := registry.NewRegistry()
+	connReg.Register(registry.NewMockConnector())
+	if cfg.PymesBaseURL != "" {
+		connReg.Register(registry.NewPymesConnector(pymesClient))
+	}
+	connRepo := connectors.NewPostgresRepository(db)
+	reviewChecker := connectors.NewReviewCheckerAdapter(func(c context.Context, id uuid.UUID) (string, int, error) {
+		summary, status, err := rc.GetRequest(c, id.String())
+		if err != nil {
+			return "", status, err
+		}
+		return summary.Status, status, nil
+	})
+	connUC := connectors.NewUsecases(connRepo, connReg, reviewChecker)
+	connHandler := connectors.NewHandler(connUC)
+
 	mux := http.NewServeMux()
 	sharedhandlers.RegisterHealthEndpoints(mux, func(c context.Context) error {
 		return db.Ping(c)
 	})
 	h.Register(mux)
 	watcherHandler.Register(mux)
+	memHandler.Register(mux)
+	connHandler.Register(mux)
+
+	// Seed conectores por defecto
+	if err := connUC.SeedDefaultConnectors(ctx); err != nil {
+		slog.Error("seed default connectors", "error", err)
+	}
 
 	authn, err := sharedapikey.NewAuthenticator(cfg.APIKeys)
 	if err != nil {
@@ -110,6 +145,17 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		prev := cleanup
 		cleanup = func() {
 			watcherCancel()
+			prev()
+		}
+	}
+
+	// Memory purge loop: limpia entradas expiradas cada hora
+	{
+		purgeCtx, purgeCancel := context.WithCancel(context.Background())
+		go memUC.RunPurgeLoop(purgeCtx, 1*time.Hour)
+		prev := cleanup
+		cleanup = func() {
+			purgeCancel()
 			prev()
 		}
 	}

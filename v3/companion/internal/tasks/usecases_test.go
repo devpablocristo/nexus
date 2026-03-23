@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/devpablocristo/nexus/v3/companion/internal/reviewclient"
+	"github.com/devpablocristo/core/governance/go/reviewclient"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/tasks/usecases/domain"
 )
 
@@ -103,14 +103,14 @@ func (f *fakeRepo) ListArtifactsByTaskID(ctx context.Context, taskID uuid.UUID) 
 }
 
 type stubReview struct {
-	getFn func(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error)
+	getFn func(ctx context.Context, id string) (reviewclient.RequestSummary, int, error)
 }
 
 func (s *stubReview) SubmitRequest(ctx context.Context, idempotencyKey string, body reviewclient.SubmitRequestBody) (reviewclient.SubmitResponse, error) {
 	return reviewclient.SubmitResponse{}, nil
 }
 
-func (s *stubReview) GetRequest(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error) {
+func (s *stubReview) GetRequest(ctx context.Context, id string) (reviewclient.RequestSummary, int, error) {
 	if s.getFn != nil {
 		return s.getFn(ctx, id)
 	}
@@ -145,8 +145,8 @@ func TestUsecases_SyncTaskReview_approvedToDone(t *testing.T) {
 	rid := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 	r := &fakeRepo{lastPropose: make(map[uuid.UUID]uuid.UUID)}
 	rev := &stubReview{
-		getFn: func(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error) {
-			if id != rid {
+		getFn: func(ctx context.Context, id string) (reviewclient.RequestSummary, int, error) {
+			if id != rid.String() {
 				return reviewclient.RequestSummary{}, http.StatusNotFound, nil
 			}
 			return reviewclient.RequestSummary{ID: rid.String(), Status: "approved"}, http.StatusOK, nil

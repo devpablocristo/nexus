@@ -11,7 +11,7 @@ import (
 	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
 	"github.com/google/uuid"
 
-	"github.com/devpablocristo/nexus/v3/companion/internal/reviewclient"
+	"github.com/devpablocristo/core/governance/go/reviewclient"
 	"github.com/devpablocristo/nexus/v3/companion/internal/shared"
 	tasksdto "github.com/devpablocristo/nexus/v3/companion/internal/tasks/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/tasks/usecases/domain"

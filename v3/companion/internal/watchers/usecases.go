@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/devpablocristo/nexus/v3/companion/internal/reviewclient"
+	"github.com/devpablocristo/core/governance/go/reviewclient"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/watchers/usecases/domain"
 )
 
@@ -28,7 +28,7 @@ type PymesClient interface {
 // ReviewGateway port para enviar solicitudes a Nexus Review.
 type ReviewGateway interface {
 	SubmitRequest(ctx context.Context, idempotencyKey string, body reviewclient.SubmitRequestBody) (reviewclient.SubmitResponse, error)
-	GetRequest(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error)
+	GetRequest(ctx context.Context, id string) (reviewclient.RequestSummary, int, error)
 }
 
 // CreateWatcherInput es la entrada para crear un watcher.
@@ -399,7 +399,7 @@ func (uc *Usecases) SyncPendingProposals(ctx context.Context, orgID string, limi
 		if p.ReviewRequestID == nil {
 			continue
 		}
-		summary, statusCode, err := uc.review.GetRequest(ctx, *p.ReviewRequestID)
+		summary, statusCode, err := uc.review.GetRequest(ctx, p.ReviewRequestID.String())
 		if err != nil || statusCode == 404 {
 			continue
 		}

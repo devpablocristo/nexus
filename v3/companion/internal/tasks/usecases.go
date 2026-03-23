@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/devpablocristo/nexus/v3/companion/internal/reviewclient"
+	"github.com/devpablocristo/core/governance/go/reviewclient"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/tasks/usecases/domain"
 )
 
@@ -27,7 +27,7 @@ const (
 
 type reviewGateway interface {
 	SubmitRequest(ctx context.Context, idempotencyKey string, body reviewclient.SubmitRequestBody) (reviewclient.SubmitResponse, error)
-	GetRequest(ctx context.Context, id uuid.UUID) (reviewclient.RequestSummary, int, error)
+	GetRequest(ctx context.Context, id string) (reviewclient.RequestSummary, int, error)
 }
 
 // Usecases lógica de tareas e integración con Review.
@@ -126,7 +126,7 @@ func (u *Usecases) GetDetail(ctx context.Context, id uuid.UUID) (TaskDetail, err
 			continue
 		}
 		seen[rid] = struct{}{}
-		sum, st, gErr := u.review.GetRequest(ctx, rid)
+		sum, st, gErr := u.review.GetRequest(ctx, rid.String())
 		lr := LinkedReviewRequest{ActionID: a.ID}
 		if gErr != nil {
 			slog.Error("review get request failed", "error", gErr, "request_id", rid)
@@ -348,7 +348,7 @@ func (u *Usecases) SyncTaskReview(ctx context.Context, taskID uuid.UUID) (domain
 		}
 		return domain.Task{}, err
 	}
-	sum, st, gErr := u.review.GetRequest(ctx, rid)
+	sum, st, gErr := u.review.GetRequest(ctx, rid.String())
 	if gErr != nil {
 		return domain.Task{}, fmt.Errorf("review get request: %w", gErr)
 	}
