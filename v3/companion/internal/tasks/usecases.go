@@ -168,6 +168,79 @@ func (u *Usecases) AddMessage(ctx context.Context, taskID uuid.UUID, in AddMessa
 	})
 }
 
+// ChatInput entrada para el endpoint de chat conversacional.
+type ChatInput struct {
+	TaskID  *uuid.UUID // nil = crear tarea nueva
+	UserID  string
+	Message string
+	Channel string // "console", "api", etc.
+}
+
+// ChatResult resultado del chat.
+type ChatResult struct {
+	Task     domain.Task
+	Messages []domain.TaskMessage
+}
+
+// Chat combina crear/reusar tarea + agregar mensaje del usuario.
+// Es el endpoint principal para la interfaz conversacional del suscriptor.
+func (u *Usecases) Chat(ctx context.Context, in ChatInput) (ChatResult, error) {
+	if in.Message == "" {
+		return ChatResult{}, fmt.Errorf("message is required")
+	}
+
+	var t domain.Task
+	var err error
+
+	if in.TaskID != nil {
+		// Reusar tarea existente
+		t, err = u.repo.GetTaskByID(ctx, *in.TaskID)
+		if err != nil {
+			return ChatResult{}, err
+		}
+	} else {
+		// Crear tarea nueva con el primer mensaje como título
+		title := in.Message
+		if len(title) > 80 {
+			title = title[:80]
+		}
+		channel := in.Channel
+		if channel == "" {
+			channel = "console"
+		}
+		t, err = u.repo.CreateTask(ctx, domain.Task{
+			Title:     title,
+			Status:    domain.TaskStatusNew,
+			Priority:  "normal",
+			CreatedBy: in.UserID,
+			Channel:   channel,
+		})
+		if err != nil {
+			return ChatResult{}, fmt.Errorf("create chat task: %w", err)
+		}
+		slog.Info("companion chat started", "task_id", t.ID.String(), "user_id", in.UserID)
+	}
+
+	// Agregar mensaje del usuario
+	_, err = u.repo.InsertMessage(ctx, domain.TaskMessage{
+		TaskID:     t.ID,
+		AuthorType: "user",
+		AuthorID:   in.UserID,
+		Body:       in.Message,
+	})
+	if err != nil {
+		return ChatResult{}, fmt.Errorf("insert chat message: %w", err)
+	}
+
+	// Devolver hilo completo
+	msgs, err := u.repo.ListMessagesByTaskID(ctx, t.ID)
+	if err != nil {
+		return ChatResult{}, fmt.Errorf("list chat messages: %w", err)
+	}
+
+	return ChatResult{Task: t, Messages: msgs}, nil
+}
+
 type InvestigateInput struct {
 	Note string
 }

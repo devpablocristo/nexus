@@ -4,6 +4,7 @@ WORKDIR /workspace
 
 COPY core/backend/go/ core/backend/go/
 COPY core/databases/postgres/go/ core/databases/postgres/go/
+COPY core/governance/go/ core/governance/go/
 COPY nexus/v3/companion/ nexus/v3/companion/
 
 WORKDIR /workspace/nexus/v3/companion

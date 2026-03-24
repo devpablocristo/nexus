@@ -138,3 +138,10 @@ export const investigateCompanionTask = (id: string, note = '') =>
   })
 export const syncCompanionTaskFromReview = (id: string) =>
   companionRequest(`/companion/v1/tasks/${id}/sync`, { method: 'POST' })
+
+// Companion — Chat (interfaz conversacional del suscriptor)
+export const sendChatMessage = (message: string, taskId?: string, channel = 'console') =>
+  companionRequest('/companion/v1/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message, task_id: taskId || undefined, channel }),
+  })

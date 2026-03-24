@@ -12,6 +12,7 @@ import Replay from './views/Replay'
 import Tasks from './views/Tasks'
 import Memory from './views/Memory'
 import Connectors from './views/Connectors'
+import Chat from './views/Chat'
 import { getSavedLang, saveLang, t } from './i18n'
 import { getSavedView, saveView } from './storage'
 import { AuthTokenBridge, ProtectedRoute } from './AuthTokenBridge'
@@ -20,7 +21,7 @@ import { AuthTokenBridge, ProtectedRoute } from './AuthTokenBridge'
 const areas = [
   {
     key: 'areaWork',
-    tabs: ['inbox', 'tasks', 'memory'],
+    tabs: ['chat', 'inbox', 'tasks', 'memory'],
   },
   {
     key: 'areaGovernance',
@@ -112,6 +113,7 @@ export default function App() {
       </nav>
       <ProtectedRoute>
       <main className="max-w-7xl mx-auto px-6 py-6">
+        {view === 'chat' && <Chat lang={lang} />}
         {view === 'inbox' && <Inbox lang={lang} onViewReplay={viewReplay} />}
         {view === 'requests' && <Requests lang={lang} />}
         {view === 'tasks' && <Tasks lang={lang} />}

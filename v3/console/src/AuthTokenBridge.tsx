@@ -30,7 +30,7 @@ function ClerkBridge() {
     )
   }
 
-  return <UserButton afterSignOutUrl="/" />
+  return <UserButton />
 }
 
 // Componente para proteger rutas — redirige al sign-in si no hay sesión.

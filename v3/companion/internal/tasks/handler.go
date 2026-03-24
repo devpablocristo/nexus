@@ -25,6 +25,7 @@ type taskUsecase interface {
 	Investigate(ctx context.Context, taskID uuid.UUID, in InvestigateInput) (domain.Task, error)
 	Propose(ctx context.Context, taskID uuid.UUID, in ProposeInput) (domain.Task, domain.TaskAction, reviewclient.SubmitResponse, error)
 	SyncTaskReview(ctx context.Context, taskID uuid.UUID) (domain.Task, error)
+	Chat(ctx context.Context, in ChatInput) (ChatResult, error)
 }
 
 type Handler struct {
@@ -43,6 +44,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/tasks/{id}/investigate", h.investigate)
 	mux.HandleFunc("POST /v1/tasks/{id}/propose", h.propose)
 	mux.HandleFunc("POST /v1/tasks/{id}/sync", h.syncReview)
+	mux.HandleFunc("POST /v1/chat", h.chat)
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -253,4 +255,53 @@ func (h *Handler) syncReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sharedhandlers.WriteJSON(w, http.StatusOK, tasksdto.TaskToResponse(t))
+}
+
+func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
+	var body tasksdto.ChatRequest
+	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	if body.Message == "" {
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "message is required")
+		return
+	}
+
+	var taskID *uuid.UUID
+	if body.TaskID != "" {
+		parsed, err := uuid.Parse(body.TaskID)
+		if err != nil {
+			shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid task_id")
+			return
+		}
+		taskID = &parsed
+	}
+
+	// TODO: extraer user_id del auth context cuando se integre Clerk
+	userID := "subscriber"
+
+	result, err := h.uc.Chat(r.Context(), ChatInput{
+		TaskID:  taskID,
+		UserID:  userID,
+		Message: body.Message,
+		Channel: body.Channel,
+	})
+	if err != nil {
+		if IsNotFound(err) {
+			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			return
+		}
+		shared.WriteInternalError(w, err, "chat failed")
+		return
+	}
+
+	msgs := make([]tasksdto.MessageResponse, 0, len(result.Messages))
+	for _, m := range result.Messages {
+		msgs = append(msgs, tasksdto.MessageToResponse(m))
+	}
+	sharedhandlers.WriteJSON(w, http.StatusOK, tasksdto.ChatResponse{
+		Task:     tasksdto.TaskToResponse(result.Task),
+		Messages: msgs,
+	})
 }

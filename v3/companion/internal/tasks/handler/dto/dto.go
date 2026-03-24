@@ -80,6 +80,19 @@ type AddMessageRequest struct {
 	Body       string `json:"body"`
 }
 
+// ChatRequest endpoint conversacional para el suscriptor.
+type ChatRequest struct {
+	TaskID  string `json:"task_id,omitempty"` // vacío = crear nueva conversación
+	Message string `json:"message"`
+	Channel string `json:"channel,omitempty"` // "console", "api"
+}
+
+// ChatResponse respuesta del chat con tarea y mensajes.
+type ChatResponse struct {
+	Task     TaskResponse      `json:"task"`
+	Messages []MessageResponse `json:"messages"`
+}
+
 type InvestigateRequest struct {
 	Note string `json:"note,omitempty"`
 }

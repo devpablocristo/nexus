@@ -7,6 +7,7 @@ WORKDIR /workspace
 
 COPY core/backend/go/go.mod ./core/backend/go/go.mod
 COPY core/databases/postgres/go/go.mod ./core/databases/postgres/go/go.mod
+COPY core/governance/go/go.mod ./core/governance/go/go.mod
 COPY nexus/v3/companion/go.mod nexus/v3/companion/go.sum ./nexus/v3/companion/
 WORKDIR /workspace/nexus/v3/companion
 RUN go mod download

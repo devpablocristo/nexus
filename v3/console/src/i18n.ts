@@ -98,6 +98,9 @@ const translations = {
     aiSummary: 'AI Summary',
     errorMsg: 'Error',
 
+    // Chat (Companion)
+    chat: 'Chat',
+
     // Tasks (Companion)
     tasks: 'Tasks',
     tasksTitle: 'Tasks',
@@ -383,6 +386,9 @@ const translations = {
     targetResource: 'Recurso',
     aiSummary: 'Resumen IA',
     errorMsg: 'Error',
+
+    // Chat (Companion)
+    chat: 'Chat',
 
     // Tasks (Companion)
     tasks: 'Tareas',
