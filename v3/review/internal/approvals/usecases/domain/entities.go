@@ -18,6 +18,7 @@ const (
 
 type Approval struct {
 	ID               uuid.UUID
+	OrgID            *string // hereda del request
 	RequestID        uuid.UUID
 	Status           ApprovalStatus
 	DecidedBy        string

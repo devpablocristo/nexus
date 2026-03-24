@@ -107,6 +107,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	orchestrator := runtime.NewOrchestrator(llmProvider, toolkit, contextPorts)
 	adapter := runtime.NewOrchestratorAdapter(orchestrator)
 	uc.SetOrchestrator(adapter)
+	// Watchers empujan alertas al chat del suscriptor
+	watcherUC.SetNotifier(uc)
 	slog.Info("companion runtime initialized", "llm_provider", cfg.LLMProvider)
 
 	mux := http.NewServeMux()

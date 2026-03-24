@@ -16,8 +16,8 @@ func newPolicyListerAdapter(uc *policies.Usecases) requests.PolicyLister {
 	return &policyListerAdapter{uc: uc}
 }
 
-func (a *policyListerAdapter) ListActive(ctx context.Context) ([]requests.PolicyForEval, error) {
-	list, err := a.uc.ListActive(ctx)
+func (a *policyListerAdapter) ListActive(ctx context.Context, orgID *string) ([]requests.PolicyForEval, error) {
+	list, err := a.uc.ListActive(ctx, orgID)
 	if err != nil {
 		return nil, err
 	}

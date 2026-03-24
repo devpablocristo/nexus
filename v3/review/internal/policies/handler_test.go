@@ -1166,7 +1166,7 @@ func TestUsecasesListActive(t *testing.T) {
 	}
 
 	// ListActive solo devuelve la habilitada
-	active, err := uc.ListActive(ctx)
+	active, err := uc.ListActive(ctx, nil)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
@@ -1203,7 +1203,7 @@ func TestUsecasesListActiveExcludesArchived(t *testing.T) {
 	}
 
 	// ListActive no la devuelve
-	active, err := uc.ListActive(ctx)
+	active, err := uc.ListActive(ctx, nil)
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}

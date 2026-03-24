@@ -21,7 +21,7 @@ type approvalCreator interface {
 
 // PolicyLister es el port mínimo que requests necesita de policies.
 type PolicyLister interface {
-	ListActive(ctx context.Context) ([]PolicyForEval, error)
+	ListActive(ctx context.Context, orgID *string) ([]PolicyForEval, error)
 }
 
 // ShadowHitRecorder registra hits de shadow policies (best-effort)
@@ -257,8 +257,8 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		req.ID, auditdomain.EventReceived,
 	)
 
-	// Evaluar políticas
-	policyList, err := u.policyRepo.ListActive(ctx)
+	// Evaluar políticas (filtradas por org del request + globales)
+	policyList, err := u.policyRepo.ListActive(ctx, req.OrgID)
 	if err != nil {
 		return SubmitOutput{}, fmt.Errorf("list active policies: %w", err)
 	}
@@ -571,8 +571,8 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 		req.Params = make(map[string]any)
 	}
 
-	// Evaluar políticas (misma lógica que Submit)
-	policyList, err := u.policyRepo.ListActive(ctx)
+	// Evaluar políticas (misma lógica que Submit, filtradas por org)
+	policyList, err := u.policyRepo.ListActive(ctx, req.OrgID)
 	if err != nil {
 		return SimulateOutput{}, fmt.Errorf("list active policies: %w", err)
 	}

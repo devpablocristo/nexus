@@ -90,10 +90,9 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunResult, error) 
 		for _, tc := range resp.ToolCalls {
 			slog.Info("tool_call", "tool", tc.Name, "round", round)
 
-			// Regla dura: approve/reject requiere que el usuario haya pedido explícitamente
-			// (el LLM puede elegir llamar al tool, pero la validación de que el usuario
-			// realmente pidió aprobar está en el system prompt)
-			result := o.toolkit.ExecuteTool(ctx, tc.Name, tc.Args)
+			// Inyectar identidad en context para que remember/recall usen IDs reales
+			toolCtx := WithIdentity(ctx, in.UserID, in.OrgID)
+			result := o.toolkit.ExecuteTool(toolCtx, tc.Name, tc.Args)
 
 			llmMessages = append(llmMessages, LLMMessage{
 				Role:       "tool",

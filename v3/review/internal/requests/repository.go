@@ -56,15 +56,15 @@ func (r *PostgresRepository) Create(ctx context.Context, req requestdomain.Reque
 
 	_, err := r.db.Pool().Exec(ctx, `
 		INSERT INTO requests (
-			id, idempotency_key, requester_type, requester_id, requester_name,
+			id, org_id, idempotency_key, requester_type, requester_id, requester_name,
 			action_type, target_system, target_resource, params, reason, context,
 			risk_level, decision, decision_reason, policy_id,
 			status, approval_id, execution_result, error_message,
 			ai_summary, ai_degraded,
 			evaluated_at, decided_at, executed_at, expires_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
 	`,
-		req.ID, req.IdempotencyKey, req.RequesterType, req.RequesterID, req.RequesterName,
+		req.ID, req.OrgID, req.IdempotencyKey, req.RequesterType, req.RequesterID, req.RequesterName,
 		req.ActionType, req.TargetSystem, req.TargetResource, req.Params, req.Reason, req.Context,
 		req.RiskLevel, req.Decision, req.DecisionReason, req.PolicyID,
 		req.Status, req.ApprovalID, req.ExecutionResult, req.ErrorMessage,
@@ -209,7 +209,7 @@ func (s *PostgresIdempotencyStore) Set(ctx context.Context, key string, requestI
 // --- Scanner ---
 
 const selectRequestSQL = `
-	SELECT id, idempotency_key, requester_type, requester_id, requester_name,
+	SELECT id, org_id, idempotency_key, requester_type, requester_id, requester_name,
 	       action_type, target_system, target_resource, params, reason, context,
 	       risk_level, decision, decision_reason, policy_id,
 	       status, approval_id, execution_result, error_message,
@@ -224,7 +224,7 @@ type requestScanRow interface {
 func scanRequest(row requestScanRow) (requestdomain.Request, error) {
 	var req requestdomain.Request
 	if err := row.Scan(
-		&req.ID, &req.IdempotencyKey, &req.RequesterType, &req.RequesterID, &req.RequesterName,
+		&req.ID, &req.OrgID, &req.IdempotencyKey, &req.RequesterType, &req.RequesterID, &req.RequesterName,
 		&req.ActionType, &req.TargetSystem, &req.TargetResource, &req.Params, &req.Reason, &req.Context,
 		&req.RiskLevel, &req.Decision, &req.DecisionReason, &req.PolicyID,
 		&req.Status, &req.ApprovalID, &req.ExecutionResult, &req.ErrorMessage,

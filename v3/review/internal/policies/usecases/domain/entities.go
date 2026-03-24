@@ -16,6 +16,7 @@ const (
 
 type Policy struct {
 	ID           uuid.UUID
+	OrgID        *string // nil = global (aplica a todas las orgs)
 	Name         string
 	Description  string
 	ActionType   *string

@@ -60,6 +60,7 @@ type Attestation struct {
 
 type Request struct {
 	ID              uuid.UUID
+	OrgID           *string // nil = sin org (legacy/global)
 	IdempotencyKey  *string
 	RequesterType   RequesterType
 	RequesterID     string

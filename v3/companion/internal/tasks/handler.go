@@ -282,12 +282,17 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 		taskID = &parsed
 	}
 
-	// TODO: extraer user_id del auth context cuando se integre Clerk
-	userID := "subscriber"
+	// Extraer identidad: header X-User-ID / X-Org-ID (inyectados por el frontend o gateway)
+	userID := strings.TrimSpace(r.Header.Get("X-User-ID"))
+	if userID == "" {
+		userID = "subscriber"
+	}
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
 
 	result, err := h.uc.Chat(r.Context(), ChatInput{
 		TaskID:  taskID,
 		UserID:  userID,
+		OrgID:   orgID,
 		Message: body.Message,
 		Channel: body.Channel,
 	})

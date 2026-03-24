@@ -48,16 +48,29 @@ type UpdateWatcherInput struct {
 	Enabled *bool
 }
 
+// ChatNotifier permite al watcher empujar alertas proactivas al chat del suscriptor.
+type ChatNotifier interface {
+	// NotifyAlert crea un mensaje de sistema en la conversación activa del suscriptor.
+	// Si no hay conversación activa, crea una nueva tarea-chat con la alerta.
+	NotifyAlert(ctx context.Context, orgID, message string) error
+}
+
 // Usecases contiene la lógica de negocio del módulo watchers.
 type Usecases struct {
-	repo   Repository
-	pymes  PymesClient
-	review ReviewGateway
+	repo     Repository
+	pymes    PymesClient
+	review   ReviewGateway
+	notifier ChatNotifier // nil = sin notificaciones al chat
 }
 
 // NewUsecases crea los usecases del módulo watchers.
 func NewUsecases(repo Repository, pymes PymesClient, review ReviewGateway) *Usecases {
 	return &Usecases{repo: repo, pymes: pymes, review: review}
+}
+
+// SetNotifier inyecta el notificador de chat. Opcional.
+func (uc *Usecases) SetNotifier(n ChatNotifier) {
+	uc.notifier = n
 }
 
 // --- CRUD ---
@@ -169,6 +182,21 @@ func (uc *Usecases) RunWatcher(ctx context.Context, watcherID uuid.UUID) (*domai
 	w.LastResult = resultJSON
 	if _, err := uc.repo.UpdateWatcher(ctx, w); err != nil {
 		slog.Error("watcher update last run failed", "watcher_id", w.ID, "error", err)
+	}
+
+	// Notificar al chat si hubo hallazgos
+	if uc.notifier != nil && result.Found > 0 {
+		msg := fmt.Sprintf("Alerta de %s: encontré %d items", w.Name, result.Found)
+		if result.Executed > 0 {
+			msg += fmt.Sprintf(", %d ya se ejecutaron automáticamente", result.Executed)
+		}
+		if pending := result.Proposed - result.Executed; pending > 0 {
+			msg += fmt.Sprintf(", %d esperan tu aprobación", pending)
+		}
+		msg += "."
+		if err := uc.notifier.NotifyAlert(ctx, w.OrgID, msg); err != nil {
+			slog.Error("watcher chat notification failed", "watcher_id", w.ID, "error", err)
+		}
 	}
 
 	return result, nil

@@ -138,7 +138,7 @@ type fakePolicyLister struct {
 	policies []requests.PolicyForEval
 }
 
-func (e *fakePolicyLister) ListActive(_ context.Context) ([]requests.PolicyForEval, error) {
+func (e *fakePolicyLister) ListActive(_ context.Context, _ *string) ([]requests.PolicyForEval, error) {
 	return e.policies, nil
 }
 

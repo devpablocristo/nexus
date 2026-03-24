@@ -198,6 +198,7 @@ func (u *Usecases) AddMessage(ctx context.Context, taskID uuid.UUID, in AddMessa
 type ChatInput struct {
 	TaskID  *uuid.UUID // nil = crear tarea nueva
 	UserID  string
+	OrgID   string
 	Message string
 	Channel string // "console", "api", etc.
 }
@@ -264,9 +265,13 @@ func (u *Usecases) Chat(ctx context.Context, in ChatInput) (ChatResult, error) {
 		if listErr != nil {
 			slog.Error("chat list messages for orchestrator", "error", listErr)
 		} else {
+			orgID := in.OrgID
+			if orgID == "" {
+				orgID = t.CreatedBy // fallback si no viene en el request
+			}
 			result, runErr := u.orchestrator.Run(ctx, OrchestratorInput{
 				UserID:   in.UserID,
-				OrgID:    t.CreatedBy, // org_id no está en Task; usamos created_by como fallback
+				OrgID:    orgID,
 				Message:  in.Message,
 				Messages: existingMsgs,
 			})
@@ -537,4 +542,34 @@ func IsNotFound(err error) bool {
 // IsInvalidTaskState indica conflicto de estado (FSM / reglas de negocio).
 func IsInvalidTaskState(err error) bool {
 	return errors.Is(err, ErrInvalidTaskState)
+}
+
+// NotifyAlert implementa watchers.ChatNotifier.
+// Crea una tarea-alerta y agrega el mensaje como sistema.
+func (u *Usecases) NotifyAlert(ctx context.Context, orgID, message string) error {
+	title := message
+	if len(title) > 80 {
+		title = title[:80]
+	}
+	t, err := u.repo.CreateTask(ctx, domain.Task{
+		Title:     title,
+		Status:    domain.TaskStatusNew,
+		Priority:  "high",
+		CreatedBy: orgID,
+		Channel:   "watcher",
+	})
+	if err != nil {
+		return fmt.Errorf("create alert task: %w", err)
+	}
+	_, err = u.repo.InsertMessage(ctx, domain.TaskMessage{
+		TaskID:     t.ID,
+		AuthorType: "system",
+		AuthorID:   "nexus-watcher",
+		Body:       message,
+	})
+	if err != nil {
+		return fmt.Errorf("insert alert message: %w", err)
+	}
+	slog.Info("watcher alert pushed to chat", "task_id", t.ID, "org_id", orgID)
+	return nil
 }

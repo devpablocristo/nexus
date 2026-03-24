@@ -10,6 +10,7 @@ import (
 // owner → agent → action_types → resources → propósito → expiración
 type Delegation struct {
 	ID                 uuid.UUID
+	OrgID              *string  // nil = global
 	OwnerID            string   // quién delega (ej: "team-finops", "user:pablo@empresa.com")
 	OwnerType          string   // "user", "team", "service"
 	AgentID            string   // a quién delega (ej: "ops-bot", "deploy-svc")

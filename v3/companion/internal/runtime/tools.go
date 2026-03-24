@@ -226,12 +226,17 @@ func NewToolKit(rc *reviewclient.Client, memUC *memory.Usecases, watcherUC *watc
 		if memUC == nil {
 			return `{"error": "memory no configurado"}`, nil
 		}
+		id := IdentityFromContext(ctx)
 		scope := memdomain.ScopeUser
-		scopeID := "default"
+		scopeID := id.UserID
 		kind := memdomain.MemoryUserPreference
 		if input.Scope == "org" {
 			scope = memdomain.ScopeOrg
+			scopeID = id.OrgID
 			kind = memdomain.MemoryPlaybook
+		}
+		if scopeID == "" {
+			scopeID = "default"
 		}
 		_, err := memUC.Upsert(ctx, memory.UpsertInput{
 			Kind:        kind,
@@ -266,15 +271,21 @@ func NewToolKit(rc *reviewclient.Client, memUC *memory.Usecases, watcherUC *watc
 		if memUC == nil {
 			return `{"memories": []}`, nil
 		}
+		id := IdentityFromContext(ctx)
 		scope := memdomain.ScopeUser
+		scopeID := id.UserID
 		kind := memdomain.MemoryUserPreference
 		if input.Scope == "org" {
 			scope = memdomain.ScopeOrg
+			scopeID = id.OrgID
 			kind = memdomain.MemoryPlaybook
+		}
+		if scopeID == "" {
+			scopeID = "default"
 		}
 		entries, err := memUC.Find(ctx, memory.FindQuery{
 			ScopeType: scope,
-			ScopeID:   "default",
+			ScopeID:   scopeID,
 			Kind:      kind,
 			Limit:     10,
 		})

@@ -29,8 +29,9 @@ func (u *Usecases) List(ctx context.Context, filters ListFilters) ([]policydomai
 }
 
 // ListActive retorna políticas activas (no archivadas, habilitadas) para evaluación.
-func (u *Usecases) ListActive(ctx context.Context) ([]policydomain.Policy, error) {
-	return u.repo.List(ctx, ListFilters{EnabledOnly: true})
+// orgID filtra por organización (globales + de la org). nil = todas.
+func (u *Usecases) ListActive(ctx context.Context, orgID *string) ([]policydomain.Policy, error) {
+	return u.repo.List(ctx, ListFilters{OrgID: orgID, EnabledOnly: true})
 }
 
 func (u *Usecases) Update(ctx context.Context, p policydomain.Policy) (policydomain.Policy, error) {

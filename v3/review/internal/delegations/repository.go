@@ -37,7 +37,7 @@ func NewPostgresRepository(db *sharedpostgres.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-const selectSQL = `SELECT id, owner_id, owner_type, agent_id, agent_type, allowed_action_types, allowed_resources, purpose, max_risk_class, expires_at, enabled, created_at, updated_at FROM delegations`
+const selectSQL = `SELECT id, org_id, owner_id, owner_type, agent_id, agent_type, allowed_action_types, allowed_resources, purpose, max_risk_class, expires_at, enabled, created_at, updated_at FROM delegations`
 
 func (r *PostgresRepository) Create(ctx context.Context, d domain.Delegation) (domain.Delegation, error) {
 	now := time.Now().UTC()
@@ -51,9 +51,9 @@ func (r *PostgresRepository) Create(ctx context.Context, d domain.Delegation) (d
 	arJSON, _ := json.Marshal(d.AllowedResources)
 
 	_, err := r.db.Pool().Exec(ctx, `
-		INSERT INTO delegations (id, owner_id, owner_type, agent_id, agent_type, allowed_action_types, allowed_resources, purpose, max_risk_class, expires_at, enabled, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-	`, d.ID, d.OwnerID, d.OwnerType, d.AgentID, d.AgentType, atJSON, arJSON, d.Purpose, d.MaxRiskClass, d.ExpiresAt, d.Enabled, d.CreatedAt, d.UpdatedAt)
+		INSERT INTO delegations (id, org_id, owner_id, owner_type, agent_id, agent_type, allowed_action_types, allowed_resources, purpose, max_risk_class, expires_at, enabled, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+	`, d.ID, d.OrgID, d.OwnerID, d.OwnerType, d.AgentID, d.AgentType, atJSON, arJSON, d.Purpose, d.MaxRiskClass, d.ExpiresAt, d.Enabled, d.CreatedAt, d.UpdatedAt)
 	if err != nil {
 		return domain.Delegation{}, fmt.Errorf("insert delegation: %w", err)
 	}
@@ -130,7 +130,7 @@ func scanDelegation(row scanRow) (domain.Delegation, error) {
 	var d domain.Delegation
 	var atJSON, arJSON []byte
 	if err := row.Scan(
-		&d.ID, &d.OwnerID, &d.OwnerType, &d.AgentID, &d.AgentType,
+		&d.ID, &d.OrgID, &d.OwnerID, &d.OwnerType, &d.AgentID, &d.AgentType,
 		&atJSON, &arJSON, &d.Purpose, &d.MaxRiskClass, &d.ExpiresAt,
 		&d.Enabled, &d.CreatedAt, &d.UpdatedAt,
 	); err != nil {

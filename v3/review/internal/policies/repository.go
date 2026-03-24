@@ -24,6 +24,7 @@ var (
 
 // ListFilters define los filtros para listar políticas.
 type ListFilters struct {
+	OrgID           *string // nil = todas; filtrar por org + globales (org_id IS NULL)
 	IncludeArchived bool
 	EnabledOnly     bool
 }
@@ -50,7 +51,7 @@ func NewPostgresRepository(db *sharedpostgres.DB) *PostgresRepository {
 }
 
 const selectPolicySQL = `
-	SELECT id, name, description, action_type, target_system,
+	SELECT id, org_id, name, description, action_type, target_system,
 	       expression, effect, risk_override, priority, origin, mode, proposal_id,
 	       enabled, shadow_hits, archived_at, created_at, updated_at
 	FROM policies`
@@ -68,12 +69,12 @@ func (r *PostgresRepository) Create(ctx context.Context, p policydomain.Policy) 
 	}
 	_, err := r.db.Pool().Exec(ctx, `
 		INSERT INTO policies (
-			id, name, description, action_type, target_system,
+			id, org_id, name, description, action_type, target_system,
 			expression, effect, risk_override, priority, origin, mode, proposal_id,
 			enabled, shadow_hits, archived_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 	`,
-		p.ID, p.Name, p.Description, p.ActionType, p.TargetSystem,
+		p.ID, p.OrgID, p.Name, p.Description, p.ActionType, p.TargetSystem,
 		p.Expression, p.Effect, p.RiskOverride, p.Priority, p.Origin, p.Mode, p.ProposalID,
 		p.Enabled, p.ShadowHits, p.ArchivedAt, p.CreatedAt, p.UpdatedAt,
 	)
@@ -100,6 +101,12 @@ func (r *PostgresRepository) List(ctx context.Context, filters ListFilters) ([]p
 	args := []any{}
 	argN := 1
 
+	if filters.OrgID != nil {
+		// Policies de la org + globales (org_id IS NULL)
+		query += fmt.Sprintf(` AND (org_id = $%d OR org_id IS NULL)`, argN)
+		args = append(args, *filters.OrgID)
+		argN++
+	}
 	if !filters.IncludeArchived {
 		query += ` AND archived_at IS NULL`
 	}
@@ -206,7 +213,7 @@ type policyScanRow interface {
 func scanPolicy(row policyScanRow) (policydomain.Policy, error) {
 	var p policydomain.Policy
 	if err := row.Scan(
-		&p.ID, &p.Name, &p.Description, &p.ActionType, &p.TargetSystem,
+		&p.ID, &p.OrgID, &p.Name, &p.Description, &p.ActionType, &p.TargetSystem,
 		&p.Expression, &p.Effect, &p.RiskOverride, &p.Priority, &p.Origin, &p.Mode, &p.ProposalID,
 		&p.Enabled, &p.ShadowHits, &p.ArchivedAt, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {

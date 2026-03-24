@@ -12,6 +12,27 @@ import (
 	taskdomain "github.com/devpablocristo/nexus/v3/companion/internal/tasks/usecases/domain"
 )
 
+// --- Identidad en context para tools ---
+
+type identityKey struct{}
+
+// Identity representa el usuario y organización del request actual.
+type Identity struct {
+	UserID string
+	OrgID  string
+}
+
+// WithIdentity inyecta identidad en el context.
+func WithIdentity(ctx context.Context, userID, orgID string) context.Context {
+	return context.WithValue(ctx, identityKey{}, Identity{UserID: userID, OrgID: orgID})
+}
+
+// IdentityFromContext extrae la identidad del context.
+func IdentityFromContext(ctx context.Context) Identity {
+	id, _ := ctx.Value(identityKey{}).(Identity)
+	return id
+}
+
 // ContextPorts interfaces que el context assembler necesita.
 type ContextPorts struct {
 	ReviewClient *reviewclient.Client

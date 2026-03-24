@@ -57,9 +57,9 @@ func (r *PostgresRepository) Create(ctx context.Context, a approvaldomain.Approv
 		decisionsJSON = []byte("[]")
 	}
 	_, err := r.db.Pool().Exec(ctx, `
-		INSERT INTO approvals (id, request_id, status, decided_by, decision_note, decided_at, expires_at, created_at, break_glass, required_approvals, decisions)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-	`, a.ID, a.RequestID, a.Status, a.DecidedBy, a.DecisionNote, a.DecidedAt, a.ExpiresAt, a.CreatedAt, a.BreakGlass, a.RequiredApprovals, decisionsJSON)
+		INSERT INTO approvals (id, org_id, request_id, status, decided_by, decision_note, decided_at, expires_at, created_at, break_glass, required_approvals, decisions)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+	`, a.ID, a.OrgID, a.RequestID, a.Status, a.DecidedBy, a.DecisionNote, a.DecidedAt, a.ExpiresAt, a.CreatedAt, a.BreakGlass, a.RequiredApprovals, decisionsJSON)
 	if err != nil {
 		return approvaldomain.Approval{}, fmt.Errorf("insert approval: %w", err)
 	}
@@ -136,7 +136,7 @@ func (r *PostgresRepository) Update(ctx context.Context, a approvaldomain.Approv
 
 // --- Scanner ---
 
-const selectApprovalSQL = `SELECT id, request_id, status, decided_by, decision_note, decided_at, expires_at, created_at, break_glass, required_approvals, decisions FROM approvals`
+const selectApprovalSQL = `SELECT id, org_id, request_id, status, decided_by, decision_note, decided_at, expires_at, created_at, break_glass, required_approvals, decisions FROM approvals`
 
 type approvalScanRow interface {
 	Scan(dest ...any) error
@@ -146,7 +146,7 @@ func scanApproval(row approvalScanRow) (approvaldomain.Approval, error) {
 	var a approvaldomain.Approval
 	var decisionsJSON []byte
 	if err := row.Scan(
-		&a.ID, &a.RequestID, &a.Status, &a.DecidedBy, &a.DecisionNote, &a.DecidedAt, &a.ExpiresAt, &a.CreatedAt,
+		&a.ID, &a.OrgID, &a.RequestID, &a.Status, &a.DecidedBy, &a.DecisionNote, &a.DecidedAt, &a.ExpiresAt, &a.CreatedAt,
 		&a.BreakGlass, &a.RequiredApprovals, &decisionsJSON,
 	); err != nil {
 		return approvaldomain.Approval{}, fmt.Errorf("scan approval: %w", err)
