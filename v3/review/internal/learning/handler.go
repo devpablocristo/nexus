@@ -2,15 +2,16 @@ package learning
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	learningdto "github.com/devpablocristo/nexus/v3/review/internal/learning/handler/dto"
 	learningdomain "github.com/devpablocristo/nexus/v3/review/internal/learning/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
+	"github.com/devpablocristo/core/backend/go/domainerr"
 )
+
+const defaultListLimit = 50
 
 type learningUsecase interface {
 	ListPendingProposals(ctx context.Context, limit int) ([]learningdomain.PolicyProposal, error)
@@ -37,22 +38,22 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
-	list, err := h.uc.ListPendingProposals(r.Context(), shared.DefaultListLimit)
+	list, err := h.uc.ListPendingProposals(r.Context(), defaultListLimit)
 	if err != nil {
-		shared.WriteInternalError(w, err, "list proposals failed")
+		httpjson.WriteFlatInternalError(w, err, "list proposals failed")
 		return
 	}
 	out := make([]learningdto.ProposalResponse, 0, len(list))
 	for _, p := range list {
 		out = append(out, toProposalResponse(p))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getProposal(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	p, err := h.uc.GetProposalByID(r.Context(), id)
@@ -60,18 +61,18 @@ func (h *Handler) getProposal(w http.ResponseWriter, r *http.Request) {
 		writeLearningUsecaseError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toProposalResponse(p))
+	httpjson.WriteJSON(w, http.StatusOK, toProposalResponse(p))
 }
 
 func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body learningdto.ProposalDecisionRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	policyID, err := h.uc.AcceptProposal(r.Context(), id, body.DecidedBy)
@@ -83,34 +84,34 @@ func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
 	if policyID != nil {
 		resp["policy_id"] = policyID.String()
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, resp)
+	httpjson.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) dismiss(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body learningdto.ProposalDecisionRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if err := h.uc.DismissProposal(r.Context(), id, body.DecidedBy); err != nil {
 		writeLearningUsecaseError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]string{"status": "dismissed"})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]string{"status": "dismissed"})
 }
 
 func (h *Handler) analyze(w http.ResponseWriter, r *http.Request) {
 	count, err := h.uc.AnalyzeAndPropose(r.Context())
 	if err != nil {
-		shared.WriteInternalError(w, err, "analyze failed")
+		httpjson.WriteFlatInternalError(w, err, "analyze failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"proposals_created": count})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"proposals_created": count})
 }
 
 // toProposalResponse convierte entidad de dominio a DTO HTTP.
@@ -143,13 +144,13 @@ func toProposalResponse(p learningdomain.PolicyProposal) learningdto.ProposalRes
 }
 
 func writeLearningUsecaseError(w http.ResponseWriter, err error) {
-	if errors.Is(err, ErrNotPending) {
-		shared.WriteError(w, http.StatusConflict, "CONFLICT", "proposal is not pending")
+	if domainerr.IsConflict(err) {
+		httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "proposal is not pending")
 		return
 	}
-	if errors.Is(err, ErrNotFound) {
-		shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "proposal not found")
+	if domainerr.IsNotFound(err) {
+		httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "proposal not found")
 		return
 	}
-	shared.WriteInternalError(w, err, "learning operation failed")
+	httpjson.WriteFlatInternalError(w, err, "learning operation failed")
 }

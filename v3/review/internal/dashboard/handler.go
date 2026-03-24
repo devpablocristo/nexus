@@ -4,11 +4,12 @@ import (
 	"context"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	dashboarddto "github.com/devpablocristo/nexus/v3/review/internal/dashboard/handler/dto"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 )
+
+const maxListLimit = 1000
 
 type requestLister interface {
 	List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error)
@@ -31,9 +32,9 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 	if period == "" {
 		period = "7d"
 	}
-	all, err := h.requests.List(r.Context(), "", "", shared.MaxListLimit)
+	all, err := h.requests.List(r.Context(), "", "", maxListLimit)
 	if err != nil {
-		shared.WriteInternalError(w, err, "dashboard query failed")
+		httpjson.WriteFlatInternalError(w, err, "dashboard query failed")
 		return
 	}
 
@@ -53,7 +54,7 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusOK, dashboarddto.SummaryResponse{
+	httpjson.WriteJSON(w, http.StatusOK, dashboarddto.SummaryResponse{
 		Period:          period,
 		TotalRequests:   len(all),
 		Allowed:         allowed,

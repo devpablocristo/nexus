@@ -8,13 +8,17 @@ import (
 	"strconv"
 	"strings"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/core/governance/go/reviewclient"
-	"github.com/devpablocristo/nexus/v3/companion/internal/shared"
 	tasksdto "github.com/devpablocristo/nexus/v3/companion/internal/tasks/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/tasks/usecases/domain"
+)
+
+const (
+	defaultListLimit = 50
+	maxListLimit     = 200
 )
 
 type taskUsecase interface {
@@ -49,12 +53,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var body tasksdto.CreateTaskRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Title == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "title is required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "title is required")
 		return
 	}
 	t, err := h.uc.Create(r.Context(), CreateTaskInput{
@@ -68,44 +72,44 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		ContextJSON: body.ContextJSON,
 	})
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusCreated, tasksdto.TaskToResponse(t))
+	httpjson.WriteJSON(w, http.StatusCreated, tasksdto.TaskToResponse(t))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	limit := shared.DefaultListLimit
+	limit := defaultListLimit
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= shared.MaxListLimit {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= maxListLimit {
 			limit = n
 		}
 	}
 	list, err := h.uc.List(r.Context(), limit)
 	if err != nil {
-		shared.WriteInternalError(w, err, "list tasks failed")
+		httpjson.WriteFlatInternalError(w, err, "list tasks failed")
 		return
 	}
 	out := make([]tasksdto.TaskResponse, 0, len(list))
 	for _, t := range list {
 		out = append(out, tasksdto.TaskToResponse(t))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	detail, err := h.uc.GetDetail(r.Context(), id)
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "get task failed")
+		httpjson.WriteFlatInternalError(w, err, "get task failed")
 		return
 	}
 	resp := tasksdto.TaskDetailResponse{
@@ -130,18 +134,18 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 			Request:  lr.Request,
 		})
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, resp)
+	httpjson.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) addMessage(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body tasksdto.AddMessageRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	m, err := h.uc.AddMessage(r.Context(), id, AddMessageInput{
@@ -151,54 +155,54 @@ func (h *Handler) addMessage(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 			return
 		}
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusCreated, tasksdto.MessageToResponse(m))
+	httpjson.WriteJSON(w, http.StatusCreated, tasksdto.MessageToResponse(m))
 }
 
 func (h *Handler) investigate(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	raw, _ := io.ReadAll(r.Body)
 	var body tasksdto.InvestigateRequest
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &body); err != nil {
-			shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 			return
 		}
 	}
 	t, err := h.uc.Investigate(r.Context(), id, InvestigateInput{Note: body.Note})
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 			return
 		}
 		if IsInvalidTaskState(err) {
-			shared.WriteError(w, http.StatusConflict, "CONFLICT", "invalid task state")
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "invalid task state")
 			return
 		}
-		shared.WriteInternalError(w, err, "investigate failed")
+		httpjson.WriteFlatInternalError(w, err, "investigate failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, tasksdto.TaskToResponse(t))
+	httpjson.WriteJSON(w, http.StatusOK, tasksdto.TaskToResponse(t))
 }
 
 func (h *Handler) propose(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body tasksdto.ProposeRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	t, action, sub, err := h.uc.Propose(r.Context(), id, ProposeInput{
@@ -209,15 +213,15 @@ func (h *Handler) propose(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 			return
 		}
 		if IsInvalidTaskState(err) {
-			shared.WriteError(w, http.StatusConflict, "CONFLICT", "invalid task state")
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "invalid task state")
 			return
 		}
 		if strings.HasPrefix(err.Error(), "review submit:") && t.ID != uuid.Nil {
-			sharedhandlers.WriteJSON(w, http.StatusBadGateway, map[string]any{
+			httpjson.WriteJSON(w, http.StatusBadGateway, map[string]any{
 				"code":    "REVIEW_SUBMIT_FAILED",
 				"message": "review request failed",
 				"task":    tasksdto.TaskToResponse(t),
@@ -225,7 +229,7 @@ func (h *Handler) propose(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		shared.WriteInternalError(w, err, "propose failed")
+		httpjson.WriteFlatInternalError(w, err, "propose failed")
 		return
 	}
 	var pr tasksdto.ProposeResponse
@@ -236,35 +240,35 @@ func (h *Handler) propose(w http.ResponseWriter, r *http.Request) {
 	pr.ReviewSubmit.Status = sub.Status
 	pr.ReviewSubmit.RiskLevel = sub.RiskLevel
 	pr.ReviewSubmit.DecisionReason = sub.DecisionReason
-	sharedhandlers.WriteJSON(w, http.StatusOK, pr)
+	httpjson.WriteJSON(w, http.StatusOK, pr)
 }
 
 func (h *Handler) syncReview(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	t, err := h.uc.SyncTaskReview(r.Context(), id)
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "sync failed")
+		httpjson.WriteFlatInternalError(w, err, "sync failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, tasksdto.TaskToResponse(t))
+	httpjson.WriteJSON(w, http.StatusOK, tasksdto.TaskToResponse(t))
 }
 
 func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 	var body tasksdto.ChatRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Message == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "message is required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "message is required")
 		return
 	}
 
@@ -272,7 +276,7 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 	if body.TaskID != "" {
 		parsed, err := uuid.Parse(body.TaskID)
 		if err != nil {
-			shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid task_id")
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid task_id")
 			return
 		}
 		taskID = &parsed
@@ -289,10 +293,10 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "chat failed")
+		httpjson.WriteFlatInternalError(w, err, "chat failed")
 		return
 	}
 
@@ -300,7 +304,7 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 	for _, m := range result.Messages {
 		msgs = append(msgs, tasksdto.MessageToResponse(m))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, tasksdto.ChatResponse{
+	httpjson.WriteJSON(w, http.StatusOK, tasksdto.ChatResponse{
 		Task:     tasksdto.TaskToResponse(result.Task),
 		Messages: msgs,
 	})

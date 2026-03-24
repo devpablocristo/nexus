@@ -5,12 +5,14 @@ import (
 	"errors"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	approvaldto "github.com/devpablocristo/nexus/v3/review/internal/approvals/handler/dto"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
+	"github.com/devpablocristo/core/backend/go/domainerr"
 )
+
+const defaultListLimit = 50
 
 type approvalUsecase interface {
 	ListPending(ctx context.Context, limit int) ([]approvaldomain.Approval, error)
@@ -33,52 +35,52 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) listPending(w http.ResponseWriter, r *http.Request) {
-	list, err := h.uc.ListPending(r.Context(), shared.DefaultListLimit)
+	list, err := h.uc.ListPending(r.Context(), defaultListLimit)
 	if err != nil {
-		shared.WriteInternalError(w, err, "list pending approvals failed")
+		httpjson.WriteFlatInternalError(w, err, "list pending approvals failed")
 		return
 	}
 	out := make([]approvaldto.ApprovalResponse, 0, len(list))
 	for _, a := range list {
 		out = append(out, toApprovalResponse(a))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body approvaldto.ApprovalDecisionRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if err := h.uc.Approve(r.Context(), id, body.DecidedBy, body.Note); err != nil {
 		writeApprovalUsecaseError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]string{"status": "approved"})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]string{"status": "approved"})
 }
 
 func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body approvaldto.ApprovalDecisionRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if err := h.uc.Reject(r.Context(), id, body.DecidedBy, body.Note); err != nil {
 		writeApprovalUsecaseError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
 }
 
 // toApprovalResponse convierte entidad de dominio a DTO HTTP.
@@ -118,17 +120,19 @@ func toApprovalResponse(a approvaldomain.Approval) approvaldto.ApprovalResponse 
 }
 
 func writeApprovalUsecaseError(w http.ResponseWriter, err error) {
-	if errors.Is(err, ErrNotPending) {
-		shared.WriteError(w, http.StatusConflict, "CONFLICT", "approval is not pending")
+	if domainerr.IsConflict(err) {
+		// Usar el mensaje del error de dominio (distingue "not pending" vs "already decided")
+		var de domainerr.Error
+		msg := "conflict"
+		if errors.As(err, &de) {
+			msg = de.Message()
+		}
+		httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", msg)
 		return
 	}
-	if errors.Is(err, ErrAlreadyDecided) {
-		shared.WriteError(w, http.StatusConflict, "CONFLICT", "approver already decided on this approval")
+	if domainerr.IsNotFound(err) {
+		httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "approval not found")
 		return
 	}
-	if errors.Is(err, ErrNotFound) {
-		shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "approval not found")
-		return
-	}
-	shared.WriteInternalError(w, err, "approval operation failed")
+	httpjson.WriteFlatInternalError(w, err, "approval operation failed")
 }

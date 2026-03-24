@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"fmt"
 	"time"
 
@@ -15,7 +17,7 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("delegation not found")
+	ErrNotFound = domainerr.NotFound("not found")
 )
 
 type Repository interface {

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	sharedapikey "github.com/devpablocristo/core/backend/go/apikey"
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/health"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	"github.com/devpablocristo/nexus/v3/review/internal/actiontypes"
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"
@@ -64,7 +64,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	// AI contextualizer
 	var ai requests.AIContextualizer = requests.NewStubContextualizer()
 	if cfg.AnthropicKey != "" {
-		ai = requests.NewClaudeContextualizer(cfg.AnthropicKey, "claude-sonnet-4-20250514", 5*time.Second)
+		ai = requests.NewClaudeContextualizer(cfg.AnthropicKey, "claude-sonnet-4-20250514")
 	}
 
 	ttl := cfg.ApprovalTTL
@@ -146,7 +146,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 
 	// Router
 	mux := http.NewServeMux()
-	sharedhandlers.RegisterHealthEndpoints(mux, func(ctx context.Context) error {
+	health.RegisterEndpoints(mux, func(ctx context.Context) error {
 		return db.Ping(ctx)
 	})
 	reqHandler.Register(mux)

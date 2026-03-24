@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,7 +15,7 @@ import (
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/tasks/usecases/domain"
 )
 
-var ErrNotFound = errors.New("task not found")
+var ErrNotFound = domainerr.NotFound("not found")
 
 // Repository port de persistencia para tareas y entidades relacionadas.
 type Repository interface {

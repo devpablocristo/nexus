@@ -73,7 +73,6 @@ type RunResultResponse struct {
 	Found    int `json:"found"`
 	Proposed int `json:"proposed"`
 	Executed int `json:"executed"`
-	Errors   int `json:"errors"`
 }
 
 // WatcherToResponse convierte un watcher de dominio a DTO.

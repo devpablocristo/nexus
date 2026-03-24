@@ -1,9 +1,13 @@
 package connectors
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
+)
 
 var (
-	ErrNotFound         = errors.New("connector not found")
+	ErrNotFound = domainerr.NotFound("not found")
 	ErrDisabled         = errors.New("connector is disabled")
 	ErrUngated          = errors.New("execution requires review approval")
 	ErrOperationUnknown = errors.New("unknown operation for connector")
@@ -11,7 +15,7 @@ var (
 
 // IsNotFound verifica si el error es de conector no encontrado.
 func IsNotFound(err error) bool {
-	return errors.Is(err, ErrNotFound)
+	return domainerr.IsNotFound(err)
 }
 
 // IsUngated verifica si la ejecución no tiene aprobación de Review.

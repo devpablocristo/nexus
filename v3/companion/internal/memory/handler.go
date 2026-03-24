@@ -4,12 +4,15 @@ import (
 	"context"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/nexus/v3/companion/internal/memory/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/memory/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/companion/internal/shared"
+)
+
+const (
+	defaultListLimit = 50
 )
 
 type memoryUsecase interface {
@@ -39,12 +42,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) upsert(w http.ResponseWriter, r *http.Request) {
 	var body dto.UpsertMemoryRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Kind == "" || body.ScopeType == "" || body.ScopeID == "" || body.Key == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "kind, scope_type, scope_id, and key are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "kind, scope_type, scope_id, and key are required")
 		return
 	}
 
@@ -60,31 +63,31 @@ func (h *Handler) upsert(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if IsVersionConflict(err) {
-			shared.WriteError(w, http.StatusConflict, "VERSION_CONFLICT", "memory entry was modified by another process")
+			httpjson.WriteFlatError(w, http.StatusConflict, "VERSION_CONFLICT", "memory entry was modified by another process")
 			return
 		}
-		shared.WriteInternalError(w, err, "upsert memory failed")
+		httpjson.WriteFlatInternalError(w, err, "upsert memory failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.EntryToResponse(entry))
+	httpjson.WriteJSON(w, http.StatusOK, dto.EntryToResponse(entry))
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	entry, err := h.uc.Get(r.Context(), id)
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "memory entry not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "memory entry not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "get memory failed")
+		httpjson.WriteFlatInternalError(w, err, "get memory failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.EntryToResponse(entry))
+	httpjson.WriteJSON(w, http.StatusOK, dto.EntryToResponse(entry))
 }
 
 func (h *Handler) find(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +95,7 @@ func (h *Handler) find(w http.ResponseWriter, r *http.Request) {
 	scopeType := q.Get("scope_type")
 	scopeID := q.Get("scope_id")
 	if scopeType == "" || scopeID == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "scope_type and scope_id are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "scope_type and scope_id are required")
 		return
 	}
 
@@ -100,10 +103,10 @@ func (h *Handler) find(w http.ResponseWriter, r *http.Request) {
 		ScopeType: domain.ScopeType(scopeType),
 		ScopeID:   scopeID,
 		Kind:      domain.MemoryKind(q.Get("kind")),
-		Limit:     shared.DefaultListLimit,
+		Limit:     defaultListLimit,
 	})
 	if err != nil {
-		shared.WriteInternalError(w, err, "find memory failed")
+		httpjson.WriteFlatInternalError(w, err, "find memory failed")
 		return
 	}
 
@@ -111,21 +114,21 @@ func (h *Handler) find(w http.ResponseWriter, r *http.Request) {
 	for _, e := range entries {
 		out = append(out, dto.EntryToResponse(e))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.MemoryListResponse{Entries: out})
+	httpjson.WriteJSON(w, http.StatusOK, dto.MemoryListResponse{Entries: out})
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	if err := h.uc.Delete(r.Context(), id); err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "memory entry not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "memory entry not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "delete memory failed")
+		httpjson.WriteFlatInternalError(w, err, "delete memory failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -3,6 +3,8 @@ package policies
 import (
 	"context"
 	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"fmt"
 	"time"
 
@@ -15,7 +17,7 @@ import (
 
 // Sentinel errors
 var (
-	ErrNotFound      = errors.New("policy not found")
+	ErrNotFound = domainerr.NotFound("not found")
 	ErrAlreadyExists = errors.New("policy already exists")
 	ErrArchived      = errors.New("policy is archived")
 )

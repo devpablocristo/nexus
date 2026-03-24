@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"fmt"
 	"time"
 
@@ -15,7 +17,7 @@ import (
 )
 
 // Sentinel errors
-var ErrNotFound = errors.New("request not found")
+var ErrNotFound = domainerr.NotFound("not found")
 
 // Repository define el port de persistencia para requests.
 type Repository interface {

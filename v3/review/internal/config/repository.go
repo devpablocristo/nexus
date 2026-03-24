@@ -2,13 +2,14 @@ package config
 
 import (
 	"context"
-	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrNotFound = errors.New("config key not found")
+var ErrNotFound = domainerr.NotFound("not found")
 
 // PostgresRepository implementa configRepository usando PostgreSQL
 type PostgresRepository struct {

@@ -1,6 +1,7 @@
 package watchers
 
 import (
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	"github.com/devpablocristo/nexus/v3/companion/internal/watchers/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/watchers/usecases/domain"
 )
@@ -48,7 +49,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateWatcherRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
 
@@ -60,23 +61,23 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		Enabled:     req.Enabled,
 	})
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusInternalServerError, "internal_error", "could not create watcher")
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not create watcher")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusCreated, dto.WatcherToResponse(result))
+	httpjson.WriteJSON(w, http.StatusCreated, dto.WatcherToResponse(result))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	orgID := r.URL.Query().Get("org_id")
 	if orgID == "" {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "missing_org_id", "org_id query parameter required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "missing_org_id", "org_id query parameter required")
 		return
 	}
 
 	watchers, err := h.uc.List(r.Context(), orgID)
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusInternalServerError, "internal_error", "could not list watchers")
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not list watchers")
 		return
 	}
 
@@ -84,39 +85,39 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	for _, w := range watchers {
 		items = append(items, dto.WatcherToResponse(w))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.WatcherListResponse{Watchers: items})
+	httpjson.WriteJSON(w, http.StatusOK, dto.WatcherListResponse{Watchers: items})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
 		return
 	}
 
 	watcher, err := h.uc.Get(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			sharedhandlers.WriteError(w, http.StatusNotFound, "not_found", "watcher not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
 			return
 		}
-		sharedhandlers.WriteError(w, http.StatusInternalServerError, "internal_error", "could not get watcher")
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not get watcher")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.WatcherToResponse(watcher))
+	httpjson.WriteJSON(w, http.StatusOK, dto.WatcherToResponse(watcher))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
 		return
 	}
 
 	var req dto.UpdateWatcherRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
 
@@ -130,30 +131,30 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.uc.Update(r.Context(), id, input)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			sharedhandlers.WriteError(w, http.StatusNotFound, "not_found", "watcher not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
 			return
 		}
-		sharedhandlers.WriteError(w, http.StatusInternalServerError, "internal_error", "could not update watcher")
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not update watcher")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.WatcherToResponse(result))
+	httpjson.WriteJSON(w, http.StatusOK, dto.WatcherToResponse(result))
 }
 
 func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
 		return
 	}
 
 	if err := h.uc.Delete(r.Context(), id); err != nil {
-		if errors.Is(err, ErrNotFound) {
-			sharedhandlers.WriteError(w, http.StatusNotFound, "not_found", "watcher not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
 			return
 		}
-		sharedhandlers.WriteError(w, http.StatusInternalServerError, "internal_error", "could not delete watcher")
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not delete watcher")
 		return
 	}
 
@@ -163,42 +164,41 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) run(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
 		return
 	}
 
 	result, err := h.uc.RunWatcher(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			sharedhandlers.WriteError(w, http.StatusNotFound, "not_found", "watcher not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
 			return
 		}
 		if errors.Is(err, ErrWatcherDisabled) {
-			sharedhandlers.WriteError(w, http.StatusConflict, "watcher_disabled", "watcher is disabled")
+			httpjson.WriteFlatError(w, http.StatusConflict, "watcher_disabled", "watcher is disabled")
 			return
 		}
-		sharedhandlers.WriteError(w, http.StatusInternalServerError, "internal_error", "could not run watcher")
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not run watcher")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.RunResultResponse{
+	httpjson.WriteJSON(w, http.StatusOK, dto.RunResultResponse{
 		Found:    result.Found,
 		Proposed: result.Proposed,
 		Executed: result.Executed,
-		Errors:   result.Errors,
 	})
 }
 
 func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
 		return
 	}
 
 	proposals, err := h.uc.ListProposals(r.Context(), id, 50)
 	if err != nil {
-		sharedhandlers.WriteError(w, http.StatusInternalServerError, "internal_error", "could not list proposals")
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not list proposals")
 		return
 	}
 
@@ -206,5 +206,5 @@ func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
 	for _, p := range proposals {
 		items = append(items, dto.ProposalToResponse(p))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.ProposalListResponse{Proposals: items})
+	httpjson.WriteJSON(w, http.StatusOK, dto.ProposalListResponse{Proposals: items})
 }

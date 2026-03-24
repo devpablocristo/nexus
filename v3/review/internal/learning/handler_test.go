@@ -1,6 +1,7 @@
 package learning
 
 import (
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"context"
 	"encoding/json"
 	"errors"
@@ -549,7 +550,7 @@ func TestUsecases_AcceptProposal(t *testing.T) {
 		uc := NewUsecases(repo, &fakePolicyCreator{})
 
 		_, err := uc.AcceptProposal(context.Background(), uuid.New(), "admin")
-		if !errors.Is(err, ErrNotFound) {
+		if !domainerr.IsNotFound(err) {
 			t.Fatalf("esperado ErrNotFound, obtuve %v", err)
 		}
 	})
@@ -561,7 +562,7 @@ func TestUsecases_AcceptProposal(t *testing.T) {
 
 		id := seedProposalWithStatus(t, repo, learningdomain.ProposalStatusDismissed)
 		_, err := uc.AcceptProposal(context.Background(), id, "admin")
-		if !errors.Is(err, ErrNotPending) {
+		if !domainerr.IsConflict(err) {
 			t.Fatalf("esperado ErrNotPending, obtuve %v", err)
 		}
 	})
@@ -632,7 +633,7 @@ func TestUsecases_DismissProposal(t *testing.T) {
 		uc := NewUsecases(repo, &fakePolicyCreator{})
 
 		err := uc.DismissProposal(context.Background(), uuid.New(), "admin")
-		if !errors.Is(err, ErrNotFound) {
+		if !domainerr.IsNotFound(err) {
 			t.Fatalf("esperado ErrNotFound, obtuve %v", err)
 		}
 	})
@@ -644,7 +645,7 @@ func TestUsecases_DismissProposal(t *testing.T) {
 
 		id := seedProposalWithStatus(t, repo, learningdomain.ProposalStatusAccepted)
 		err := uc.DismissProposal(context.Background(), id, "admin")
-		if !errors.Is(err, ErrNotPending) {
+		if !domainerr.IsConflict(err) {
 			t.Fatalf("esperado ErrNotPending, obtuve %v", err)
 		}
 	})
@@ -831,7 +832,7 @@ func TestUsecases_GetProposalByID(t *testing.T) {
 		uc := NewUsecases(repo, &fakePolicyCreator{})
 
 		_, err := uc.GetProposalByID(context.Background(), uuid.New())
-		if !errors.Is(err, ErrNotFound) {
+		if !domainerr.IsNotFound(err) {
 			t.Fatalf("esperado ErrNotFound, obtuve %v", err)
 		}
 	})

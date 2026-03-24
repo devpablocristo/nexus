@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/devpablocristo/core/backend/go/worker"
 	"github.com/google/uuid"
 
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/memory/usecases/domain"
@@ -127,23 +128,14 @@ func (uc *Usecases) Delete(ctx context.Context, id uuid.UUID) error {
 
 // RunPurgeLoop ejecuta purga periódica de entradas expiradas.
 func (uc *Usecases) RunPurgeLoop(ctx context.Context, interval time.Duration) {
-	slog.Info("memory purge loop started", "interval", interval)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("memory purge loop stopped")
+	worker.RunPeriodic(ctx, interval, "memory-purge", func(c context.Context) {
+		purged, err := uc.repo.PurgeExpired(c)
+		if err != nil {
+			slog.Error("purge expired memory", "error", err)
 			return
-		case <-ticker.C:
-			purged, err := uc.repo.PurgeExpired(ctx)
-			if err != nil {
-				slog.Error("purge expired memory", "error", err)
-				continue
-			}
-			if purged > 0 {
-				slog.Info("purged expired memory entries", "count", purged)
-			}
 		}
-	}
+		if purged > 0 {
+			slog.Info("purged expired memory entries", "count", purged)
+		}
+	})
 }

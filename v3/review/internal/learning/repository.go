@@ -3,6 +3,8 @@ package learning
 import (
 	"context"
 	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"fmt"
 	"time"
 
@@ -15,8 +17,8 @@ import (
 
 // Sentinel errors
 var (
-	ErrNotFound   = errors.New("proposal not found")
-	ErrNotPending = errors.New("proposal is not pending")
+	ErrNotFound = domainerr.NotFound("not found")
+	ErrNotPending = domainerr.Conflict("proposal is not pending")
 )
 
 // Repository define el port de persistencia para policy proposals.

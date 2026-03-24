@@ -2,15 +2,14 @@ package delegations
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	dto "github.com/devpablocristo/nexus/v3/review/internal/delegations/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/review/internal/delegations/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
+	"github.com/devpablocristo/core/backend/go/domainerr"
 )
 
 type delegationUsecase interface {
@@ -39,12 +38,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var body dto.CreateDelegationRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.OwnerID == "" || body.AgentID == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "owner_id and agent_id are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "owner_id and agent_id are required")
 		return
 	}
 
@@ -67,29 +66,29 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.uc.Create(r.Context(), d)
 	if err != nil {
-		shared.WriteInternalError(w, err, "create delegation")
+		httpjson.WriteFlatInternalError(w, err, "create delegation")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusCreated, toResponse(created))
+	httpjson.WriteJSON(w, http.StatusCreated, toResponse(created))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	list, err := h.uc.List(r.Context())
 	if err != nil {
-		shared.WriteInternalError(w, err, "list delegations")
+		httpjson.WriteFlatInternalError(w, err, "list delegations")
 		return
 	}
 	out := make([]dto.DelegationResponse, 0, len(list))
 	for _, d := range list {
 		out = append(out, toResponse(d))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	d, err := h.uc.GetByID(r.Context(), id)
@@ -97,13 +96,13 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toResponse(d))
+	httpjson.WriteJSON(w, http.StatusOK, toResponse(d))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	d, err := h.uc.GetByID(r.Context(), id)
@@ -112,8 +111,8 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body dto.UpdateDelegationRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.AllowedActionTypes != nil {
@@ -143,13 +142,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toResponse(updated))
+	httpjson.WriteJSON(w, http.StatusOK, toResponse(updated))
 }
 
 func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {
@@ -182,9 +181,9 @@ func toResponse(d domain.Delegation) dto.DelegationResponse {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	if errors.Is(err, ErrNotFound) {
-		shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "delegation not found")
+	if domainerr.IsNotFound(err) {
+		httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "delegation not found")
 		return
 	}
-	shared.WriteInternalError(w, err, "delegation operation failed")
+	httpjson.WriteFlatInternalError(w, err, "delegation operation failed")
 }

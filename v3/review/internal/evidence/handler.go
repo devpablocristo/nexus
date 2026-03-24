@@ -5,11 +5,10 @@ import (
 	"errors"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	evidencedto "github.com/devpablocristo/nexus/v3/review/internal/evidence/handler/dto"
 	evidencedomain "github.com/devpablocristo/nexus/v3/review/internal/evidence/usecases/domain"
 	"github.com/devpablocristo/nexus/v3/review/internal/requests"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
 )
 
@@ -36,19 +35,19 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) generate(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	pack, err := h.uc.Generate(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, requests.ErrNotFound) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "generate evidence pack failed")
+		httpjson.WriteFlatInternalError(w, err, "generate evidence pack failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toEvidenceResponse(pack))
+	httpjson.WriteJSON(w, http.StatusOK, toEvidenceResponse(pack))
 }
 
 // toEvidenceResponse convierte el dominio a DTO HTTP.

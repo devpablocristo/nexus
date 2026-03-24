@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"time"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	policydto "github.com/devpablocristo/nexus/v3/review/internal/policies/handler/dto"
 	policydomain "github.com/devpablocristo/nexus/v3/review/internal/policies/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
+	"github.com/devpablocristo/core/backend/go/domainerr"
 )
 
 // Port mínimo: solo lo que el handler necesita
+const maxExpressionLen = 5000
+
 type policyUsecase interface {
 	Create(ctx context.Context, p policydomain.Policy) (policydomain.Policy, error)
 	GetByID(ctx context.Context, id uuid.UUID) (policydomain.Policy, error)
@@ -44,21 +46,21 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var body policydto.CreatePolicyRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Name == "" || body.Expression == "" || body.Effect == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "name, expression and effect are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "name, expression and effect are required")
 		return
 	}
-	if len(body.Expression) > shared.MaxExpressionLen {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "expression too long")
+	if len(body.Expression) > maxExpressionLen {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "expression too long")
 		return
 	}
 	validEffects := map[string]bool{"allow": true, "deny": true, "require_approval": true}
 	if !validEffects[body.Effect] {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "effect must be allow, deny or require_approval")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "effect must be allow, deny or require_approval")
 		return
 	}
 	mode := policydomain.PolicyModeEnforced
@@ -80,30 +82,30 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := h.uc.Create(r.Context(), p)
 	if err != nil {
-		shared.WriteInternalError(w, err, "create policy failed")
+		httpjson.WriteFlatInternalError(w, err, "create policy failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusCreated, toPolicyResponse(created))
+	httpjson.WriteJSON(w, http.StatusCreated, toPolicyResponse(created))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	archived := r.URL.Query().Get("archived") == "true"
 	list, err := h.uc.List(r.Context(), ListFilters{IncludeArchived: archived})
 	if err != nil {
-		shared.WriteInternalError(w, err, "list policies failed")
+		httpjson.WriteFlatInternalError(w, err, "list policies failed")
 		return
 	}
 	out := make([]policydto.PolicyResponse, 0, len(list))
 	for _, p := range list {
 		out = append(out, toPolicyResponse(p))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	p, err := h.uc.GetByID(r.Context(), id)
@@ -111,13 +113,13 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		writePolicyUsecaseError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(p))
+	httpjson.WriteJSON(w, http.StatusOK, toPolicyResponse(p))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	p, err := h.uc.GetByID(r.Context(), id)
@@ -126,8 +128,8 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body policydto.UpdatePolicyRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	// Aplicar solo los campos presentes (patch parcial)
@@ -166,13 +168,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		writePolicyUsecaseError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toPolicyResponse(updated))
+	httpjson.WriteJSON(w, http.StatusOK, toPolicyResponse(updated))
 }
 
 func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {
@@ -185,7 +187,7 @@ func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) archiveByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	if err := h.uc.ArchiveByID(r.Context(), id); err != nil {
@@ -198,7 +200,7 @@ func (h *Handler) archiveByID(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) restoreByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	if err := h.uc.RestoreByID(r.Context(), id); err != nil {
@@ -240,13 +242,13 @@ func toPolicyResponse(p policydomain.Policy) policydto.PolicyResponse {
 }
 
 func writePolicyUsecaseError(w http.ResponseWriter, err error) {
-	if errors.Is(err, ErrNotFound) {
-		shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "policy not found")
+	if domainerr.IsNotFound(err) {
+		httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "policy not found")
 		return
 	}
 	if errors.Is(err, ErrArchived) {
-		shared.WriteError(w, http.StatusConflict, "CONFLICT", "policy is archived")
+		httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "policy is archived")
 		return
 	}
-	shared.WriteInternalError(w, err, "policy operation failed")
+	httpjson.WriteFlatInternalError(w, err, "policy operation failed")
 }

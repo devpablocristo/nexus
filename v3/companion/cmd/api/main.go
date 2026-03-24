@@ -49,6 +49,11 @@ func main() {
 		APIKeys:        apiKeys,
 		ReviewBaseURL:  reviewBase,
 		ReviewAPIKey:   reviewKey,
+		PymesBaseURL:   os.Getenv("PYMES_BASE_URL"),
+		PymesAPIKey:    os.Getenv("PYMES_API_KEY"),
+		LLMProvider:    os.Getenv("NEXUS_LLM_PROVIDER"),
+		LLMAPIKey:      os.Getenv("NEXUS_LLM_API_KEY"),
+		LLMModel:       os.Getenv("NEXUS_LLM_MODEL"),
 		MigrationFiles: migrations.Files,
 	}
 

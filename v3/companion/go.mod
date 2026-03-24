@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/devpablocristo/core/backend/go v0.0.0
 	github.com/devpablocristo/core/databases/postgres/go v0.0.0
+	github.com/devpablocristo/core/ai/go v0.0.0
 	github.com/devpablocristo/core/governance/go v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
@@ -31,5 +32,7 @@ require (
 replace github.com/devpablocristo/core/backend/go => ../../../core/backend/go
 
 replace github.com/devpablocristo/core/databases/postgres/go => ../../../core/databases/postgres/go
+
+replace github.com/devpablocristo/core/ai/go => ../../../core/ai/go
 
 replace github.com/devpablocristo/core/governance/go => ../../../core/governance/go

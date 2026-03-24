@@ -63,7 +63,6 @@ type WatcherResult struct {
 	Found    int `json:"found"`
 	Proposed int `json:"proposed"`
 	Executed int `json:"executed"`
-	Errors   int `json:"errors"`
 }
 
 // PymesItem representa un item genérico devuelto por la API de Pymes.

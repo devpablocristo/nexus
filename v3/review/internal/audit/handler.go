@@ -4,9 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	auditdto "github.com/devpablocristo/nexus/v3/review/internal/audit/handler/dto"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
 )
 
@@ -29,15 +28,15 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) replay(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	out, err := h.uc.Replay(r.Context(), id)
 	if err != nil {
-		shared.WriteInternalError(w, err, "replay failed")
+		httpjson.WriteFlatInternalError(w, err, "replay failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toReplayResponse(out))
+	httpjson.WriteJSON(w, http.StatusOK, toReplayResponse(out))
 }
 
 // toReplayResponse convierte el output de dominio a DTO HTTP.

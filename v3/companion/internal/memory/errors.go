@@ -1,15 +1,19 @@
 package memory
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
+)
 
 var (
-	ErrNotFound        = errors.New("memory entry not found")
+	ErrNotFound = domainerr.NotFound("not found")
 	ErrVersionConflict = errors.New("memory version conflict")
 )
 
 // IsNotFound verifica si el error es de entrada no encontrada.
 func IsNotFound(err error) bool {
-	return errors.Is(err, ErrNotFound)
+	return domainerr.IsNotFound(err)
 }
 
 // IsVersionConflict verifica si el error es de conflicto de versión.

@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/connectors/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/companion/internal/shared"
+)
+
+const (
+	defaultListLimit = 50
 )
 
 type connectorUsecase interface {
@@ -47,42 +50,42 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	conns, err := h.uc.ListConnectors(r.Context())
 	if err != nil {
-		shared.WriteInternalError(w, err, "list connectors failed")
+		httpjson.WriteFlatInternalError(w, err, "list connectors failed")
 		return
 	}
 	out := make([]dto.ConnectorResponse, 0, len(conns))
 	for _, c := range conns {
 		out = append(out, dto.ConnectorToResponse(c))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.ConnectorListResponse{Connectors: out})
+	httpjson.WriteJSON(w, http.StatusOK, dto.ConnectorListResponse{Connectors: out})
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	conn, err := h.uc.GetConnector(r.Context(), id)
 	if err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "get connector failed")
+		httpjson.WriteFlatInternalError(w, err, "get connector failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.ConnectorToResponse(conn))
+	httpjson.WriteJSON(w, http.StatusOK, dto.ConnectorToResponse(conn))
 }
 
 func (h *Handler) save(w http.ResponseWriter, r *http.Request) {
 	var body dto.SaveConnectorRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Name == "" || body.Kind == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "name and kind are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "name and kind are required")
 		return
 	}
 	configJSON := body.Config
@@ -96,24 +99,24 @@ func (h *Handler) save(w http.ResponseWriter, r *http.Request) {
 		ConfigJSON: configJSON,
 	})
 	if err != nil {
-		shared.WriteInternalError(w, err, "save connector failed")
+		httpjson.WriteFlatInternalError(w, err, "save connector failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusCreated, dto.ConnectorToResponse(conn))
+	httpjson.WriteJSON(w, http.StatusCreated, dto.ConnectorToResponse(conn))
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	if err := h.uc.DeleteConnector(r.Context(), id); err != nil {
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "delete connector failed")
+		httpjson.WriteFlatInternalError(w, err, "delete connector failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -121,18 +124,18 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
 	var body dto.ExecuteRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.ConnectorID == "" || body.Operation == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "connector_id and operation are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "connector_id and operation are required")
 		return
 	}
 
 	connID, err := uuid.Parse(body.ConnectorID)
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid connector_id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid connector_id")
 		return
 	}
 
@@ -158,35 +161,35 @@ func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
 	result, err := h.uc.Execute(r.Context(), spec)
 	if err != nil {
 		if IsUngated(err) {
-			shared.WriteError(w, http.StatusForbidden, "UNGATED", "execution requires review approval")
+			httpjson.WriteFlatError(w, http.StatusForbidden, "UNGATED", "execution requires review approval")
 			return
 		}
 		if IsNotFound(err) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "execute connector failed")
+		httpjson.WriteFlatInternalError(w, err, "execute connector failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.ExecutionToResponse(result))
+	httpjson.WriteJSON(w, http.StatusOK, dto.ExecutionToResponse(result))
 }
 
 func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
-	execs, err := h.uc.ListExecutions(r.Context(), id, shared.DefaultListLimit)
+	execs, err := h.uc.ListExecutions(r.Context(), id, defaultListLimit)
 	if err != nil {
-		shared.WriteInternalError(w, err, "list executions failed")
+		httpjson.WriteFlatInternalError(w, err, "list executions failed")
 		return
 	}
 	out := make([]dto.ExecutionResponse, 0, len(execs))
 	for _, e := range execs {
 		out = append(out, dto.ExecutionToResponse(e))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.ExecutionListResponse{Executions: out})
+	httpjson.WriteJSON(w, http.StatusOK, dto.ExecutionListResponse{Executions: out})
 }
 
 func (h *Handler) capabilities(w http.ResponseWriter, r *http.Request) {
@@ -199,5 +202,5 @@ func (h *Handler) capabilities(w http.ResponseWriter, r *http.Request) {
 			Capabilities: c.Capabilities,
 		})
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, dto.CapabilitiesListResponse{Connectors: out})
+	httpjson.WriteJSON(w, http.StatusOK, dto.CapabilitiesListResponse{Connectors: out})
 }

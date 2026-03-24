@@ -3,6 +3,7 @@ module github.com/devpablocristo/nexus/v3/review
 go 1.26.1
 
 require (
+	github.com/devpablocristo/core/ai/go v0.0.0
 	github.com/devpablocristo/core/backend/go v0.0.0
 	github.com/devpablocristo/core/databases/postgres/go v0.0.0
 	github.com/google/cel-go v0.27.0
@@ -32,6 +33,8 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240826202546-f6391c0de4c7 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
+
+replace github.com/devpablocristo/core/ai/go => ../../../core/ai/go
 
 replace github.com/devpablocristo/core/backend/go => ../../../core/backend/go
 

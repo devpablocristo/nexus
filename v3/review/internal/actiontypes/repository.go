@@ -3,6 +3,8 @@ package actiontypes
 import (
 	"context"
 	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"fmt"
 	"time"
 
@@ -14,7 +16,7 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("action type not found")
+	ErrNotFound = domainerr.NotFound("not found")
 	ErrAlreadyExists = errors.New("action type already exists")
 )
 

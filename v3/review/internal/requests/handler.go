@@ -9,14 +9,21 @@ import (
 	"strings"
 	"time"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
+
 	requestdto "github.com/devpablocristo/nexus/v3/review/internal/requests/handler/dto"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
+	"github.com/devpablocristo/core/backend/go/domainerr"
 )
 
 // Port mínimo: solo lo que el handler necesita
+const (
+	defaultListLimit     = 50
+	maxListLimit         = 1000
+	maxIdempotencyKeyLen = 256
+)
+
 type requestUsecase interface {
 	Submit(ctx context.Context, in SubmitInput) (SubmitOutput, error)
 	Simulate(ctx context.Context, in SubmitInput) (SimulateOutput, error)
@@ -53,12 +60,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 	var body requestdto.SimulateRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.ActionType == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "action_type is required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "action_type is required")
 		return
 	}
 
@@ -75,11 +82,11 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("simulate failed", "error", err)
-		shared.WriteInternalError(w, err, "simulate request")
+		httpjson.WriteFlatInternalError(w, err, "simulate request")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusOK, requestdto.SimulateResponse{
+	httpjson.WriteJSON(w, http.StatusOK, requestdto.SimulateResponse{
 		Decision:             out.Decision,
 		RiskLevel:            out.RiskLevel,
 		DecisionReason:       out.DecisionReason,
@@ -93,12 +100,12 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) replaySimulate(w http.ResponseWriter, r *http.Request) {
 	var body requestdto.ReplaySimulateRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Expression == "" || body.Effect == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "expression and effect are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "expression and effect are required")
 		return
 	}
 
@@ -109,27 +116,27 @@ func (h *Handler) replaySimulate(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("replay simulate failed", "error", err)
-		shared.WriteInternalError(w, err, "replay simulate")
+		httpjson.WriteFlatInternalError(w, err, "replay simulate")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusOK, out)
+	httpjson.WriteJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 	var body requestdto.SubmitRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.RequesterType == "" || body.RequesterID == "" || body.ActionType == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "requester_type, requester_id and action_type are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "requester_type, requester_id and action_type are required")
 		return
 	}
 	var idemKey *string
 	if k := r.Header.Get("Idempotency-Key"); k != "" {
-		if len(k) > shared.MaxIdempotencyKeyLen {
-			shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "idempotency key too long")
+		if len(k) > maxIdempotencyKeyLen {
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "idempotency key too long")
 			return
 		}
 		idemKey = &k
@@ -151,10 +158,10 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(errMsg, "unknown action_type") ||
 			strings.Contains(errMsg, "is disabled") ||
 			strings.Contains(errMsg, "not delegated") {
-			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", errMsg)
+			httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", errMsg)
 			return
 		}
-		shared.WriteInternalError(w, err, "request submission failed")
+		httpjson.WriteFlatInternalError(w, err, "request submission failed")
 		return
 	}
 	resp := requestdto.SubmitResponse{
@@ -172,58 +179,58 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt: out.Approval.ExpiresAt.Format(time.RFC3339),
 		}
 	}
-	sharedhandlers.WriteJSON(w, http.StatusCreated, resp)
+	httpjson.WriteJSON(w, http.StatusCreated, resp)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	status := q.Get("status")
 	actionType := q.Get("action_type")
-	limit := shared.DefaultListLimit
+	limit := defaultListLimit
 	if l := q.Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= shared.MaxListLimit {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= maxListLimit {
 			limit = parsed
 		}
 	}
 	list, err := h.uc.List(r.Context(), status, actionType, limit)
 	if err != nil {
-		shared.WriteInternalError(w, err, "list requests failed")
+		httpjson.WriteFlatInternalError(w, err, "list requests failed")
 		return
 	}
 	out := make([]requestdto.RequestResponse, 0, len(list))
 	for _, req := range list {
 		out = append(out, toRequestResponse(req))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	req, err := h.uc.GetByID(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "get request failed")
+		httpjson.WriteFlatInternalError(w, err, "get request failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toRequestResponse(req))
+	httpjson.WriteJSON(w, http.StatusOK, toRequestResponse(req))
 }
 
 func (h *Handler) reportResult(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body requestdto.ReportResultRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	err = h.uc.ReportResult(r.Context(), id, ReportResultInput{
@@ -233,29 +240,29 @@ func (h *Handler) reportResult(w http.ResponseWriter, r *http.Request) {
 		ErrorMessage: body.ErrorMessage,
 	})
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "report result failed")
+		httpjson.WriteFlatInternalError(w, err, "report result failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handler) attest(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	var body requestdto.AttestRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Status == "" || body.Attester == "" || body.Signature == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "status, attester and signature are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "status, attester and signature are required")
 		return
 	}
 
@@ -267,51 +274,51 @@ func (h *Handler) attest(w http.ResponseWriter, r *http.Request) {
 		Metadata:     body.Metadata,
 	})
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
 			return
 		}
 		if strings.Contains(err.Error(), "status must be") {
-			shared.WriteError(w, http.StatusConflict, "CONFLICT", "request must be executed or failed to attest")
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "request must be executed or failed to attest")
 			return
 		}
-		shared.WriteInternalError(w, err, "attest failed")
+		httpjson.WriteFlatInternalError(w, err, "attest failed")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusCreated, toAttestResponse(attestation))
+	httpjson.WriteJSON(w, http.StatusCreated, toAttestResponse(attestation))
 }
 
 func (h *Handler) getAttestation(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	attestation, err := h.uc.GetAttestation(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, ErrAttestationNotFound) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "attestation not found")
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "attestation not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "get attestation failed")
+		httpjson.WriteFlatInternalError(w, err, "get attestation failed")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toAttestResponse(attestation))
+	httpjson.WriteJSON(w, http.StatusOK, toAttestResponse(attestation))
 }
 
 func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
 	var body requestdto.BatchSimulateRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if len(body.Requests) == 0 {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "requests array is required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "requests array is required")
 		return
 	}
 	if len(body.Requests) > 100 {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "max 100 requests per batch")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "max 100 requests per batch")
 		return
 	}
 
@@ -332,7 +339,7 @@ func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
 
 	out, err := h.uc.BatchSimulate(r.Context(), BatchSimulateInput{Requests: inputs})
 	if err != nil {
-		shared.WriteInternalError(w, err, "batch simulate failed")
+		httpjson.WriteFlatInternalError(w, err, "batch simulate failed")
 		return
 	}
 
@@ -355,27 +362,27 @@ func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
 			PolicyMatched:  item.PolicyMatched,
 		})
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, resp)
+	httpjson.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) simulateApproval(w http.ResponseWriter, r *http.Request) {
 	var body requestdto.ApprovalSimulateRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.RequestID == "" || body.Action == "" || body.ApproverID == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "request_id, action and approver_id are required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "request_id, action and approver_id are required")
 		return
 	}
 	if body.Action != "approve" && body.Action != "reject" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "action must be approve or reject")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "action must be approve or reject")
 		return
 	}
 
 	reqID, err := uuid.Parse(body.RequestID)
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid request_id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid request_id")
 		return
 	}
 
@@ -385,15 +392,15 @@ func (h *Handler) simulateApproval(w http.ResponseWriter, r *http.Request) {
 		ApproverID: body.ApproverID,
 	})
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
 			return
 		}
-		shared.WriteInternalError(w, err, "simulate approval failed")
+		httpjson.WriteFlatInternalError(w, err, "simulate approval failed")
 		return
 	}
 
-	sharedhandlers.WriteJSON(w, http.StatusOK, requestdto.ApprovalSimulateResponse{
+	httpjson.WriteJSON(w, http.StatusOK, requestdto.ApprovalSimulateResponse{
 		CurrentStatus:     out.CurrentStatus,
 		SimulatedStatus:   out.SimulatedStatus,
 		BreakGlass:        out.BreakGlass,

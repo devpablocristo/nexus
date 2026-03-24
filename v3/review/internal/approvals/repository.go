@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
+	"github.com/devpablocristo/core/backend/go/domainerr"
 	"fmt"
 	"time"
 
@@ -16,9 +18,9 @@ import (
 
 // Sentinel errors
 var (
-	ErrNotFound       = errors.New("approval not found")
-	ErrNotPending     = errors.New("approval is not pending")
-	ErrAlreadyDecided = errors.New("approver already decided on this approval")
+	ErrNotFound = domainerr.NotFound("not found")
+	ErrNotPending     = domainerr.Conflict("approval is not pending")
+	ErrAlreadyDecided = domainerr.Conflict("approver already decided on this approval")
 )
 
 // Repository define el port de persistencia para approvals.

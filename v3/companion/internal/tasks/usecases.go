@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/backend/go/worker"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/core/governance/go/reviewclient"
@@ -30,14 +32,38 @@ type reviewGateway interface {
 	GetRequest(ctx context.Context, id string) (reviewclient.RequestSummary, int, error)
 }
 
+// ChatOrchestrator interfaz del runtime del compañero.
+type ChatOrchestrator interface {
+	Run(ctx context.Context, in OrchestratorInput) (OrchestratorResult, error)
+}
+
+// OrchestratorInput entrada para el runtime.
+type OrchestratorInput struct {
+	UserID   string
+	OrgID    string
+	Message  string
+	Messages []domain.TaskMessage
+}
+
+// OrchestratorResult resultado del runtime.
+type OrchestratorResult struct {
+	Reply string
+}
+
 // Usecases lógica de tareas e integración con Review.
 type Usecases struct {
-	repo   Repository
-	review reviewGateway
+	repo         Repository
+	review       reviewGateway
+	orchestrator ChatOrchestrator // nil = sin LLM (solo persiste)
 }
 
 func NewUsecases(repo Repository, review reviewGateway) *Usecases {
 	return &Usecases{repo: repo, review: review}
+}
+
+// SetOrchestrator inyecta el runtime del compañero. Opcional: si no se llama, Chat solo persiste.
+func (u *Usecases) SetOrchestrator(o ChatOrchestrator) {
+	u.orchestrator = o
 }
 
 type CreateTaskInput struct {
@@ -232,7 +258,36 @@ func (u *Usecases) Chat(ctx context.Context, in ChatInput) (ChatResult, error) {
 		return ChatResult{}, fmt.Errorf("insert chat message: %w", err)
 	}
 
-	// Devolver hilo completo
+	// Si hay orchestrator, generar respuesta del compañero
+	if u.orchestrator != nil {
+		existingMsgs, listErr := u.repo.ListMessagesByTaskID(ctx, t.ID)
+		if listErr != nil {
+			slog.Error("chat list messages for orchestrator", "error", listErr)
+		} else {
+			result, runErr := u.orchestrator.Run(ctx, OrchestratorInput{
+				UserID:   in.UserID,
+				OrgID:    t.CreatedBy, // org_id no está en Task; usamos created_by como fallback
+				Message:  in.Message,
+				Messages: existingMsgs,
+			})
+			if runErr != nil {
+				slog.Error("orchestrator failed", "error", runErr)
+			} else if result.Reply != "" {
+				// Guardar respuesta del compañero como mensaje del sistema
+				_, insertErr := u.repo.InsertMessage(ctx, domain.TaskMessage{
+					TaskID:     t.ID,
+					AuthorType: "system",
+					AuthorID:   "nexus",
+					Body:       result.Reply,
+				})
+				if insertErr != nil {
+					slog.Error("insert orchestrator reply", "error", insertErr)
+				}
+			}
+		}
+	}
+
+	// Devolver hilo completo (incluyendo respuesta del compañero si hubo)
 	msgs, err := u.repo.ListMessagesByTaskID(ctx, t.ID)
 	if err != nil {
 		return ChatResult{}, fmt.Errorf("list chat messages: %w", err)
@@ -416,7 +471,7 @@ func (u *Usecases) SyncTaskReview(ctx context.Context, taskID uuid.UUID) (domain
 	}
 	rid, err := u.repo.LatestProposeReviewRequestID(ctx, taskID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if domainerr.IsNotFound(err) {
 			return t, nil
 		}
 		return domain.Task{}, err
@@ -464,26 +519,19 @@ func (u *Usecases) SyncPendingReviewTasks(ctx context.Context, limit int) {
 
 // RunReviewSyncLoop ejecuta SyncPendingReviewTasks periódicamente hasta que ctx termina.
 func (u *Usecases) RunReviewSyncLoop(ctx context.Context, interval time.Duration, batch int) {
-	if interval <= 0 || batch <= 0 {
+	if batch <= 0 {
 		return
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			runCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-			u.SyncPendingReviewTasks(runCtx, batch)
-			cancel()
-		}
-	}
+	worker.RunPeriodic(ctx, interval, "review-sync", func(c context.Context) {
+		runCtx, cancel := context.WithTimeout(c, 2*time.Minute)
+		u.SyncPendingReviewTasks(runCtx, batch)
+		cancel()
+	})
 }
 
 // ErrInvalidStatus para handlers.
 func IsNotFound(err error) bool {
-	return errors.Is(err, ErrNotFound)
+	return domainerr.IsNotFound(err)
 }
 
 // IsInvalidTaskState indica conflicto de estado (FSM / reglas de negocio).

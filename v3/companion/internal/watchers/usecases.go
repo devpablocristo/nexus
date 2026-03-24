@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/devpablocristo/core/backend/go/worker"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/core/governance/go/reviewclient"
@@ -153,7 +154,6 @@ func (uc *Usecases) RunWatcher(ctx context.Context, watcherID uuid.UUID) (*domai
 		proposal, err := uc.processItem(ctx, w, item)
 		if err != nil {
 			slog.Warn("watcher process item failed", "watcher_id", w.ID, "item_id", item.ID, "error", err)
-			result.Errors++
 			continue
 		}
 		result.Proposed++
@@ -369,20 +369,10 @@ func (uc *Usecases) RunAllEnabled(ctx context.Context, orgID string) error {
 
 // RunWatcherLoop ejecuta watchers periódicamente en background.
 func (uc *Usecases) RunWatcherLoop(ctx context.Context, interval time.Duration, batchSize int) {
-	slog.Info("watcher loop started", "interval", interval)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("watcher loop stopped")
-			return
-		case <-ticker.C:
-			// TODO: iterar por todas las orgs — por ahora se ejecuta manualmente por org
-			slog.Debug("watcher loop tick — manual execution per org via API")
-		}
-	}
+	worker.RunPeriodic(ctx, interval, "watcher-loop", func(_ context.Context) {
+		// TODO: iterar por todas las orgs — por ahora se ejecuta manualmente por org
+		slog.Debug("watcher loop tick — manual execution per org via API")
+	})
 }
 
 // SyncPendingProposals sincroniza propuestas pendientes con Review.

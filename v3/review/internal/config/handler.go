@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/devpablocristo/core/backend/go/httpjson"
+
 	configdto "github.com/devpablocristo/nexus/v3/review/internal/config/handler/dto"
 	configdomain "github.com/devpablocristo/nexus/v3/review/internal/config/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 )
 
 type configUsecase interface {
@@ -35,7 +36,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := h.uc.GetConfig(r.Context())
 	if err != nil {
-		shared.WriteInternalError(w, err, "get config")
+		httpjson.WriteFlatInternalError(w, err, "get config")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -45,7 +46,7 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	var body configdto.UpdateSystemConfigRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid JSON body")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid JSON body")
 		return
 	}
 
@@ -53,7 +54,7 @@ func (h *Handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.uc.UpdateConfig(r.Context(), domainCfg)
 	if err != nil {
 		// Nunca exponer err.Error() — mensaje genérico
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid configuration values")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid configuration values")
 		return
 	}
 
@@ -65,13 +66,13 @@ func (h *Handler) updateSection(w http.ResponseWriter, r *http.Request) {
 	section := r.PathValue("section")
 	var data json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid JSON body")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid JSON body")
 		return
 	}
 
 	updated, err := h.uc.UpdateSection(r.Context(), section, data)
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid configuration for section "+section)
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid configuration for section "+section)
 		return
 	}
 
@@ -82,7 +83,7 @@ func (h *Handler) updateSection(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) resetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := h.uc.ResetConfig(r.Context())
 	if err != nil {
-		shared.WriteInternalError(w, err, "reset config")
+		httpjson.WriteFlatInternalError(w, err, "reset config")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

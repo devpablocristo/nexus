@@ -2,6 +2,7 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /workspace
 
+COPY core/ai/go/ core/ai/go/
 COPY core/backend/go/ core/backend/go/
 COPY core/databases/postgres/go/ core/databases/postgres/go/
 COPY core/governance/go/ core/governance/go/

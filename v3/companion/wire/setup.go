@@ -6,47 +6,32 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	sharedapikey "github.com/devpablocristo/core/backend/go/apikey"
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/envconfig"
+	"github.com/devpablocristo/core/backend/go/health"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
+	"github.com/devpablocristo/core/governance/go/reviewclient"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors/registry"
 	"github.com/devpablocristo/nexus/v3/companion/internal/memory"
-	"github.com/devpablocristo/core/governance/go/reviewclient"
+	"github.com/devpablocristo/nexus/v3/companion/internal/runtime"
 	"github.com/devpablocristo/nexus/v3/companion/internal/tasks"
 	"github.com/devpablocristo/nexus/v3/companion/internal/watchers"
 	"github.com/devpablocristo/nexus/v3/companion/internal/watchers/pymesclient"
+
+	memdomain "github.com/devpablocristo/nexus/v3/companion/internal/memory/usecases/domain"
 )
 
 func reviewSyncInterval() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("COMPANION_REVIEW_SYNC_INTERVAL_SEC"))
-	if raw == "" {
-		return 30 * time.Second
-	}
-	sec, err := strconv.Atoi(raw)
-	if err != nil || sec <= 0 {
-		return 0
-	}
-	return time.Duration(sec) * time.Second
+	return envconfig.Duration("COMPANION_REVIEW_SYNC_INTERVAL_SEC", 30*time.Second)
 }
 
 func watcherInterval() time.Duration {
-	raw := strings.TrimSpace(os.Getenv("COMPANION_WATCHER_INTERVAL_SEC"))
-	if raw == "" {
-		return 0
-	}
-	sec, err := strconv.Atoi(raw)
-	if err != nil || sec <= 0 {
-		return 0
-	}
-	return time.Duration(sec) * time.Second
+	return envconfig.Duration("COMPANION_WATCHER_INTERVAL_SEC", 0)
 }
 
 // Config arranque del servicio Companion.
@@ -57,6 +42,9 @@ type Config struct {
 	ReviewAPIKey   string
 	PymesBaseURL   string
 	PymesAPIKey    string
+	LLMProvider    string
+	LLMAPIKey      string
+	LLMModel       string
 	MigrationFiles fs.FS
 }
 
@@ -107,8 +95,22 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	connUC := connectors.NewUsecases(connRepo, connReg, reviewChecker)
 	connHandler := connectors.NewHandler(connUC)
 
+	// Runtime del compañero (LLM + tools + context)
+	llmProvider := runtime.NewProvider(cfg.LLMProvider, cfg.LLMAPIKey, cfg.LLMModel)
+	toolkit := runtime.NewToolKit(rc, memUC, watcherUC)
+	contextPorts := runtime.ContextPorts{
+		ReviewClient: rc,
+		MemoryFind: func(c context.Context, st memdomain.ScopeType, sid string, k memdomain.MemoryKind, limit int) ([]memdomain.MemoryEntry, error) {
+			return memUC.Find(c, memory.FindQuery{ScopeType: st, ScopeID: sid, Kind: k, Limit: limit})
+		},
+	}
+	orchestrator := runtime.NewOrchestrator(llmProvider, toolkit, contextPorts)
+	adapter := runtime.NewOrchestratorAdapter(orchestrator)
+	uc.SetOrchestrator(adapter)
+	slog.Info("companion runtime initialized", "llm_provider", cfg.LLMProvider)
+
 	mux := http.NewServeMux()
-	sharedhandlers.RegisterHealthEndpoints(mux, func(c context.Context) error {
+	health.RegisterEndpoints(mux, func(c context.Context) error {
 		return db.Ping(c)
 	})
 	h.Register(mux)

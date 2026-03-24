@@ -2,15 +2,14 @@ package actiontypes
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
-	sharedhandlers "github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/backend/go/httpjson"
 	dto "github.com/devpablocristo/nexus/v3/review/internal/actiontypes/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/review/internal/actiontypes/usecases/domain"
-	"github.com/devpablocristo/nexus/v3/review/internal/shared"
 	"github.com/google/uuid"
+	"github.com/devpablocristo/core/backend/go/domainerr"
 )
 
 type actionTypeUsecase interface {
@@ -39,12 +38,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var body dto.CreateActionTypeRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Name == "" {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "name is required")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "name is required")
 		return
 	}
 
@@ -60,29 +59,29 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.uc.Create(r.Context(), at)
 	if err != nil {
-		shared.WriteInternalError(w, err, "create action type")
+		httpjson.WriteFlatInternalError(w, err, "create action type")
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusCreated, toResponse(created))
+	httpjson.WriteJSON(w, http.StatusCreated, toResponse(created))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	list, err := h.uc.List(r.Context())
 	if err != nil {
-		shared.WriteInternalError(w, err, "list action types")
+		httpjson.WriteFlatInternalError(w, err, "list action types")
 		return
 	}
 	out := make([]dto.ActionTypeResponse, 0, len(list))
 	for _, at := range list {
 		out = append(out, toResponse(at))
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	at, err := h.uc.GetByID(r.Context(), id)
@@ -90,13 +89,13 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toResponse(at))
+	httpjson.WriteJSON(w, http.StatusOK, toResponse(at))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	at, err := h.uc.GetByID(r.Context(), id)
@@ -105,8 +104,8 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body dto.UpdateActionTypeRequest
-	if err := sharedhandlers.DecodeJSON(r, &body); err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
 	if body.Name != nil {
@@ -139,13 +138,13 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	sharedhandlers.WriteJSON(w, http.StatusOK, toResponse(updated))
+	httpjson.WriteJSON(w, http.StatusOK, toResponse(updated))
 }
 
 func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {
@@ -172,9 +171,9 @@ func toResponse(at domain.ActionType) dto.ActionTypeResponse {
 }
 
 func writeError(w http.ResponseWriter, err error) {
-	if errors.Is(err, ErrNotFound) {
-		shared.WriteError(w, http.StatusNotFound, "NOT_FOUND", "action type not found")
+	if domainerr.IsNotFound(err) {
+		httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "action type not found")
 		return
 	}
-	shared.WriteInternalError(w, err, "action type operation failed")
+	httpjson.WriteFlatInternalError(w, err, "action type operation failed")
 }
