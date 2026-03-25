@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/devpablocristo/core/backend/go/worker"
+	"github.com/devpablocristo/core/concurrency/go/worker"
 	"github.com/google/uuid"
 
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/memory/usecases/domain"

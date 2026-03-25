@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/devpablocristo/core/backend/go/httpserver"
-	sharedobservability "github.com/devpablocristo/core/backend/go/observability"
+	"github.com/devpablocristo/core/http/go/httpserver"
+	sharedobservability "github.com/devpablocristo/core/observability/go"
 	"github.com/devpablocristo/nexus/v3/review/migrations"
 	"github.com/devpablocristo/nexus/v3/review/wire"
 )

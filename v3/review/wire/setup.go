@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	sharedapikey "github.com/devpablocristo/core/backend/go/apikey"
-	"github.com/devpablocristo/core/backend/go/health"
+	sharedapikey "github.com/devpablocristo/core/security/go/apikey"
+	"github.com/devpablocristo/core/http/go/health"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	"github.com/devpablocristo/nexus/v3/review/internal/actiontypes"
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"

@@ -5,7 +5,10 @@ RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
 
 WORKDIR /workspace
 
-COPY core/backend/go/go.mod ./core/backend/go/go.mod
+COPY core/errors/go/go.mod ./core/errors/go/go.mod
+COPY core/http/go/go.mod ./core/http/go/go.mod
+COPY core/observability/go/go.mod ./core/observability/go/go.mod
+COPY core/security/go/go.mod ./core/security/go/go.mod
 COPY core/databases/postgres/go/go.mod ./core/databases/postgres/go/go.mod
 COPY nexus/v3/review/go.mod nexus/v3/review/go.sum ./nexus/v3/review/
 WORKDIR /workspace/nexus/v3/review

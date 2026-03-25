@@ -1,7 +1,7 @@
 package watchers
 
 import (
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	"github.com/devpablocristo/nexus/v3/companion/internal/watchers/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/watchers/usecases/domain"
 )

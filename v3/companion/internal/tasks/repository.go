@@ -1,7 +1,7 @@
 package tasks
 
 import (
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"context"
 	"encoding/json"
 	"errors"

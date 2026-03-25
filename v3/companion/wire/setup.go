@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	sharedapikey "github.com/devpablocristo/core/backend/go/apikey"
-	"github.com/devpablocristo/core/backend/go/envconfig"
-	"github.com/devpablocristo/core/backend/go/health"
+	sharedapikey "github.com/devpablocristo/core/security/go/apikey"
+	"github.com/devpablocristo/core/config/go/envconfig"
+	"github.com/devpablocristo/core/http/go/health"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	"github.com/devpablocristo/core/governance/go/reviewclient"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors"

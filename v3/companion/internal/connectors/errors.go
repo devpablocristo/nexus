@@ -3,7 +3,7 @@ package connectors
 import (
 	"errors"
 
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 var (

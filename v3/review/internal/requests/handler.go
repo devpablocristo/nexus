@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 
 	requestdto "github.com/devpablocristo/nexus/v3/review/internal/requests/handler/dto"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 // Port mínimo: solo lo que el handler necesita

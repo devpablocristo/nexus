@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/nexus/v3/companion/internal/memory/handler/dto"

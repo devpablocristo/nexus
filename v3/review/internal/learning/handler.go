@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	learningdto "github.com/devpablocristo/nexus/v3/review/internal/learning/handler/dto"
 	learningdomain "github.com/devpablocristo/nexus/v3/review/internal/learning/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 const defaultListLimit = 50

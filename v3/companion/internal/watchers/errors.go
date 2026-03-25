@@ -1,6 +1,6 @@
 package watchers
 
-import "github.com/devpablocristo/core/backend/go/domainerr"
+import "github.com/devpablocristo/core/errors/go/domainerr"
 
 // ErrNotFound indica que el watcher o proposal no existe.
 var ErrNotFound = domainerr.NotFound("not found")

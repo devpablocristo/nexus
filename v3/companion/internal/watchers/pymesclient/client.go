@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/devpablocristo/core/backend/go/httpclient"
+	"github.com/devpablocristo/core/http/go/httpclient"
 
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/watchers/usecases/domain"
 )

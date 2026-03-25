@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"fmt"
 	"time"
 

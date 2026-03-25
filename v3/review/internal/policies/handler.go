@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	policydto "github.com/devpablocristo/nexus/v3/review/internal/policies/handler/dto"
 	policydomain "github.com/devpablocristo/nexus/v3/review/internal/policies/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 // Port mínimo: solo lo que el handler necesita

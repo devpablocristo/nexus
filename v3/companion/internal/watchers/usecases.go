@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/devpablocristo/core/backend/go/worker"
+	"github.com/devpablocristo/core/concurrency/go/worker"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/core/governance/go/reviewclient"

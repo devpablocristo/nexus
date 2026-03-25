@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	approvaldto "github.com/devpablocristo/nexus/v3/review/internal/approvals/handler/dto"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/backend/go/domainerr"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 const defaultListLimit = 50

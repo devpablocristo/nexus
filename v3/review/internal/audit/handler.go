@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	auditdto "github.com/devpablocristo/nexus/v3/review/internal/audit/handler/dto"
 	"github.com/google/uuid"
 )

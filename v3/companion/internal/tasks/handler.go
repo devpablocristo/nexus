@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/core/governance/go/reviewclient"

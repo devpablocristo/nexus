@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/devpablocristo/core/backend/go/httpjson"
+	"github.com/devpablocristo/core/http/go/httpjson"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors/handler/dto"
