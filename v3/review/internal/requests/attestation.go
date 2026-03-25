@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/devpablocristo/core/backend/go/domainerr"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,7 +17,7 @@ import (
 )
 
 // ErrAttestationNotFound indica que no existe attestation para esa request.
-var ErrAttestationNotFound = errors.New("attestation not found")
+var ErrAttestationNotFound = domainerr.NotFound("attestation not found")
 
 // AttestationStore es el port para persistir y leer attestations.
 type AttestationStore interface {

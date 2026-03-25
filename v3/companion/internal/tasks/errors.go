@@ -1,6 +1,6 @@
 package tasks
 
-import "errors"
+import "github.com/devpablocristo/core/backend/go/domainerr"
 
 // ErrInvalidTaskState indica que la tarea no admite la operación en su estado actual.
-var ErrInvalidTaskState = errors.New("invalid task state")
+var ErrInvalidTaskState = domainerr.Conflict("invalid task state")
