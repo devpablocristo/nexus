@@ -1,15 +1,15 @@
 name: V3 CI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/v3-ci.yml"
-      - "v3/**"
+  workflow_dispatch:
   pull_request:
     paths:
       - ".github/workflows/v3-ci.yml"
       - "v3/**"
+
+concurrency:
+  group: v3-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -19,7 +19,6 @@ jobs:
     name: review tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - name: Checkout nexus
         uses: actions/checkout@v4
@@ -53,7 +52,6 @@ jobs:
     name: companion tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - name: Checkout nexus
         uses: actions/checkout@v4
@@ -91,7 +89,6 @@ jobs:
     name: console build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Checkout nexus
         uses: actions/checkout@v4
