@@ -15,16 +15,7 @@
     "noImplicitAny": false,
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
-    "types": ["vite/client"],
-    "baseUrl": ".",
-    "paths": {
-      "@devpablocristo/core-http": ["../../../core/http/ts/src/index.ts"],
-      "@devpablocristo/core-http/*": ["../../../core/http/ts/src/*"],
-      "@devpablocristo/core-browser": ["../../../core/browser/ts/src/index.ts"],
-      "@devpablocristo/core-browser/*": ["../../../core/browser/ts/src/*"],
-      "@devpablocristo/core-authn": ["../../../core/authn/ts/src/index.ts"],
-      "@devpablocristo/core-authn/*": ["../../../core/authn/ts/src/*"]
-    }
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }

@@ -3,15 +3,15 @@ module github.com/devpablocristo/nexus/v3/companion
 go 1.26.1
 
 require (
-	github.com/devpablocristo/core/ai/go v0.0.0
-	github.com/devpablocristo/core/concurrency/go v0.0.0
-	github.com/devpablocristo/core/config/go v0.0.0
-	github.com/devpablocristo/core/databases/postgres/go v0.0.0
+	github.com/devpablocristo/core/ai/go v0.0.0-20260328151810-084828e80b26
+	github.com/devpablocristo/core/concurrency/go v0.0.0-20260328151810-084828e80b26
+	github.com/devpablocristo/core/config/go v0.0.0-20260328151810-084828e80b26
+	github.com/devpablocristo/core/databases/postgres/go v0.1.0
 	github.com/devpablocristo/core/errors/go v0.1.0
-	github.com/devpablocristo/core/governance/go v0.0.0
+	github.com/devpablocristo/core/governance/go v0.0.0-20260328151810-084828e80b26
 	github.com/devpablocristo/core/http/go v0.1.0
-	github.com/devpablocristo/core/observability/go v0.0.0
-	github.com/devpablocristo/core/security/go v0.0.0
+	github.com/devpablocristo/core/observability/go v0.0.0-20260328151810-084828e80b26
+	github.com/devpablocristo/core/security/go v0.1.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 )
@@ -44,21 +44,3 @@ require (
 	gorm.io/driver/sqlite v1.6.0 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 )
-
-replace github.com/devpablocristo/core/databases/postgres/go => ../../../core/databases/postgres/go
-
-replace github.com/devpablocristo/core/ai/go => ../../../core/ai/go
-
-replace github.com/devpablocristo/core/governance/go => ../../../core/governance/go
-
-replace github.com/devpablocristo/core/errors/go => ../../../core/errors/go
-
-replace github.com/devpablocristo/core/http/go => ../../../core/http/go
-
-replace github.com/devpablocristo/core/observability/go => ../../../core/observability/go
-
-replace github.com/devpablocristo/core/security/go => ../../../core/security/go
-
-replace github.com/devpablocristo/core/concurrency/go => ../../../core/concurrency/go
-
-replace github.com/devpablocristo/core/config/go => ../../../core/config/go

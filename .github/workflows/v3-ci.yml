@@ -25,21 +25,11 @@ jobs:
         with:
           path: nexus
 
-      - name: Checkout core
-        uses: actions/checkout@v4
-        with:
-          repository: devpablocristo/core
-          token: ${{ secrets.CORE_REPO_READ_TOKEN }}
-          path: core
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: nexus/v3/review/go.mod
-          cache-dependency-path: |
-            nexus/v3/review/go.sum
-            core/backend/go/go.sum
-            core/databases/postgres/go/go.sum
+          cache-dependency-path: nexus/v3/review/go.sum
 
       - name: Run go test
         working-directory: nexus/v3/review
@@ -59,21 +49,11 @@ jobs:
         with:
           path: nexus
 
-      - name: Checkout core
-        uses: actions/checkout@v4
-        with:
-          repository: devpablocristo/core
-          token: ${{ secrets.CORE_REPO_READ_TOKEN }}
-          path: core
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: nexus/v3/companion/go.mod
-          cache-dependency-path: |
-            nexus/v3/companion/go.sum
-            core/backend/go/go.sum
-            core/databases/postgres/go/go.sum
+          cache-dependency-path: nexus/v3/companion/go.sum
 
       - name: Run go test
         working-directory: nexus/v3/companion
@@ -82,10 +62,6 @@ jobs:
       - name: Run go vet
         working-directory: nexus/v3/companion
         run: go vet ./...
-
-      - name: Test core httpclient
-        working-directory: core/backend/go
-        run: go test ./httpclient/...
 
   console:
     name: console build
