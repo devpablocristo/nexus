@@ -11,7 +11,7 @@ require (
 	github.com/devpablocristo/core/security/go v0.0.0
 	github.com/google/cel-go v0.27.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 )
 
 require (
