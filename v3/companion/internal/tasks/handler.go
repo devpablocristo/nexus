@@ -28,6 +28,9 @@ type taskUsecase interface {
 	AddMessage(ctx context.Context, taskID uuid.UUID, in AddMessageInput) (domain.TaskMessage, error)
 	Investigate(ctx context.Context, taskID uuid.UUID, in InvestigateInput) (domain.Task, error)
 	Propose(ctx context.Context, taskID uuid.UUID, in ProposeInput) (domain.Task, domain.TaskAction, reviewclient.SubmitResponse, error)
+	SetExecutionPlan(ctx context.Context, taskID uuid.UUID, in SetExecutionPlanInput) (domain.TaskExecutionPlan, error)
+	ExecuteTask(ctx context.Context, taskID uuid.UUID) (ExecuteTaskOutput, error)
+	RetryTask(ctx context.Context, taskID uuid.UUID) (ExecuteTaskOutput, error)
 	SyncTaskReview(ctx context.Context, taskID uuid.UUID) (domain.Task, error)
 	Chat(ctx context.Context, in ChatInput) (ChatResult, error)
 }
@@ -47,6 +50,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/tasks/{id}/message", h.addMessage)
 	mux.HandleFunc("POST /v1/tasks/{id}/investigate", h.investigate)
 	mux.HandleFunc("POST /v1/tasks/{id}/propose", h.propose)
+	mux.HandleFunc("PUT /v1/tasks/{id}/execution-plan", h.setExecutionPlan)
+	mux.HandleFunc("POST /v1/tasks/{id}/execute", h.execute)
+	mux.HandleFunc("POST /v1/tasks/{id}/retry", h.retry)
 	mux.HandleFunc("POST /v1/tasks/{id}/sync", h.syncReview)
 	mux.HandleFunc("POST /v1/chat", h.chat)
 }
@@ -113,10 +119,10 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := tasksdto.TaskDetailResponse{
-		Task:      tasksdto.TaskToResponse(detail.Task),
-		Messages:  make([]tasksdto.MessageResponse, 0, len(detail.Messages)),
-		Actions:   make([]tasksdto.ActionResponse, 0, len(detail.Actions)),
-		Artifacts: make([]tasksdto.ArtifactResponse, 0, len(detail.Artifacts)),
+		Task:                 tasksdto.TaskToResponse(detail.Task),
+		Messages:             make([]tasksdto.MessageResponse, 0, len(detail.Messages)),
+		Actions:              make([]tasksdto.ActionResponse, 0, len(detail.Actions)),
+		Artifacts:            make([]tasksdto.ArtifactResponse, 0, len(detail.Artifacts)),
 		LinkedReviewRequests: make([]tasksdto.LinkedReviewRequestResponse, 0, len(detail.LinkedReviewRequests)),
 	}
 	for _, m := range detail.Messages {
@@ -133,6 +139,15 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 			ActionID: lr.ActionID.String(),
 			Request:  lr.Request,
 		})
+	}
+	if detail.ReviewSync != nil {
+		resp.ReviewSync = tasksdto.ReviewSyncToResponse(*detail.ReviewSync)
+	}
+	if detail.ExecutionPlan != nil {
+		resp.ExecutionPlan = tasksdto.ExecutionPlanToResponse(*detail.ExecutionPlan)
+	}
+	if detail.ExecutionState != nil {
+		resp.ExecutionState = tasksdto.ExecutionStateToResponse(*detail.ExecutionState)
 	}
 	httpjson.WriteJSON(w, http.StatusOK, resp)
 }
@@ -259,6 +274,97 @@ func (h *Handler) syncReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpjson.WriteJSON(w, http.StatusOK, tasksdto.TaskToResponse(t))
+}
+
+func (h *Handler) setExecutionPlan(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	var body tasksdto.SetExecutionPlanRequest
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	connectorID, err := uuid.Parse(body.ConnectorID)
+	if err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid connector_id")
+		return
+	}
+	plan, err := h.uc.SetExecutionPlan(r.Context(), id, SetExecutionPlanInput{
+		ConnectorID:    connectorID,
+		Operation:      body.Operation,
+		Payload:        body.Payload,
+		IdempotencyKey: body.IdempotencyKey,
+	})
+	if err != nil {
+		if IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			return
+		}
+		if IsInvalidTaskState(err) {
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "invalid task state")
+			return
+		}
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		return
+	}
+	httpjson.WriteJSON(w, http.StatusOK, tasksdto.ExecutionPlanToResponse(plan))
+}
+
+func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	out, err := h.uc.ExecuteTask(r.Context(), id)
+	if err != nil {
+		if IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			return
+		}
+		if IsInvalidTaskState(err) {
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "invalid task state")
+			return
+		}
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		return
+	}
+	httpjson.WriteJSON(w, http.StatusOK, tasksdto.ExecuteTaskResponse{
+		Task:           tasksdto.TaskToResponse(out.Task),
+		Plan:           *tasksdto.ExecutionPlanToResponse(out.Plan),
+		Execution:      tasksdto.ExecutionResultToResponse(out.Execution),
+		ExecutionState: tasksdto.ExecutionStateToResponse(out.ExecutionState),
+	})
+}
+
+func (h *Handler) retry(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	out, err := h.uc.RetryTask(r.Context(), id)
+	if err != nil {
+		if IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			return
+		}
+		if IsInvalidTaskState(err) {
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "invalid task state")
+			return
+		}
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		return
+	}
+	httpjson.WriteJSON(w, http.StatusOK, tasksdto.ExecuteTaskResponse{
+		Task:           tasksdto.TaskToResponse(out.Task),
+		Plan:           *tasksdto.ExecutionPlanToResponse(out.Plan),
+		Execution:      tasksdto.ExecutionResultToResponse(out.Execution),
+		ExecutionState: tasksdto.ExecutionStateToResponse(out.ExecutionState),
+	})
 }
 
 func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {

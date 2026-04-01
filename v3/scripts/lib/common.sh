@@ -85,5 +85,10 @@ companion_post() {
   curl -sf -X POST -H "X-API-Key: $COMPANION_API_KEY" -H "Content-Type: application/json" -d "$2" "$COMPANION_BASE$1"
 }
 
+# PUT Companion JSON
+companion_put() {
+  curl -sf -X PUT -H "X-API-Key: $COMPANION_API_KEY" -H "Content-Type: application/json" -d "$2" "$COMPANION_BASE$1"
+}
+
 pass() { green "PASS: $1"; }
 fail() { red "FAIL: $1" >&2; exit 1; }

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+envsubst '${NEXUS_REVIEW_PROXY_API_KEY} ${NEXUS_COMPANION_PROXY_API_KEY}' \
+  < /etc/nginx/templates/default.conf.template \
+  > /etc/nginx/conf.d/default.conf

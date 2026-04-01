@@ -3,6 +3,7 @@ package learning
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/devpablocristo/core/http/go/httpjson"
 	learningdto "github.com/devpablocristo/nexus/v3/review/internal/learning/handler/dto"
@@ -75,7 +76,7 @@ func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
-	policyID, err := h.uc.AcceptProposal(r.Context(), id, body.DecidedBy)
+	policyID, err := h.uc.AcceptProposal(r.Context(), id, decisionActorID(r, body.DecidedBy))
 	if err != nil {
 		writeLearningUsecaseError(w, err)
 		return
@@ -98,7 +99,7 @@ func (h *Handler) dismiss(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
-	if err := h.uc.DismissProposal(r.Context(), id, body.DecidedBy); err != nil {
+	if err := h.uc.DismissProposal(r.Context(), id, decisionActorID(r, body.DecidedBy)); err != nil {
 		writeLearningUsecaseError(w, err)
 		return
 	}
@@ -153,4 +154,11 @@ func writeLearningUsecaseError(w http.ResponseWriter, err error) {
 		return
 	}
 	httpjson.WriteFlatInternalError(w, err, "learning operation failed")
+}
+
+func decisionActorID(r *http.Request, explicit string) string {
+	if value := strings.TrimSpace(explicit); value != "" {
+		return value
+	}
+	return strings.TrimSpace(r.Header.Get("X-User-ID"))
 }

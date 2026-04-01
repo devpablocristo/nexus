@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	sharedapikey "github.com/devpablocristo/core/security/go/apikey"
 	"github.com/devpablocristo/core/http/go/health"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	"github.com/devpablocristo/nexus/v3/review/internal/actiontypes"
@@ -25,6 +24,8 @@ import (
 type Config struct {
 	DatabaseURL    string
 	APIKeys        string
+	AuthIssuerURL  string
+	AuthAudience   string
 	ApprovalTTL    time.Duration
 	AnthropicKey   string
 	SigningKey     string
@@ -160,8 +161,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	delegationHandler.Register(mux)
 	evidenceHandler.Register(mux)
 
-	// Auth middleware
-	authn, err := sharedapikey.NewAuthenticator(cfg.APIKeys)
+	authMW, err := newAuthMiddleware(cfg.APIKeys, cfg.AuthIssuerURL, cfg.AuthAudience)
 	if err != nil {
 		db.Close()
 		return nil, nil, fmt.Errorf("create authenticator: %w", err)
@@ -171,5 +171,5 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		db.Close()
 	}
 
-	return authn.Middleware(mux), cleanup, nil
+	return authMW(mux), cleanup, nil
 }

@@ -1,0 +1,53 @@
+name: V3 E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * *"
+
+concurrency:
+  group: v3-e2e-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: full lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout nexus
+        uses: actions/checkout@v4
+        with:
+          path: nexus
+
+      - name: Prepare env
+        working-directory: nexus/v3
+        run: test -f .env || cp .env.example .env
+
+      - name: Start review and companion stack
+        working-directory: nexus/v3
+        run: docker compose up -d --build postgres review companion
+
+      - name: Run e2e suite
+        working-directory: nexus/v3
+        run: make e2e
+
+      - name: Capture compose logs
+        if: always()
+        working-directory: nexus/v3
+        run: docker compose logs --no-color > e2e-docker-compose.log
+
+      - name: Upload e2e logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-e2e-docker-compose-logs
+          path: nexus/v3/e2e-docker-compose.log
+
+      - name: Tear down stack
+        if: always()
+        working-directory: nexus/v3
+        run: docker compose down -v --remove-orphans

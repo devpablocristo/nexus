@@ -17,11 +17,11 @@ export default function Learning({ lang }) {
   useEffect(() => { load() }, [])
 
   const handleAccept = async (id) => {
-    try { await acceptProposal(id, 'demo-user'); setProposals((p) => p.filter((x) => x.id !== id)) }
+    try { await acceptProposal(id); setProposals((p) => p.filter((x) => x.id !== id)) }
     catch (e) { setError(e.message) }
   }
   const handleDismiss = async (id) => {
-    try { await dismissProposal(id, 'demo-user'); setProposals((p) => p.filter((x) => x.id !== id)) }
+    try { await dismissProposal(id); setProposals((p) => p.filter((x) => x.id !== id)) }
     catch (e) { setError(e.message) }
   }
   const handleAnalyze = async () => {

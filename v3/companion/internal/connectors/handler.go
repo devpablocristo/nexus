@@ -168,6 +168,14 @@ func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
 			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
 			return
 		}
+		if err == ErrDisabled {
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "connector is disabled")
+			return
+		}
+		if err == ErrOperationUnknown {
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "unknown operation for connector")
+			return
+		}
 		httpjson.WriteFlatInternalError(w, err, "execute connector failed")
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/devpablocristo/core/http/go/httpjson"
 	approvaldto "github.com/devpablocristo/nexus/v3/review/internal/approvals/handler/dto"
@@ -58,7 +59,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
-	if err := h.uc.Approve(r.Context(), id, body.DecidedBy, body.Note); err != nil {
+	if err := h.uc.Approve(r.Context(), id, decisionActorID(r, body.DecidedBy), body.Note); err != nil {
 		writeApprovalUsecaseError(w, err)
 		return
 	}
@@ -76,7 +77,7 @@ func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
-	if err := h.uc.Reject(r.Context(), id, body.DecidedBy, body.Note); err != nil {
+	if err := h.uc.Reject(r.Context(), id, decisionActorID(r, body.DecidedBy), body.Note); err != nil {
 		writeApprovalUsecaseError(w, err)
 		return
 	}
@@ -135,4 +136,11 @@ func writeApprovalUsecaseError(w http.ResponseWriter, err error) {
 		return
 	}
 	httpjson.WriteFlatInternalError(w, err, "approval operation failed")
+}
+
+func decisionActorID(r *http.Request, explicit string) string {
+	if value := strings.TrimSpace(explicit); value != "" {
+		return value
+	}
+	return strings.TrimSpace(r.Header.Get("X-User-ID"))
 }

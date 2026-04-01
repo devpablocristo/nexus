@@ -21,6 +21,8 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/devpablocristo/core/ai/go v0.0.0-20260328151810-084828e80b26 h1:pLs/3s69vBhjKBCU1uwgNGsfyL8E/zKu6WhgEJfw86k=
 github.com/devpablocristo/core/ai/go v0.0.0-20260328151810-084828e80b26/go.mod h1:yixhr0luK+6a7vSJs0fKxBFInKxnz1yGc6w41JHXtpI=
+github.com/devpablocristo/core/authn/go v0.2.1 h1:UdiRYK85ZO9VmnFTfcAaFSYx6yS9ZZEZYm0kn+4AKLY=
+github.com/devpablocristo/core/authn/go v0.2.1/go.mod h1:L2SDT71ygu2MF5r/ZbleEaFwglPqJdtSR9G57TP2JcQ=
 github.com/devpablocristo/core/databases/postgres/go v0.1.0 h1:irhRYxwWpzNchnf6Sqbev3GMWrH2QVN0h1G705EpYX8=
 github.com/devpablocristo/core/databases/postgres/go v0.1.0/go.mod h1:6lpx7COXzInJodKpqsLonSyzkcUIH3raRV2AEBCy7BQ=
 github.com/devpablocristo/core/errors/go v0.1.0 h1:AGcc9fPrlymjOhrh/rtFx+gqWcRdZJkUff1qivVNjkY=
@@ -51,6 +53,8 @@ github.com/go-sql-driver/mysql v1.8.1 h1:LedoTUt/eveggdHS9qUFC1EFSa8bU2+1pZjSRpv
 github.com/go-sql-driver/mysql v1.8.1/go.mod h1:wEBSXgmK//2ZFJyE+qWnIsVGmvmEKlqwuVSjsCm7DZg=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
 github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
+github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
+github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/golang-migrate/migrate/v4 v4.19.1 h1:OCyb44lFuQfYXYLx1SCxPZQGU7mcaZ7gH9yH4jSFbBA=
 github.com/golang-migrate/migrate/v4 v4.19.1/go.mod h1:CTcgfjxhaUtsLipnLoQRWCrjYXycRz/g5+RWDuYgPrE=
 github.com/google/cel-go v0.27.0 h1:e7ih85+4qVrBuqQWTW4FKSqZYokVuc3HnhH5keboFTo=

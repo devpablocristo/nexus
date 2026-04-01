@@ -773,3 +773,27 @@ func TestUsecasesListPending(t *testing.T) {
 		t.Fatalf("se esperaban 2 approvals, se obtuvieron %d", len(list))
 	}
 }
+
+func TestApproveFallsBackToUserHeader(t *testing.T) {
+	t.Parallel()
+
+	mux, repo, reqUpdater := setupMux()
+	approvalID := seedApproval(t, repo, reqUpdater)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/approvals/"+approvalID.String()+"/approve", strings.NewReader(`{"note":"approved from header"}`))
+	req.Header.Set("X-User-ID", "header-user")
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("código esperado %d, obtenido %d", http.StatusOK, rec.Code)
+	}
+
+	a, err := repo.GetByID(context.Background(), approvalID)
+	if err != nil {
+		t.Fatalf("error obteniendo approval: %v", err)
+	}
+	if a.DecidedBy != "header-user" {
+		t.Fatalf("decided_by esperado %q, obtenido %q", "header-user", a.DecidedBy)
+	}
+}

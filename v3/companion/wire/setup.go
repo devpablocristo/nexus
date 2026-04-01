@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -10,11 +11,10 @@ import (
 
 	"github.com/google/uuid"
 
-	sharedapikey "github.com/devpablocristo/core/security/go/apikey"
 	"github.com/devpablocristo/core/config/go/envconfig"
-	"github.com/devpablocristo/core/http/go/health"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	"github.com/devpablocristo/core/governance/go/reviewclient"
+	"github.com/devpablocristo/core/http/go/health"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors/registry"
 	"github.com/devpablocristo/nexus/v3/companion/internal/memory"
@@ -25,6 +25,25 @@ import (
 
 	memdomain "github.com/devpablocristo/nexus/v3/companion/internal/memory/usecases/domain"
 )
+
+type taskMemoryAdapter struct {
+	uc *memory.Usecases
+}
+
+func (a taskMemoryAdapter) UpsertTaskMemory(ctx context.Context, taskID uuid.UUID, kind, key string, contentText string, payload json.RawMessage) error {
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+	_, err := a.uc.Upsert(ctx, memory.UpsertInput{
+		Kind:        memdomain.MemoryKind(kind),
+		ScopeType:   memdomain.ScopeTask,
+		ScopeID:     taskID.String(),
+		Key:         key,
+		PayloadJSON: payload,
+		ContentText: contentText,
+	})
+	return err
+}
 
 func reviewSyncInterval() time.Duration {
 	return envconfig.Duration("COMPANION_REVIEW_SYNC_INTERVAL_SEC", 30*time.Second)
@@ -38,6 +57,8 @@ func watcherInterval() time.Duration {
 type Config struct {
 	DatabaseURL    string
 	APIKeys        string
+	AuthIssuerURL  string
+	AuthAudience   string
 	ReviewBaseURL  string
 	ReviewAPIKey   string
 	PymesBaseURL   string
@@ -62,21 +83,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		return nil, nil, fmt.Errorf("run migrations: %w", err)
 	}
 
-	repo := tasks.NewPostgresRepository(db)
 	rc := reviewclient.NewClient(cfg.ReviewBaseURL, cfg.ReviewAPIKey)
-	uc := tasks.NewUsecases(repo, rc)
-	h := tasks.NewHandler(uc)
-
-	// Watchers module
-	watcherRepo := watchers.NewPostgresRepository(db)
 	pymesClient := pymesclient.NewClient(cfg.PymesBaseURL, cfg.PymesAPIKey)
-	watcherUC := watchers.NewUsecases(watcherRepo, pymesClient, rc)
-	watcherHandler := watchers.NewHandler(watcherUC)
-
-	// Memory module
-	memRepo := memory.NewPostgresRepository(db)
-	memUC := memory.NewUsecases(memRepo)
-	memHandler := memory.NewHandler(memUC)
 
 	// Connectors module
 	connReg := registry.NewRegistry()
@@ -94,6 +102,23 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	})
 	connUC := connectors.NewUsecases(connRepo, connReg, reviewChecker)
 	connHandler := connectors.NewHandler(connUC)
+
+	repo := tasks.NewPostgresRepository(db)
+	uc := tasks.NewUsecases(repo, rc)
+	uc.SetReviewSyncInterval(reviewSyncInterval())
+	uc.SetExecutor(connUC)
+	h := tasks.NewHandler(uc)
+
+	// Watchers module
+	watcherRepo := watchers.NewPostgresRepository(db)
+	watcherUC := watchers.NewUsecases(watcherRepo, pymesClient, rc)
+	watcherHandler := watchers.NewHandler(watcherUC)
+
+	// Memory module
+	memRepo := memory.NewPostgresRepository(db)
+	memUC := memory.NewUsecases(memRepo)
+	memHandler := memory.NewHandler(memUC)
+	uc.SetTaskMemory(taskMemoryAdapter{uc: memUC})
 
 	// Runtime del compañero (LLM + tools + context)
 	llmProvider := runtime.NewProvider(cfg.LLMProvider, cfg.LLMAPIKey, cfg.LLMModel)
@@ -125,7 +150,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		slog.Error("seed default connectors", "error", err)
 	}
 
-	authn, err := sharedapikey.NewAuthenticator(cfg.APIKeys)
+	authMW, err := newAuthMiddleware(cfg.APIKeys, cfg.AuthIssuerURL, cfg.AuthAudience)
 	if err != nil {
 		db.Close()
 		return nil, nil, fmt.Errorf("create authenticator: %w", err)
@@ -164,5 +189,5 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		}
 	}
 
-	return authn.Middleware(mux), cleanup, nil
+	return authMW(mux), cleanup, nil
 }

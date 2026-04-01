@@ -17,6 +17,7 @@ import (
 type Repository interface {
 	Upsert(ctx context.Context, e domain.MemoryEntry) (domain.MemoryEntry, error)
 	Get(ctx context.Context, id uuid.UUID) (domain.MemoryEntry, error)
+	GetByScopeKey(ctx context.Context, scopeType domain.ScopeType, scopeID string, kind domain.MemoryKind, key string) (domain.MemoryEntry, error)
 	Find(ctx context.Context, q FindQuery) ([]domain.MemoryEntry, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	PurgeExpired(ctx context.Context) (int64, error)
@@ -88,6 +89,27 @@ func (uc *Usecases) Upsert(ctx context.Context, in UpsertInput) (domain.MemoryEn
 		ContentText: in.ContentText,
 		Version:     in.Version,
 		ExpiresAt:   expiresAt,
+	}
+
+	current, err := uc.repo.GetByScopeKey(ctx, in.ScopeType, in.ScopeID, in.Kind, in.Key)
+	switch {
+	case err == nil:
+		if in.Version > 0 && current.Version != in.Version {
+			return domain.MemoryEntry{}, ErrVersionConflict
+		}
+		entry.ID = current.ID
+		entry.CreatedAt = current.CreatedAt
+		if in.Version > 0 {
+			entry.Version = in.Version
+		} else {
+			entry.Version = current.Version
+		}
+	case IsNotFound(err):
+		if in.Version > 0 {
+			return domain.MemoryEntry{}, ErrVersionConflict
+		}
+	case err != nil:
+		return domain.MemoryEntry{}, fmt.Errorf("lookup memory entry: %w", err)
 	}
 
 	result, err := uc.repo.Upsert(ctx, entry)

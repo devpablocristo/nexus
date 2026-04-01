@@ -1100,3 +1100,27 @@ func TestStubProposer_GenerateProposal(t *testing.T) {
 		}
 	})
 }
+
+func TestAcceptFallsBackToUserHeader(t *testing.T) {
+	t.Parallel()
+
+	mux, repo := setupLearningMux()
+	proposalID := seedProposal(t, repo)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/learning/proposals/"+proposalID.String()+"/accept", strings.NewReader(`{}`))
+	req.Header.Set("X-User-ID", "header-approver")
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("código esperado %d, obtenido %d", http.StatusOK, rec.Code)
+	}
+
+	proposal, err := repo.GetProposalByID(context.Background(), proposalID)
+	if err != nil {
+		t.Fatalf("error obteniendo proposal: %v", err)
+	}
+	if proposal.DecidedBy == nil || *proposal.DecidedBy != "header-approver" {
+		t.Fatalf("decided_by esperado %q, obtenido %v", "header-approver", proposal.DecidedBy)
+	}
+}

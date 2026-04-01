@@ -2,6 +2,12 @@
 
 Documento de referencia para decisiones técnicas. Complementa la **visión de producto** en [NEXUS_COWORKER_VISION.md](./NEXUS_COWORKER_VISION.md) (Nexus como compañero de trabajo completo gobernado; Review = núcleo soberano de decisión).
 
+Convención de naming en este documento:
+
+- `Review` refiere al nombre histórico de la capa soberana.
+- `Nexus Governance` es el nombre comercial actual de esa misma capa.
+- la categoría canónica en el ecosistema es `GovernanceService`.
+
 ---
 
 ## RFC-A — Companion runtime (más allá del vertical slice)

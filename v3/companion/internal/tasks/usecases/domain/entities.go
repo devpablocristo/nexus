@@ -23,19 +23,22 @@ const (
 
 // Task entidad de dominio.
 type Task struct {
-	ID          uuid.UUID
-	Title       string
-	Goal        string
-	Status      string
-	Priority    string
-	CreatedBy   string
-	AssignedTo  string
-	Channel     string
-	Summary     string
-	ContextJSON json.RawMessage
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	ClosedAt    *time.Time
+	ID                  uuid.UUID
+	Title               string
+	Goal                string
+	Status              string
+	Priority            string
+	CreatedBy           string
+	AssignedTo          string
+	Channel             string
+	Summary             string
+	ContextJSON         json.RawMessage
+	ReviewStatus        string
+	ReviewLastCheckedAt *time.Time
+	ReviewSyncError     string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	ClosedAt            *time.Time
 }
 
 // TaskMessage mensaje en el hilo de una tarea.
@@ -51,13 +54,13 @@ type TaskMessage struct {
 
 // TaskAction acción sobre una tarea (p. ej. propose → Review).
 type TaskAction struct {
-	ID               uuid.UUID
-	TaskID           uuid.UUID
-	ActionType       string
-	Payload          json.RawMessage
-	ReviewRequestID  *uuid.UUID
-	ErrorMessage     string
-	CreatedAt        time.Time
+	ID              uuid.UUID
+	TaskID          uuid.UUID
+	ActionType      string
+	Payload         json.RawMessage
+	ReviewRequestID *uuid.UUID
+	ErrorMessage    string
+	CreatedAt       time.Time
 }
 
 // TaskArtifact adjunto mínimo.
@@ -68,4 +71,56 @@ type TaskArtifact struct {
 	URI       string
 	Payload   json.RawMessage
 	CreatedAt time.Time
+}
+
+// TaskReviewSyncState snapshot persistido del último estado conocido en Review.
+type TaskReviewSyncState struct {
+	TaskID               uuid.UUID
+	ReviewRequestID      uuid.UUID
+	LastReviewStatus     string
+	LastReviewHTTPStatus int
+	LastCheckedAt        time.Time
+	LastError            string
+	ConsecutiveFailures  int
+	NextCheckAt          time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+// TaskExecutionPlan snapshot persistido del plan de ejecución manual de una tarea.
+type TaskExecutionPlan struct {
+	TaskID         uuid.UUID
+	ConnectorID    uuid.UUID
+	Operation      string
+	Payload        json.RawMessage
+	IdempotencyKey string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+const (
+	VerificationStatusVerified = "verified"
+	VerificationStatusFailed   = "failed"
+)
+
+// TaskVerificationResult representa el resultado persistido de la verificación posterior a ejecutar.
+type TaskVerificationResult struct {
+	Status    string
+	Summary   string
+	CheckedAt time.Time
+	Details   json.RawMessage
+}
+
+// TaskExecutionState resume el último intento de ejecución de una tarea.
+type TaskExecutionState struct {
+	TaskID              uuid.UUID
+	LastExecutionID     uuid.UUID
+	LastExecutionStatus string
+	Retryable           bool
+	RetryCount          int
+	LastError           string
+	LastAttemptedAt     time.Time
+	VerificationResult  TaskVerificationResult
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }

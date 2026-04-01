@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	domain "github.com/devpablocristo/nexus/v3/companion/internal/connectors/usecases/domain"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors/registry"
+	domain "github.com/devpablocristo/nexus/v3/companion/internal/connectors/usecases/domain"
 )
 
 // Repository port de persistencia para conectores y resultados de ejecución.
@@ -79,19 +79,33 @@ func (uc *Usecases) DeleteConnector(ctx context.Context, id uuid.UUID) error {
 
 // Execute ejecuta una operación en un conector con gating obligatorio.
 func (uc *Usecases) Execute(ctx context.Context, spec domain.ExecutionSpec) (domain.ExecutionResult, error) {
-	// Obtener implementación del conector
-	conn, ok := uc.registry.Get(spec.ConnectorID.String())
+	config, err := uc.repo.GetConnector(ctx, spec.ConnectorID)
+	if err != nil {
+		return domain.ExecutionResult{}, fmt.Errorf("get connector config: %w", err)
+	}
+	if !config.Enabled {
+		return domain.ExecutionResult{}, ErrDisabled
+	}
+
+	// Obtener implementación del conector a partir del kind persistido.
+	conn, ok := uc.registry.Get(config.Kind)
 	if !ok {
 		return domain.ExecutionResult{}, ErrNotFound
 	}
 
 	// Verificar que la operación tiene side effects
 	hasSideEffect := false
+	operationKnown := false
 	for _, cap := range conn.Capabilities() {
-		if cap.Operation == spec.Operation && cap.SideEffect {
-			hasSideEffect = true
-			break
+		if cap.Operation != spec.Operation {
+			continue
 		}
+		operationKnown = true
+		hasSideEffect = cap.SideEffect
+		break
+	}
+	if !operationKnown {
+		return domain.ExecutionResult{}, ErrOperationUnknown
 	}
 
 	// Gating obligatorio: side effects requieren aprobación de Review

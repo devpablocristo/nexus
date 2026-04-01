@@ -1,9 +1,13 @@
 import { request as httpRequest } from '@devpablocristo/core-http/fetch'
 import { registerTokenProvider } from '@devpablocristo/core-authn/http/fetch'
-import { REVIEW_API_KEY, COMPANION_API_KEY, clerkEnabled } from './auth'
+import { clerkEnabled, localDevBrowserAccessEnabled, localDevUserID } from './auth'
 
 // Token provider: se registra desde AuthTokenBridge (Clerk) o queda null (API key)
 let getClerkToken: (() => Promise<string | null>) | null = null
+let currentIdentity: { userId: string | null; orgId: string | null } = {
+  userId: localDevBrowserAccessEnabled ? localDevUserID : null,
+  orgId: null,
+}
 
 // Registrar en core-authn para que httpRequest lo use automáticamente
 if (clerkEnabled) {
@@ -20,6 +24,13 @@ export function setClerkTokenGetter(getter: () => Promise<string | null>) {
   getClerkToken = getter
 }
 
+export function setCurrentIdentity(identity: { userId?: string | null; orgId?: string | null }) {
+  currentIdentity = {
+    userId: identity.userId?.trim() || null,
+    orgId: identity.orgId?.trim() || null,
+  }
+}
+
 type RequestOptions = Omit<RequestInit, 'headers'> & {
   headers?: Record<string, string>
 }
@@ -27,10 +38,11 @@ type RequestOptions = Omit<RequestInit, 'headers'> & {
 async function request(path: string, options: RequestOptions = {}): Promise<any> {
   const headers: Record<string, string> = { ...options.headers }
 
-  // Si Clerk está habilitado y hay token, core-authn lo inyecta automáticamente.
-  // Fallback a API key para desarrollo local sin Clerk.
-  if (!clerkEnabled) {
-    headers['X-API-Key'] = REVIEW_API_KEY
+  if (currentIdentity.userId) {
+    headers['X-User-ID'] = currentIdentity.userId
+  }
+  if (currentIdentity.orgId) {
+    headers['X-Org-ID'] = currentIdentity.orgId
   }
 
   return httpRequest(path, { ...options, headers })
@@ -38,20 +50,33 @@ async function request(path: string, options: RequestOptions = {}): Promise<any>
 
 async function companionRequest(path: string, options: RequestOptions = {}): Promise<any> {
   const headers: Record<string, string> = { ...options.headers }
-
-  if (!clerkEnabled) {
-    headers['X-API-Key'] = COMPANION_API_KEY
+  if (currentIdentity.userId) {
+    headers['X-User-ID'] = currentIdentity.userId
+  }
+  if (currentIdentity.orgId) {
+    headers['X-Org-ID'] = currentIdentity.orgId
   }
 
   return httpRequest(path, { ...options, headers })
 }
 
+function decisionPayload(decidedBy?: string, note?: string) {
+  const payload: Record<string, string> = {}
+  if (decidedBy?.trim()) {
+    payload.decided_by = decidedBy.trim()
+  }
+  if (note?.trim()) {
+    payload.note = note.trim()
+  }
+  return payload
+}
+
 // Approvals
 export const fetchPendingApprovals = () => request('/v1/approvals/pending')
-export const approveApproval = (id: string, decidedBy: string, note = '') =>
-  request(`/v1/approvals/${id}/approve`, { method: 'POST', body: JSON.stringify({ decided_by: decidedBy, note }) })
-export const rejectApproval = (id: string, decidedBy: string, note = '') =>
-  request(`/v1/approvals/${id}/reject`, { method: 'POST', body: JSON.stringify({ decided_by: decidedBy, note }) })
+export const approveApproval = (id: string, note = '', decidedBy?: string) =>
+  request(`/v1/approvals/${id}/approve`, { method: 'POST', body: JSON.stringify(decisionPayload(decidedBy, note)) })
+export const rejectApproval = (id: string, note = '', decidedBy?: string) =>
+  request(`/v1/approvals/${id}/reject`, { method: 'POST', body: JSON.stringify(decisionPayload(decidedBy, note)) })
 
 // Requests
 export const fetchRequests = (params: Record<string, string | number | boolean> = {}) => {
@@ -75,10 +100,10 @@ export const fetchAttestation = (id: string) => request(`/v1/requests/${id}/atte
 
 // Learning
 export const fetchProposals = () => request('/v1/learning/proposals')
-export const acceptProposal = (id: string, decidedBy: string) =>
-  request(`/v1/learning/proposals/${id}/accept`, { method: 'POST', body: JSON.stringify({ decided_by: decidedBy }) })
-export const dismissProposal = (id: string, decidedBy: string) =>
-  request(`/v1/learning/proposals/${id}/dismiss`, { method: 'POST', body: JSON.stringify({ decided_by: decidedBy }) })
+export const acceptProposal = (id: string, decidedBy?: string) =>
+  request(`/v1/learning/proposals/${id}/accept`, { method: 'POST', body: JSON.stringify(decisionPayload(decidedBy)) })
+export const dismissProposal = (id: string, decidedBy?: string) =>
+  request(`/v1/learning/proposals/${id}/dismiss`, { method: 'POST', body: JSON.stringify(decisionPayload(decidedBy)) })
 export const triggerAnalyze = () => request('/v1/learning/analyze', { method: 'POST' })
 
 // Policies
@@ -138,6 +163,28 @@ export const investigateCompanionTask = (id: string, note = '') =>
   })
 export const syncCompanionTaskFromReview = (id: string) =>
   companionRequest(`/companion/v1/tasks/${id}/sync`, { method: 'POST' })
+export const saveCompanionTaskExecutionPlan = (id: string, data: Record<string, unknown>) =>
+  companionRequest(`/companion/v1/tasks/${id}/execution-plan`, { method: 'PUT', body: JSON.stringify(data) })
+export const executeCompanionTask = (id: string) =>
+  companionRequest(`/companion/v1/tasks/${id}/execute`, { method: 'POST' })
+export const retryCompanionTask = (id: string) =>
+  companionRequest(`/companion/v1/tasks/${id}/retry`, { method: 'POST' })
+export const fetchCompanionConnectors = () => companionRequest('/companion/v1/connectors')
+export const fetchCompanionConnectorCapabilities = () =>
+  companionRequest('/companion/v1/connectors/capabilities')
+export const fetchCompanionConnectorExecutions = (connectorId: string) =>
+  companionRequest(`/companion/v1/connectors/${connectorId}/executions`)
+export const fetchCompanionMemory = (scopeType: string, scopeId: string, kind?: string) => {
+  const params = new URLSearchParams({ scope_type: scopeType, scope_id: scopeId })
+  if (kind) {
+    params.set('kind', kind)
+  }
+  return companionRequest(`/companion/v1/memory?${params.toString()}`)
+}
+export const saveCompanionMemory = (data: Record<string, unknown>) =>
+  companionRequest('/companion/v1/memory', { method: 'PUT', body: JSON.stringify(data) })
+export const deleteCompanionMemory = (id: string) =>
+  companionRequest(`/companion/v1/memory/${id}`, { method: 'DELETE' })
 
 // Companion — Chat (interfaz conversacional del suscriptor)
 export const sendChatMessage = (message: string, taskId?: string, channel = 'console') =>

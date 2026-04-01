@@ -2,6 +2,15 @@
 
 Documento de **visión de producto**. Los detalles técnicos siguen en [NEXUS_ECOSYSTEM_DESIGN.md](./NEXUS_ECOSYSTEM_DESIGN.md) y el plan por fases en [NEXUS_COMPLETION_ROADMAP.md](./NEXUS_COMPLETION_ROADMAP.md).
 
+Glosario de naming actual:
+
+- `Review` = nombre histórico del RFC y de parte de la implementación.
+- `Nexus Governance` = nombre comercial actual del servicio soberano.
+- categoría canónica = `GovernanceService`.
+- `Companion` = nombre comercial del `ProductAgent` transversal de Nexus.
+
+Estado actual: el MVP implementado hoy cubre con más madurez la capa soberana `Review` / `Nexus Governance`; la visión de “compañero completo” de `Companion` sigue en evolución por fases.
+
 ---
 
 ## 1. Qué cambia en la cabeza (y qué no)

@@ -5,6 +5,61 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
+POLICY_ID=""
+cleanup() {
+  if [ -n "$POLICY_ID" ]; then
+    api_delete "/v1/policies/$POLICY_ID" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
+wait_for_request_status() {
+  local request_id="$1"
+  local expected="$2"
+  local attempts="${3:-10}"
+  local delay="${4:-1}"
+  local current=""
+  local i=0
+  while [ "$i" -lt "$attempts" ]; do
+    current=$(api_get "/v1/requests/$request_id" | json_get 'status')
+    if [ "$current" = "$expected" ]; then
+      echo "$current"
+      return 0
+    fi
+    i=$((i + 1))
+    sleep "$delay"
+  done
+  echo "$current"
+  return 1
+}
+
+approval_pending_snapshot() {
+  local approval_id="$1"
+  api_get "/v1/approvals/pending" | python3 -c "
+import json, sys
+approval_id = sys.argv[1]
+data = json.load(sys.stdin).get('data') or []
+approval = next((item for item in data if item.get('id') == approval_id), None)
+if approval is None:
+    raise SystemExit(1)
+print(json.dumps(approval))
+" "$approval_id"
+}
+
+approve_until_resolved() {
+  local approval_id="$1"
+  local max_approvers="${2:-5}"
+  local idx=1
+  while [ "$idx" -le "$max_approvers" ]; do
+    api_post "/v1/approvals/$approval_id/approve" "{\"decided_by\":\"e2e-admin-$idx@co\",\"note\":\"E2E test approval $idx\"}" >/dev/null
+    if ! approval_pending_snapshot "$approval_id" >/dev/null 2>&1; then
+      return 0
+    fi
+    idx=$((idx + 1))
+  done
+  return 1
+}
+
 echo "=== E2E: full lifecycle ==="
 
 wait_for_http "$API_BASE/healthz"
@@ -32,22 +87,30 @@ STATUS=$(echo "$REQ" | json_get 'status')
 [ "$STATUS" = "pending_approval" ] && pass "3. Request status: pending_approval" || fail "Expected pending_approval, got $STATUS"
 
 # 4. Approve
-api_post "/v1/approvals/$APPROVAL_ID/approve" '{"decided_by":"e2e-admin@co","note":"E2E test approval"}'
-pass "4. Approved"
+if approve_until_resolved "$APPROVAL_ID"; then
+  pass "4. Approved"
+else
+  SNAPSHOT=$(approval_pending_snapshot "$APPROVAL_ID" || true)
+  fail "Approval did not resolve: ${SNAPSHOT:-still pending}"
+fi
 
 # 5. Verificar request cambió a approved
-REQ=$(api_get "/v1/requests/$REQUEST_ID")
-STATUS=$(echo "$REQ" | json_get 'status')
-[ "$STATUS" = "approved" ] && pass "5. Request status: approved" || fail "Expected approved, got $STATUS"
+if STATUS=$(wait_for_request_status "$REQUEST_ID" "approved"); then
+  pass "5. Request status: approved"
+else
+  fail "Expected approved, got $STATUS"
+fi
 
 # 6. Report result
 api_post "/v1/requests/$REQUEST_ID/result" '{"success":true,"result":{"restart":"completed"},"duration_ms":2500}'
 pass "6. Result reported"
 
 # 7. Verificar request cambió a executed
-REQ=$(api_get "/v1/requests/$REQUEST_ID")
-STATUS=$(echo "$REQ" | json_get 'status')
-[ "$STATUS" = "executed" ] && pass "7. Request status: executed" || fail "Expected executed, got $STATUS"
+if STATUS=$(wait_for_request_status "$REQUEST_ID" "executed"); then
+  pass "7. Request status: executed"
+else
+  fail "Expected executed, got $STATUS"
+fi
 
 # 8. Replay completo
 REPLAY=$(api_get "/v1/requests/$REQUEST_ID/replay")
@@ -74,9 +137,6 @@ R_IDEM2=$(curl -sf -X POST -H "X-API-Key: $API_KEY" -H "Content-Type: applicatio
 R_IDEM3=$(curl -sf -X POST -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" -H "Idempotency-Key: e2e-idem-key" \
   -d '{"requester_type":"agent","requester_id":"idem-bot","action_type":"alert.escalate"}' "$API_BASE/v1/requests" | json_get 'request_id')
 [ "$R_IDEM2" = "$R_IDEM3" ] && pass "11. Idempotency: same ID" || fail "Idempotency failed: $R_IDEM2 vs $R_IDEM3"
-
-# Cleanup
-api_delete "/v1/policies/$POLICY_ID" > /dev/null
 
 echo ""
 green "=== E2E full lifecycle passed ==="

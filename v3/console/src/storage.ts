@@ -6,7 +6,7 @@ const storage = createBrowserStorageNamespace({
 })
 
 export function getSavedView() {
-  return storage.getString('tab') || 'inbox'
+  return storage.getString('tab') || 'home'
 }
 
 export function saveView(view) {

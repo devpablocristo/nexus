@@ -1,6 +1,12 @@
-# Nexus Review
+# Nexus Governance
 
-Servicio backend de [Nexus Review](../doc/RFC.md): engine de decisión, approval, registro y replay para requests de agentes, servicios y humanos.
+Servicio backend de [Nexus Review](../doc/RFC.md): nombre comercial `Nexus Governance`, categoría canónica `GovernanceService`. Es el engine soberano de decisión, approval, registro y replay para requests de agentes, servicios y humanos.
+
+## Rol canónico en el ecosistema
+
+- categoría: `GovernanceService`
+- nombre comercial: `Nexus Governance`
+- responsabilidad: decidir, auditar y aprobar acciones sensibles propuestas por agentes, servicios o humanos
 
 ## Correr con Docker (recomendado)
 
@@ -40,7 +46,7 @@ make dev       # requiere postgres en :15434 (docker compose up review-postgres)
 | `/healthz` | GET | Liveness |
 | `/readyz` | GET | Readiness |
 
-Auth: header `X-API-Key`.
+Auth: `X-API-Key` para servicio a servicio. También acepta `Authorization: Bearer` si `NEXUS_AUTH_ISSUER_URL` está configurado.
 
 ## Estructura
 

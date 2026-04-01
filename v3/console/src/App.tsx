@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Inbox from './views/Inbox'
+import Home from './views/Home'
 import Requests from './views/Requests'
 import Learning from './views/Learning'
 import Dashboard from './views/Dashboard'
@@ -21,7 +22,7 @@ import { AuthTokenBridge, ProtectedRoute } from './AuthTokenBridge'
 const areas = [
   {
     key: 'areaWork',
-    tabs: ['chat', 'inbox', 'tasks', 'memory'],
+    tabs: ['home', 'chat', 'inbox', 'tasks', 'memory'],
   },
   {
     key: 'areaGovernance',
@@ -45,12 +46,16 @@ export default function App() {
   const [view, setView] = useState(getSavedView)
   const [lang, setLang] = useState(getSavedLang)
   const [replayRequestId, setReplayRequestId] = useState<string | null>(null)
+  const [taskFocusId, setTaskFocusId] = useState<string | null>(null)
 
   const changeView = (v: string) => {
     setView(v)
     saveView(v)
     if (v !== 'replay') {
       setReplayRequestId(null)
+    }
+    if (v !== 'tasks') {
+      setTaskFocusId(null)
     }
   }
 
@@ -63,6 +68,12 @@ export default function App() {
     setReplayRequestId(requestId)
     setView('replay')
     saveView('replay')
+  }
+
+  const viewTask = (taskId: string) => {
+    setTaskFocusId(taskId)
+    setView('tasks')
+    saveView('tasks')
   }
 
   return (
@@ -112,22 +123,23 @@ export default function App() {
         </div>
       </nav>
       <ProtectedRoute>
-      <main className="max-w-7xl mx-auto px-6 py-6">
-        {view === 'chat' && <Chat lang={lang} />}
-        {view === 'inbox' && <Inbox lang={lang} onViewReplay={viewReplay} />}
-        {view === 'requests' && <Requests lang={lang} />}
-        {view === 'tasks' && <Tasks lang={lang} />}
-        {view === 'replay' && <Replay lang={lang} requestId={replayRequestId} />}
-        {view === 'policies' && <Policies lang={lang} />}
-        {view === 'actionTypes' && <ActionTypes lang={lang} />}
-        {view === 'agents' && <Agents lang={lang} />}
-        {view === 'sandbox' && <Sandbox lang={lang} />}
-        {view === 'learning' && <Learning lang={lang} />}
-        {view === 'dashboard' && <Dashboard lang={lang} />}
-        {view === 'config' && <Config lang={lang} />}
-        {view === 'memory' && <Memory lang={lang} />}
-        {view === 'connectors' && <Connectors lang={lang} />}
-      </main>
+        <main className="max-w-7xl mx-auto px-6 py-6">
+          {view === 'home' && <Home lang={lang} onViewTask={viewTask} onViewReplay={viewReplay} onViewInbox={() => changeView('inbox')} />}
+          {view === 'chat' && <Chat lang={lang} />}
+          {view === 'inbox' && <Inbox lang={lang} onViewReplay={viewReplay} onViewTask={viewTask} />}
+          {view === 'requests' && <Requests lang={lang} />}
+          {view === 'tasks' && <Tasks lang={lang} focusTaskId={taskFocusId} onViewReplay={viewReplay} />}
+          {view === 'replay' && <Replay lang={lang} requestId={replayRequestId} onViewTask={viewTask} />}
+          {view === 'policies' && <Policies lang={lang} />}
+          {view === 'actionTypes' && <ActionTypes lang={lang} />}
+          {view === 'agents' && <Agents lang={lang} />}
+          {view === 'sandbox' && <Sandbox lang={lang} />}
+          {view === 'learning' && <Learning lang={lang} />}
+          {view === 'dashboard' && <Dashboard lang={lang} />}
+          {view === 'config' && <Config lang={lang} />}
+          {view === 'memory' && <Memory lang={lang} />}
+          {view === 'connectors' && <Connectors lang={lang} />}
+        </main>
       </ProtectedRoute>
     </div>
   )

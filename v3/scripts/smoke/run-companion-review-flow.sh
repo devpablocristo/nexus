@@ -44,6 +44,19 @@ else
   fail "Task detail missing review_request_id on action"
 fi
 
+if echo "$DETAIL" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+rid = sys.argv[1]
+sync = d.get('review_sync') or {}
+ok = sync.get('review_request_id') == rid and bool(sync.get('last_checked_at'))
+sys.exit(0 if ok else 1)
+" "$REQ_ID"; then
+  pass "Task detail exposes review_sync snapshot"
+else
+  fail "Task detail missing review_sync snapshot"
+fi
+
 RS=$(echo "$PROP" | json_get 'review_submit.status')
 case "$RS" in
   pending_approval)
@@ -71,6 +84,25 @@ echo "POST /v1/tasks/{id}/sync (manual / idempotent)..."
 SYNC_BODY=$(companion_post "/v1/tasks/$TASK_ID/sync" '{}')
 SYNC_ID=$(echo "$SYNC_BODY" | json_get 'id')
 [ "$SYNC_ID" = "$TASK_ID" ] && pass "Sync returned task with same id" || fail "Sync id mismatch: $SYNC_ID vs $TASK_ID"
+
+echo "Verifying tasks list exposes review sync summary..."
+LIST=$(companion_get "/v1/tasks?limit=20")
+if echo "$LIST" | python3 -c "
+import json, sys
+data = json.load(sys.stdin).get('data') or []
+task_id = sys.argv[1]
+task = next((item for item in data if item.get('id') == task_id), None)
+ok = (
+    task is not None and
+    bool(task.get('review_status')) and
+    bool(task.get('review_last_checked_at'))
+)
+sys.exit(0 if ok else 1)
+" "$TASK_ID"; then
+  pass "Tasks list exposes review_status and review_last_checked_at"
+else
+  fail "Tasks list missing review sync summary fields"
+fi
 
 echo ""
 green "=== Companion ↔ Review smoke passed ==="

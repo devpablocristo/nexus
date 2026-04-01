@@ -26,6 +26,8 @@ services:
       PORT: "8080"
       DATABASE_URL: "postgres://postgres:postgres@postgres:5432/nexus_review?sslmode=disable"
       NEXUS_API_KEYS: "admin=${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key},prometheus=${NEXUS_REVIEW_PROMETHEUS_API_KEY:-nexus-review-prometheus-dev-key}"
+      NEXUS_AUTH_ISSUER_URL: "${NEXUS_AUTH_ISSUER_URL:-}"
+      NEXUS_AUTH_AUDIENCE: "${NEXUS_AUTH_AUDIENCE:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       APPROVAL_DEFAULT_TTL: "${NEXUS_REVIEW_APPROVAL_TTL:-3600}"
       NEXUS_SIGNING_KEY: "${NEXUS_SIGNING_KEY:-nexus-dev-signing-key-change-in-production}"
@@ -49,6 +51,8 @@ services:
       PORT: "8080"
       DATABASE_URL: "postgres://postgres:postgres@postgres:5432/nexus_companion?sslmode=disable"
       NEXUS_API_KEYS: "admin=${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}"
+      NEXUS_AUTH_ISSUER_URL: "${NEXUS_AUTH_ISSUER_URL:-}"
+      NEXUS_AUTH_AUDIENCE: "${NEXUS_AUTH_AUDIENCE:-}"
       REVIEW_BASE_URL: "http://review:8080"
       REVIEW_API_KEY: "${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key}"
       COMPANION_REVIEW_SYNC_INTERVAL_SEC: "${COMPANION_REVIEW_SYNC_INTERVAL_SEC:-30}"
@@ -75,6 +79,9 @@ services:
     build:
       context: ./console
     restart: unless-stopped
+    environment:
+      NEXUS_REVIEW_PROXY_API_KEY: "${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key}"
+      NEXUS_COMPANION_PROXY_API_KEY: "${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}"
     ports:
       - "${NEXUS_CONSOLE_PORT:-13001}:80"
     depends_on:

@@ -17,7 +17,12 @@ const riskBorder = {
   low: 'border-gray-800',
 }
 
-function ApprovalCard({ approval, request, lang, onDone, onViewReplay }) {
+function linkedTaskId(request) {
+  const taskId = request?.params?.nexus?.task_id
+  return typeof taskId === 'string' && taskId ? taskId : null
+}
+
+function ApprovalCard({ approval, request, lang, onDone, onViewReplay, onViewTask }) {
   const [expanded, setExpanded] = useState(false)
   const [note, setNote] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -44,15 +49,17 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay }) {
     setCardError(null)
   }
 
+  const taskId = linkedTaskId(request)
+
   const submit = async () => {
     if (!isValid) return
     setSubmitting(true)
     setCardError(null)
     try {
       if (action === 'approve') {
-        await approveApproval(approval.id, 'demo-user', note.trim())
+        await approveApproval(approval.id, note.trim())
       } else {
-        await rejectApproval(approval.id, 'demo-user', note.trim())
+        await rejectApproval(approval.id, note.trim())
       }
       onDone(approval.id)
     } catch (e) {
@@ -111,6 +118,12 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay }) {
               {t(lang, 'details')}
             </button>
           )}
+          {taskId && (
+            <button onClick={() => onViewTask(taskId)}
+              className="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 text-indigo-200 text-sm rounded font-medium transition-colors">
+              {t(lang, 'openTask')}
+            </button>
+          )}
         </div>
       )}
 
@@ -162,7 +175,15 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay }) {
   )
 }
 
-export default function Inbox({ lang, onViewReplay = (_requestId: string) => {} }: { lang: any, onViewReplay?: (requestId: string) => void }) {
+export default function Inbox({
+  lang,
+  onViewReplay = (_requestId: string) => {},
+  onViewTask = (_taskId: string) => {},
+}: {
+  lang: any
+  onViewReplay?: (requestId: string) => void
+  onViewTask?: (taskId: string) => void
+}) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -218,6 +239,7 @@ export default function Inbox({ lang, onViewReplay = (_requestId: string) => {} 
             lang={lang}
             onDone={handleDone}
             onViewReplay={onViewReplay}
+            onViewTask={onViewTask}
           />
         ))}
       </div>

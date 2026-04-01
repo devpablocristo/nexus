@@ -47,6 +47,8 @@ func main() {
 	cfg := wire.Config{
 		DatabaseURL:    databaseURL,
 		APIKeys:        apiKeys,
+		AuthIssuerURL:  os.Getenv("NEXUS_AUTH_ISSUER_URL"),
+		AuthAudience:   os.Getenv("NEXUS_AUTH_AUDIENCE"),
 		ReviewBaseURL:  reviewBase,
 		ReviewAPIKey:   reviewKey,
 		PymesBaseURL:   os.Getenv("PYMES_BASE_URL"),

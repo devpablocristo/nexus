@@ -14,6 +14,7 @@ func TestEventFromSubmitResponse(t *testing.T) {
 		want   string
 	}{
 		{"allowed", evReviewResolvedAllow},
+		{" executed ", evReviewResolvedAllow},
 		{"ALLOWED", evReviewResolvedAllow},
 		{"denied", evReviewResolvedDeny},
 		{"pending_approval", evReviewPendingApproval},
@@ -36,6 +37,10 @@ func TestEventFromReviewRequestStatus(t *testing.T) {
 	if ok || ev != "" {
 		t.Fatalf("pending: got %q %v", ev, ok)
 	}
+	ev, ok = eventFromReviewRequestStatus("evaluated")
+	if ok || ev != "" {
+		t.Fatalf("evaluated: got %q %v", ev, ok)
+	}
 	ev, ok = eventFromReviewRequestStatus("approved")
 	if !ok || ev != evReviewResolvedAllow {
 		t.Fatalf("approved: got %q %v", ev, ok)
@@ -43,6 +48,18 @@ func TestEventFromReviewRequestStatus(t *testing.T) {
 	ev, ok = eventFromReviewRequestStatus("rejected")
 	if !ok || ev != evReviewResolvedDeny {
 		t.Fatalf("rejected: got %q %v", ev, ok)
+	}
+	ev, ok = eventFromReviewRequestStatus("expired")
+	if !ok || ev != evReviewResolvedDeny {
+		t.Fatalf("expired: got %q %v", ev, ok)
+	}
+}
+
+func TestEventFromReviewRequestStatusWithExecutionPlan(t *testing.T) {
+	t.Parallel()
+	ev, ok := eventFromReviewRequestStatusWithExecutionPlan("approved", true)
+	if !ok || ev != evReviewResolvedAllowAwaitInput {
+		t.Fatalf("approved with execution plan: got %q %v", ev, ok)
 	}
 }
 
@@ -64,5 +81,25 @@ func TestCompanionTaskFSM_investigateAndReview(t *testing.T) {
 	to, err = m.Transition(domain.TaskStatusInvestigating, evReviewResolvedAllow)
 	if err != nil || to != domain.TaskStatusDone {
 		t.Fatalf("allow from investigating: %q %v", to, err)
+	}
+	to, err = m.Transition(domain.TaskStatusWaitingForApproval, evReviewResolvedAllowAwaitInput)
+	if err != nil || to != domain.TaskStatusWaitingForInput {
+		t.Fatalf("allow awaiting input: %q %v", to, err)
+	}
+	to, err = m.Transition(domain.TaskStatusWaitingForInput, evStartExecution)
+	if err != nil || to != domain.TaskStatusExecuting {
+		t.Fatalf("start execution: %q %v", to, err)
+	}
+	to, err = m.Transition(domain.TaskStatusExecuting, evExecutionSucceeded)
+	if err != nil || to != domain.TaskStatusVerifying {
+		t.Fatalf("execution succeeded: %q %v", to, err)
+	}
+	to, err = m.Transition(domain.TaskStatusVerifying, evExecutionVerified)
+	if err != nil || to != domain.TaskStatusDone {
+		t.Fatalf("execution verified: %q %v", to, err)
+	}
+	to, err = m.Transition(domain.TaskStatusFailed, evRetryExecution)
+	if err != nil || to != domain.TaskStatusExecuting {
+		t.Fatalf("retry execution: %q %v", to, err)
 	}
 }

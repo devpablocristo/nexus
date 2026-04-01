@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { deleteCompanionMemory, fetchCompanionMemory } from '../api'
 import { t } from '../i18n'
 
 interface MemoryEntry {
@@ -15,26 +16,14 @@ interface MemoryEntry {
   expires_at: string | null
 }
 
-const COMPANION_URL = (localStorage.getItem('companionUrl') || 'http://localhost:18085')
-const API_KEY = (localStorage.getItem('apiKey') || 'nexus-companion-admin-dev-key')
-
 async function fetchMemory(scopeType: string, scopeId: string, kind?: string): Promise<MemoryEntry[]> {
-  const params = new URLSearchParams({ scope_type: scopeType, scope_id: scopeId })
-  if (kind) params.set('kind', kind)
-  const res = await fetch(`${COMPANION_URL}/v1/memory?${params}`, {
-    headers: { 'X-API-Key': API_KEY }
-  })
-  if (!res.ok) return []
-  const data = await res.json()
+  const data = await fetchCompanionMemory(scopeType, scopeId, kind)
   return data.entries || []
 }
 
 async function deleteEntry(id: string): Promise<boolean> {
-  const res = await fetch(`${COMPANION_URL}/v1/memory/${id}`, {
-    method: 'DELETE',
-    headers: { 'X-API-Key': API_KEY }
-  })
-  return res.ok
+  await deleteCompanionMemory(id)
+  return true
 }
 
 const kindLabels: Record<string, Record<string, string>> = {
@@ -58,8 +47,12 @@ export default function Memory({ lang }: { lang: string }) {
   }
 
   const handleDelete = async (id: string) => {
-    if (await deleteEntry(id)) {
-      setEntries(prev => prev.filter(e => e.id !== id))
+    try {
+      if (await deleteEntry(id)) {
+        setEntries(prev => prev.filter(e => e.id !== id))
+      }
+    } catch {
+      // keep current list; caller can retry
     }
   }
 

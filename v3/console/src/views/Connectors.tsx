@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react'
 import { t } from '../i18n'
+import {
+  fetchCompanionConnectorCapabilities,
+  fetchCompanionConnectorExecutions,
+  fetchCompanionConnectors,
+} from '../api'
 
 interface Connector {
   id: string
@@ -29,29 +34,18 @@ interface Capability {
   capabilities: { operation: string; side_effect: boolean; read_only: boolean }[]
 }
 
-const COMPANION_URL = (localStorage.getItem('companionUrl') || 'http://localhost:18085')
-const API_KEY = (localStorage.getItem('apiKey') || 'nexus-companion-admin-dev-key')
-
-const headers = { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' }
-
 async function fetchConnectors(): Promise<Connector[]> {
-  const res = await fetch(`${COMPANION_URL}/v1/connectors`, { headers })
-  if (!res.ok) return []
-  const data = await res.json()
+  const data = await fetchCompanionConnectors()
   return data.connectors || []
 }
 
 async function fetchCapabilities(): Promise<Capability[]> {
-  const res = await fetch(`${COMPANION_URL}/v1/connectors/capabilities`, { headers })
-  if (!res.ok) return []
-  const data = await res.json()
+  const data = await fetchCompanionConnectorCapabilities()
   return data.connectors || []
 }
 
 async function fetchExecutions(connectorId: string): Promise<Execution[]> {
-  const res = await fetch(`${COMPANION_URL}/v1/connectors/${connectorId}/executions`, { headers })
-  if (!res.ok) return []
-  const data = await res.json()
+  const data = await fetchCompanionConnectorExecutions(connectorId)
   return data.executions || []
 }
 

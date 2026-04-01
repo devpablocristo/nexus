@@ -2,6 +2,10 @@ name: V3 CI
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/v3-ci.yml"
+      - "v3/**"
   pull_request:
     paths:
       - ".github/workflows/v3-ci.yml"
@@ -64,7 +68,7 @@ jobs:
         run: go vet ./...
 
   console:
-    name: console build
+    name: console checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -76,7 +80,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version-file: nexus/v3/console/.nvmrc
           cache: npm
           cache-dependency-path: nexus/v3/console/package-lock.json
 
@@ -84,6 +88,53 @@ jobs:
         working-directory: nexus/v3/console
         run: npm ci
 
+      - name: Typecheck console
+        working-directory: nexus/v3/console
+        run: npm run typecheck
+
       - name: Build console
         working-directory: nexus/v3/console
         run: npm run build
+
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    needs:
+      - review
+      - companion
+      - console
+    timeout-minutes: 25
+    steps:
+      - name: Checkout nexus
+        uses: actions/checkout@v4
+        with:
+          path: nexus
+
+      - name: Prepare env
+        working-directory: nexus/v3
+        run: test -f .env || cp .env.example .env
+
+      - name: Start review and companion stack
+        working-directory: nexus/v3
+        run: docker compose up -d --build postgres review companion
+
+      - name: Run smoke suite
+        working-directory: nexus/v3
+        run: make smoke
+
+      - name: Capture compose logs
+        if: always()
+        working-directory: nexus/v3
+        run: docker compose logs --no-color > smoke-docker-compose.log
+
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-smoke-docker-compose-logs
+          path: nexus/v3/smoke-docker-compose.log
+
+      - name: Tear down stack
+        if: always()
+        working-directory: nexus/v3
+        run: docker compose down -v --remove-orphans

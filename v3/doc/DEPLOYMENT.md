@@ -51,6 +51,11 @@ NEXUS_POSTGRES_PORT=15434
 # API keys
 NEXUS_REVIEW_ADMIN_API_KEY=nexus-review-admin-dev-key
 NEXUS_REVIEW_PROMETHEUS_API_KEY=nexus-review-prometheus-dev-key
+NEXUS_COMPANION_ADMIN_API_KEY=nexus-companion-admin-dev-key
+
+# Auth humano opcional (OIDC/JWKS, ej. Clerk)
+NEXUS_AUTH_ISSUER_URL=
+NEXUS_AUTH_AUDIENCE=
 
 # AI
 ANTHROPIC_API_KEY=          # opcional, sin key usa fallback

@@ -83,6 +83,19 @@ func (r *PostgresRepository) Get(ctx context.Context, id uuid.UUID) (domain.Memo
 	return entry, nil
 }
 
+// GetByScopeKey obtiene una entrada de memoria por scope, kind y key.
+func (r *PostgresRepository) GetByScopeKey(ctx context.Context, scopeType domain.ScopeType, scopeID string, kind domain.MemoryKind, key string) (domain.MemoryEntry, error) {
+	row := r.db.Pool().QueryRow(ctx, selectMemory+` WHERE scope_type = $1 AND scope_id = $2 AND kind = $3 AND key = $4`, scopeType, scopeID, kind, key)
+	entry, err := scanMemoryEntry(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.MemoryEntry{}, ErrNotFound
+		}
+		return domain.MemoryEntry{}, fmt.Errorf("get memory by scope key: %w", err)
+	}
+	return entry, nil
+}
+
 // Find busca entradas de memoria por scope y kind.
 func (r *PostgresRepository) Find(ctx context.Context, q FindQuery) ([]domain.MemoryEntry, error) {
 	if q.Limit <= 0 {
