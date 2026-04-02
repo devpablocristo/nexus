@@ -13,10 +13,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@clerk/localizations": "^4.2.4",
-    "@clerk/react": "^6.1.3",
+    "@clerk/localizations": "^4.3.0",
+    "@clerk/react": "^6.1.4",
     "@devpablocristo/core-authn": "^0.1.0",
-    "@devpablocristo/core-browser": "^0.1.0",
+    "@devpablocristo/core-browser": "^0.2.0",
     "@devpablocristo/core-http": "^0.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
