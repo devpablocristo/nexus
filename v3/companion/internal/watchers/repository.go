@@ -19,6 +19,7 @@ type Repository interface {
 	CreateWatcher(ctx context.Context, w domain.Watcher) (domain.Watcher, error)
 	GetWatcher(ctx context.Context, id uuid.UUID) (domain.Watcher, error)
 	ListWatchers(ctx context.Context, orgID string) ([]domain.Watcher, error)
+	ListEnabledOrgIDs(ctx context.Context) ([]string, error)
 	UpdateWatcher(ctx context.Context, w domain.Watcher) (domain.Watcher, error)
 	DeleteWatcher(ctx context.Context, id uuid.UUID) error
 
@@ -101,6 +102,25 @@ func (r *PostgresRepository) UpdateWatcher(ctx context.Context, w domain.Watcher
 		return domain.Watcher{}, fmt.Errorf("update watcher: %w", err)
 	}
 	return w, nil
+}
+
+func (r *PostgresRepository) ListEnabledOrgIDs(ctx context.Context) ([]string, error) {
+	rows, err := r.db.Pool().Query(ctx, `
+		SELECT DISTINCT org_id FROM companion_watchers WHERE enabled = true ORDER BY org_id`)
+	if err != nil {
+		return nil, fmt.Errorf("list enabled org ids: %w", err)
+	}
+	defer rows.Close()
+
+	var orgIDs []string
+	for rows.Next() {
+		var orgID string
+		if err := rows.Scan(&orgID); err != nil {
+			return nil, fmt.Errorf("scan org_id: %w", err)
+		}
+		orgIDs = append(orgIDs, orgID)
+	}
+	return orgIDs, nil
 }
 
 func (r *PostgresRepository) DeleteWatcher(ctx context.Context, id uuid.UUID) error {

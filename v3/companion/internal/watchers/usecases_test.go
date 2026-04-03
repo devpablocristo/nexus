@@ -46,6 +46,20 @@ func (f *fakeWatcherRepo) ListWatchers(_ context.Context, orgID string) ([]domai
 	return out, nil
 }
 
+func (f *fakeWatcherRepo) ListEnabledOrgIDs(_ context.Context) ([]string, error) {
+	seen := make(map[string]struct{})
+	for _, w := range f.watchers {
+		if w.Enabled {
+			seen[w.OrgID] = struct{}{}
+		}
+	}
+	var out []string
+	for orgID := range seen {
+		out = append(out, orgID)
+	}
+	return out, nil
+}
+
 func (f *fakeWatcherRepo) UpdateWatcher(_ context.Context, w domain.Watcher) (domain.Watcher, error) {
 	if _, ok := f.watchers[w.ID]; !ok {
 		return domain.Watcher{}, ErrNotFound

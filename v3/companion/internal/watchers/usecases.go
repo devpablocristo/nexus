@@ -395,11 +395,19 @@ func (uc *Usecases) RunAllEnabled(ctx context.Context, orgID string) error {
 	return nil
 }
 
-// RunWatcherLoop ejecuta watchers periódicamente en background.
+// RunWatcherLoop ejecuta watchers periódicamente en background para todas las orgs.
 func (uc *Usecases) RunWatcherLoop(ctx context.Context, interval time.Duration, batchSize int) {
-	worker.RunPeriodic(ctx, interval, "watcher-loop", func(_ context.Context) {
-		// TODO: iterar por todas las orgs — por ahora se ejecuta manualmente por org
-		slog.Debug("watcher loop tick — manual execution per org via API")
+	worker.RunPeriodic(ctx, interval, "watcher-loop", func(tickCtx context.Context) {
+		orgIDs, err := uc.repo.ListEnabledOrgIDs(tickCtx)
+		if err != nil {
+			slog.Error("watcher loop: list org ids failed", "error", err)
+			return
+		}
+		for _, orgID := range orgIDs {
+			if err := uc.RunAllEnabled(tickCtx, orgID); err != nil {
+				slog.Error("watcher loop: run org failed", "org_id", orgID, "error", err)
+			}
+		}
 	})
 }
 
