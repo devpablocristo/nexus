@@ -123,7 +123,10 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	// Learning con analyzer y proposer
 	learningPolicyCreator := newLearningPolicyCreator(policyRepo)
 	analyzer := learning.NewInMemoryPatternAnalyzer(reqRepo)
-	proposer := learning.NewStubProposer()
+	var proposer learning.PolicyProposer = learning.NewStubProposer()
+	if cfg.AnthropicKey != "" {
+		proposer = learning.NewAIProposer(cfg.AnthropicKey, "claude-sonnet-4-20250514")
+	}
 	learningUC := learning.NewUsecases(learningRepo, learningPolicyCreator).
 		WithAnalyzer(analyzer).
 		WithProposer(proposer)
