@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { t } from '../i18n'
+import { t, relativeTime } from '../i18n'
 import {
   fetchCompanionConnectorCapabilities,
   fetchCompanionConnectorExecutions,
@@ -34,21 +34,6 @@ interface Capability {
   capabilities: { operation: string; side_effect: boolean; read_only: boolean }[]
 }
 
-async function fetchConnectors(): Promise<Connector[]> {
-  const data = await fetchCompanionConnectors()
-  return data.connectors || []
-}
-
-async function fetchCapabilities(): Promise<Capability[]> {
-  const data = await fetchCompanionConnectorCapabilities()
-  return data.connectors || []
-}
-
-async function fetchExecutions(connectorId: string): Promise<Execution[]> {
-  const data = await fetchCompanionConnectorExecutions(connectorId)
-  return data.executions || []
-}
-
 const statusColors: Record<string, string> = {
   success: 'text-green-400 bg-green-900/30',
   failure: 'text-red-400 bg-red-900/30',
@@ -63,7 +48,10 @@ export default function Connectors({ lang }: { lang: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([fetchConnectors(), fetchCapabilities()]).then(([conns, caps]) => {
+    Promise.all([
+      fetchCompanionConnectors().then((d) => d.connectors || []),
+      fetchCompanionConnectorCapabilities().then((d) => d.connectors || []),
+    ]).then(([conns, caps]) => {
       setConnectors(conns)
       setCapabilities(caps)
       setLoading(false)
@@ -72,22 +60,11 @@ export default function Connectors({ lang }: { lang: string }) {
 
   const selectConnector = async (id: string) => {
     setSelectedId(id)
-    const execs = await fetchExecutions(id)
-    setExecutions(execs)
+    const data = await fetchCompanionConnectorExecutions(id)
+    setExecutions(data.executions || [])
   }
 
-  const relTime = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return lang === 'es' ? 'ahora' : 'just now'
-    if (mins < 60) return lang === 'es' ? `hace ${mins}m` : `${mins}m ago`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return lang === 'es' ? `hace ${hrs}h` : `${hrs}h ago`
-    const days = Math.floor(hrs / 24)
-    return lang === 'es' ? `hace ${days}d` : `${days}d ago`
-  }
-
-  if (loading) return <p className="text-gray-400 text-sm">{lang === 'es' ? 'Cargando...' : 'Loading...'}</p>
+  if (loading) return <p className="text-gray-400 text-sm">{t(lang, 'loading')}</p>
 
   return (
     <div>
@@ -107,7 +84,7 @@ export default function Connectors({ lang }: { lang: string }) {
                 <span className={`text-xs px-2 py-0.5 rounded ${
                   c.enabled ? 'bg-green-900/30 text-green-400' : 'bg-gray-700 text-gray-500'
                 }`}>
-                  {c.enabled ? (lang === 'es' ? 'Activo' : 'Active') : (lang === 'es' ? 'Inactivo' : 'Inactive')}
+                  {c.enabled ? t(lang, 'connActive') : t(lang, 'connInactive')}
                 </span>
               </div>
               <p className="text-xs text-gray-400 mb-2">{c.kind}</p>
@@ -127,16 +104,16 @@ export default function Connectors({ lang }: { lang: string }) {
       </div>
 
       {connectors.length === 0 && (
-        <p className="text-gray-500 text-sm">{lang === 'es' ? 'Sin conectores registrados' : 'No connectors registered'}</p>
+        <p className="text-gray-500 text-sm">{t(lang, 'connNoConnectors')}</p>
       )}
 
       {selectedId && (
         <div>
           <h3 className="text-lg font-semibold text-white mb-3">
-            {lang === 'es' ? 'Ejecuciones recientes' : 'Recent executions'}
+            {t(lang, 'connRecentExecutions')}
           </h3>
           {executions.length === 0 ? (
-            <p className="text-gray-500 text-sm">{lang === 'es' ? 'Sin ejecuciones' : 'No executions'}</p>
+            <p className="text-gray-500 text-sm">{t(lang, 'connNoExecutions')}</p>
           ) : (
             <div className="space-y-2">
               {executions.map(e => (
@@ -150,7 +127,7 @@ export default function Connectors({ lang }: { lang: string }) {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-gray-500">{e.duration_ms}ms</span>
-                      <span className="text-xs text-gray-500">{relTime(e.created_at)}</span>
+                      <span className="text-xs text-gray-500">{relativeTime(lang, e.created_at)}</span>
                     </div>
                   </div>
                   {e.external_ref && (

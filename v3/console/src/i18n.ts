@@ -364,6 +364,30 @@ const translations = {
     approvalsBefore: 'Approvals before',
     approvalsAfter: 'Approvals after',
     alreadyDecided: 'This approver already decided on this request.',
+
+    // Shared / relative time
+    timeNow: 'just now',
+    timeAgo: 'ago',
+
+    // Chat
+    newConversation: '+ New conversation',
+    noConversations: 'No conversations',
+    chatGreeting: 'Hi, I am your coworker',
+    send: 'Send',
+
+    // Memory
+    memAll: 'All',
+    memSearch: 'Search',
+    memNoEntries: 'No memory entries',
+    memExpires: 'Expires',
+    memDelete: 'Delete',
+
+    // Connectors
+    connActive: 'Active',
+    connInactive: 'Inactive',
+    connNoConnectors: 'No connectors registered',
+    connRecentExecutions: 'Recent executions',
+    connNoExecutions: 'No executions',
   },
   es: {
     // Nav
@@ -728,6 +752,30 @@ const translations = {
     approvalsBefore: 'Aprobaciones antes',
     approvalsAfter: 'Aprobaciones después',
     alreadyDecided: 'Este aprobador ya decidió sobre esta request.',
+
+    // Shared / relative time
+    timeNow: 'ahora',
+    timeAgo: 'atrás',
+
+    // Chat
+    newConversation: '+ Nueva conversación',
+    noConversations: 'Sin conversaciones',
+    chatGreeting: 'Hola, soy tu compañero de trabajo',
+    send: 'Enviar',
+
+    // Memory
+    memAll: 'Todos',
+    memSearch: 'Buscar',
+    memNoEntries: 'Sin entradas de memoria',
+    memExpires: 'Expira',
+    memDelete: 'Eliminar',
+
+    // Connectors
+    connActive: 'Activo',
+    connInactive: 'Inactivo',
+    connNoConnectors: 'Sin conectores registrados',
+    connRecentExecutions: 'Ejecuciones recientes',
+    connNoExecutions: 'Sin ejecuciones',
   },
 }
 
@@ -741,4 +789,16 @@ export function saveLang(lang) {
 
 export function t(lang, key) {
   return translations[lang]?.[key] || translations.en[key] || key
+}
+
+export function relativeTime(lang: string, dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.round(Math.abs(diff) / 60000)
+  const suffix = diff >= 0 ? t(lang, 'timeAgo') : t(lang, 'timeLeft')
+  if (mins < 1) return t(lang, 'timeNow')
+  if (mins < 60) return `${mins}m ${suffix}`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ${suffix}`
+  const days = Math.round(hrs / 24)
+  return `${days}d ${suffix}`
 }

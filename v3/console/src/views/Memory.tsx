@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { deleteCompanionMemory, fetchCompanionMemory } from '../api'
-import { t } from '../i18n'
+import { t, relativeTime } from '../i18n'
 
 interface MemoryEntry {
   id: string
@@ -14,16 +14,6 @@ interface MemoryEntry {
   created_at: string
   updated_at: string
   expires_at: string | null
-}
-
-async function fetchMemory(scopeType: string, scopeId: string, kind?: string): Promise<MemoryEntry[]> {
-  const data = await fetchCompanionMemory(scopeType, scopeId, kind)
-  return data.entries || []
-}
-
-async function deleteEntry(id: string): Promise<boolean> {
-  await deleteCompanionMemory(id)
-  return true
 }
 
 const kindLabels: Record<string, Record<string, string>> = {
@@ -41,30 +31,18 @@ export default function Memory({ lang }: { lang: string }) {
   const load = async () => {
     if (!scopeId) return
     setLoading(true)
-    const data = await fetchMemory(scopeType, scopeId, kindFilter || undefined)
-    setEntries(data)
+    const data = await fetchCompanionMemory(scopeType, scopeId, kindFilter || undefined)
+    setEntries(data.entries || [])
     setLoading(false)
   }
 
   const handleDelete = async (id: string) => {
     try {
-      if (await deleteEntry(id)) {
-        setEntries(prev => prev.filter(e => e.id !== id))
-      }
+      await deleteCompanionMemory(id)
+      setEntries(prev => prev.filter(e => e.id !== id))
     } catch {
       // keep current list; caller can retry
     }
-  }
-
-  const relTime = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return lang === 'es' ? 'ahora' : 'just now'
-    if (mins < 60) return lang === 'es' ? `hace ${mins}m` : `${mins}m ago`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return lang === 'es' ? `hace ${hrs}h` : `${hrs}h ago`
-    const days = Math.floor(hrs / 24)
-    return lang === 'es' ? `hace ${days}d` : `${days}d ago`
   }
 
   return (
@@ -91,7 +69,7 @@ export default function Memory({ lang }: { lang: string }) {
           <label className="block text-xs text-gray-400 mb-1">Kind</label>
           <select value={kindFilter} onChange={e => setKindFilter(e.target.value)}
             className="bg-gray-800 text-white rounded px-3 py-2 text-sm border border-gray-700">
-            <option value="">{lang === 'es' ? 'Todos' : 'All'}</option>
+            <option value="">{t(lang, 'memAll')}</option>
             <option value="task_summary">task_summary</option>
             <option value="task_facts">task_facts</option>
             <option value="playbook_snippet">playbook_snippet</option>
@@ -100,14 +78,14 @@ export default function Memory({ lang }: { lang: string }) {
         </div>
         <button onClick={load}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">
-          {lang === 'es' ? 'Buscar' : 'Search'}
+          {t(lang, 'memSearch')}
         </button>
       </div>
 
-      {loading && <p className="text-gray-400 text-sm">{lang === 'es' ? 'Cargando...' : 'Loading...'}</p>}
+      {loading && <p className="text-gray-400 text-sm">{t(lang, 'loading')}</p>}
 
       {!loading && entries.length === 0 && scopeId && (
-        <p className="text-gray-500 text-sm">{lang === 'es' ? 'Sin entradas de memoria' : 'No memory entries'}</p>
+        <p className="text-gray-500 text-sm">{t(lang, 'memNoEntries')}</p>
       )}
 
       <div className="space-y-3">
@@ -122,15 +100,15 @@ export default function Memory({ lang }: { lang: string }) {
                 <span className="text-xs text-gray-500">v{e.version}</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-500">{relTime(e.updated_at)}</span>
+                <span className="text-xs text-gray-500">{relativeTime(lang, e.updated_at)}</span>
                 {e.expires_at && (
                   <span className="text-xs text-yellow-500">
-                    {lang === 'es' ? 'Expira' : 'Expires'}: {new Date(e.expires_at).toLocaleDateString()}
+                    {t(lang, 'memExpires')}: {new Date(e.expires_at).toLocaleDateString()}
                   </span>
                 )}
                 <button onClick={() => handleDelete(e.id)}
                   className="text-xs text-red-400 hover:text-red-300">
-                  {lang === 'es' ? 'Eliminar' : 'Delete'}
+                  {t(lang, 'memDelete')}
                 </button>
               </div>
             </div>

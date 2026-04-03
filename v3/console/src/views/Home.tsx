@@ -11,7 +11,7 @@ import {
   retryCompanionTask,
   syncCompanionTaskFromReview,
 } from '../api'
-import { t } from '../i18n'
+import { t, relativeTime } from '../i18n'
 import RiskBadge from '../components/RiskBadge'
 import StatusBadge from '../components/StatusBadge'
 
@@ -124,24 +124,7 @@ function formatRelative(value?: string | null, lang = 'en') {
   if (!value) return '—'
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return value
-  const diffMs = parsed.getTime() - Date.now()
-  const minutes = Math.round(diffMs / 60000)
-  if (Math.abs(minutes) < 1) return lang === 'es' ? 'ahora' : 'now'
-  if (Math.abs(minutes) < 60) {
-    return minutes > 0
-      ? `${Math.abs(minutes)}m ${lang === 'es' ? 'restantes' : 'left'}`
-      : `${Math.abs(minutes)}m ${lang === 'es' ? 'atrás' : 'ago'}`
-  }
-  const hours = Math.round(minutes / 60)
-  if (Math.abs(hours) < 24) {
-    return hours > 0
-      ? `${Math.abs(hours)}h ${lang === 'es' ? 'restantes' : 'left'}`
-      : `${Math.abs(hours)}h ${lang === 'es' ? 'atrás' : 'ago'}`
-  }
-  const days = Math.round(hours / 24)
-  return days > 0
-    ? `${Math.abs(days)}d ${lang === 'es' ? 'restantes' : 'left'}`
-    : `${Math.abs(days)}d ${lang === 'es' ? 'atrás' : 'ago'}`
+  return relativeTime(lang, value)
 }
 
 function linkedTaskId(request: ReviewRequest | null | undefined) {

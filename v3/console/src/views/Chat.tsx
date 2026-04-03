@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { sendChatMessage, fetchCompanionTasks } from '../api'
-import { t } from '../i18n'
+import { t, relativeTime } from '../i18n'
 
 type ChatMessage = {
   id: string
@@ -32,7 +32,6 @@ export default function Chat({ lang }: { lang: string }) {
 
   useEffect(() => { scrollToBottom() }, [messages])
 
-  // Cargar conversaciones previas (tareas con channel=console)
   const loadConversations = useCallback(() => {
     setLoadingConversations(true)
     fetchCompanionTasks()
@@ -55,7 +54,6 @@ export default function Chat({ lang }: { lang: string }) {
     setSending(true)
     setInput('')
 
-    // Optimistic: agregar mensaje del usuario al hilo
     const optimistic: ChatMessage = {
       id: `temp-${Date.now()}`,
       author_type: 'user',
@@ -69,7 +67,6 @@ export default function Chat({ lang }: { lang: string }) {
       const result = await sendChatMessage(msg, taskId || undefined)
       setTaskId(result.task.id)
       setMessages(result.messages || [])
-      // Refrescar lista de conversaciones si es nueva
       if (!taskId) {
         loadConversations()
       }
@@ -104,7 +101,6 @@ export default function Chat({ lang }: { lang: string }) {
   const selectConversation = async (id: string) => {
     setTaskId(id)
     try {
-      // Cargar mensajes enviando mensaje vacío... no, mejor cargar detalle
       const { fetchCompanionTask } = await import('../api')
       const detail = await fetchCompanionTask(id)
       setMessages(detail.messages || [])
@@ -113,27 +109,15 @@ export default function Chat({ lang }: { lang: string }) {
     }
   }
 
-  const relativeTime = (iso: string): string => {
-    const diff = Date.now() - new Date(iso).getTime()
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return lang === 'es' ? 'ahora' : 'now'
-    if (mins < 60) return lang === 'es' ? `hace ${mins}m` : `${mins}m ago`
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return lang === 'es' ? `hace ${hrs}h` : `${hrs}h ago`
-    const days = Math.floor(hrs / 24)
-    return lang === 'es' ? `hace ${days}d` : `${days}d ago`
-  }
-
   return (
     <div className="flex gap-4 h-[calc(100vh-140px)]">
-      {/* Sidebar: conversaciones */}
       <div className="w-64 flex-shrink-0 bg-gray-800 rounded-lg overflow-hidden flex flex-col">
         <div className="p-3 border-b border-gray-700">
           <button
             onClick={startNewConversation}
             className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
           >
-            {lang === 'es' ? '+ Nueva conversación' : '+ New conversation'}
+            {t(lang, 'newConversation')}
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -141,7 +125,7 @@ export default function Chat({ lang }: { lang: string }) {
             <p className="text-gray-500 text-sm p-3">...</p>
           ) : conversations.length === 0 ? (
             <p className="text-gray-500 text-sm p-3">
-              {lang === 'es' ? 'Sin conversaciones' : 'No conversations'}
+              {t(lang, 'noConversations')}
             </p>
           ) : (
             conversations.map((c) => (
@@ -153,36 +137,26 @@ export default function Chat({ lang }: { lang: string }) {
                 }`}
               >
                 <p className="text-sm text-white truncate">{c.title}</p>
-                <p className="text-xs text-gray-500">{relativeTime(c.created_at)}</p>
+                <p className="text-xs text-gray-500">{relativeTime(lang, c.created_at)}</p>
               </button>
             ))
           )}
         </div>
       </div>
 
-      {/* Area de chat */}
       <div className="flex-1 flex flex-col bg-gray-800 rounded-lg overflow-hidden">
-        {/* Header */}
         <div className="px-4 py-3 border-b border-gray-700">
           <h2 className="text-white font-medium">
             {taskId
               ? conversations.find((c) => c.id === taskId)?.title || t(lang, 'chat')
-              : lang === 'es' ? 'Nueva conversación' : 'New conversation'}
+              : t(lang, 'newConversation')}
           </h2>
         </div>
 
-        {/* Mensajes */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
           {messages.length === 0 && (
             <div className="text-center text-gray-500 mt-12">
-              <p className="text-lg mb-2">
-                {lang === 'es' ? 'Hola, soy tu compañero de trabajo' : 'Hi, I am your coworker'}
-              </p>
-              <p className="text-sm">
-                {lang === 'es'
-                  ? 'Preguntame sobre tu cuenta, configuración, o cualquier cosa del sistema.'
-                  : 'Ask me about your account, configuration, or anything about the system.'}
-              </p>
+              <p className="text-lg mb-2">{t(lang, 'chatGreeting')}</p>
             </div>
           )}
           {messages.map((m) => (
@@ -200,25 +174,20 @@ export default function Chat({ lang }: { lang: string }) {
                 }`}
               >
                 <p className="whitespace-pre-wrap">{m.body}</p>
-                <p className="text-xs opacity-50 mt-1">{relativeTime(m.created_at)}</p>
+                <p className="text-xs opacity-50 mt-1">{relativeTime(lang, m.created_at)}</p>
               </div>
             </div>
           ))}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
         <div className="px-4 py-3 border-t border-gray-700">
           <div className="flex gap-2">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={
-                lang === 'es'
-                  ? 'Escribí tu mensaje...'
-                  : 'Type your message...'
-              }
+              placeholder={t(lang, 'chatGreeting')}
               rows={1}
               className="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={sending}
@@ -228,7 +197,7 @@ export default function Chat({ lang }: { lang: string }) {
               disabled={sending || !input.trim()}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
             >
-              {sending ? '...' : lang === 'es' ? 'Enviar' : 'Send'}
+              {sending ? '...' : t(lang, 'send')}
             </button>
           </div>
         </div>
