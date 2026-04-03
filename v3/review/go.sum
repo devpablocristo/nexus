@@ -37,6 +37,8 @@ github.com/devpablocristo/core/observability/go v0.1.0 h1:9YPGXrK8ySHFOkZrtNlw0I
 github.com/devpablocristo/core/observability/go v0.1.0/go.mod h1:nmhM2yaBjFGux4HzQVGQG4b/NlIAmAXKvx3qS4pP/Fg=
 github.com/devpablocristo/core/security/go v0.1.0 h1:cG1y35bN2RFF2NAnCtDho0kTF8zBjYEOx9fKnHzjjmw=
 github.com/devpablocristo/core/security/go v0.1.0/go.mod h1:iwFHt1JZ4bRwnqysUasQBGCnHsMTJowvMJBgbnqrDAE=
+github.com/devpablocristo/core/webhook/go v0.1.0 h1:qoGSdTMl0nVOs6kFmQShk65cjmJNjnlAovtmwQDQQq8=
+github.com/devpablocristo/core/webhook/go v0.1.0/go.mod h1:mGuGSXvcFWuAtu14P6qblGoNksuy8kGCbkN6P9Qqnyg=
 github.com/dhui/dktest v0.4.6 h1:+DPKyScKSEp3VLtbMDHcUq6V5Lm5zfZZVb0Sk7Ahom4=
 github.com/dhui/dktest v0.4.6/go.mod h1:JHTSYDtKkvFNFHJKqCzVzqXecyv+tKt8EzceOmQOgbU=
 github.com/distribution/reference v0.6.0 h1:0IXCQ5g4/QMHHkarYzh5l+u8T3t73zM5QvfrDyIgxBk=

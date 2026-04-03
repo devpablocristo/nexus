@@ -1,15 +1,9 @@
 package callbacks
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"log/slog"
-	"net/http"
-	"strings"
-	"time"
+
+	webhook "github.com/devpablocristo/core/webhook/go"
 )
 
 const (
@@ -17,6 +11,7 @@ const (
 	EventApprovalResolved = "approval_resolved"
 )
 
+// ApprovalEvent es el payload de dominio que se envía por webhook.
 type ApprovalEvent struct {
 	Event          string  `json:"event"`
 	ApprovalID     string  `json:"approval_id,omitempty"`
@@ -35,92 +30,27 @@ type ApprovalEvent struct {
 	DecidedAt      *string `json:"decided_at,omitempty"`
 }
 
+// ApprovalPublisher es el port que los usecases consumen.
 type ApprovalPublisher interface {
 	Publish(ctx context.Context, event ApprovalEvent) error
 }
 
+// HTTPApprovalPublisher delega en core/webhook Publisher.
 type HTTPApprovalPublisher struct {
-	client       *http.Client
-	token        string
-	pendingURLs  []string
-	resolvedURLs []string
+	pub *webhook.Publisher
 }
 
+// NewHTTPApprovalPublisher crea un publisher de approval events.
 func NewHTTPApprovalPublisher(token string, pendingURLs, resolvedURLs []string) *HTTPApprovalPublisher {
 	return &HTTPApprovalPublisher{
-		client:       &http.Client{Timeout: 5 * time.Second},
-		token:        strings.TrimSpace(token),
-		pendingURLs:  normalizeURLs(pendingURLs),
-		resolvedURLs: normalizeURLs(resolvedURLs),
+		pub: webhook.NewPublisher(token, map[string][]string{
+			EventApprovalPending:  pendingURLs,
+			EventApprovalResolved: resolvedURLs,
+		}),
 	}
 }
 
-func (p *HTTPApprovalPublisher) Publish(ctx context.Context, event ApprovalEvent) error {
-	targets := p.urlsFor(event.Event)
-	if len(targets) == 0 {
-		return nil
-	}
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("marshal callback event: %w", err)
-	}
-	var firstErr error
-	for _, target := range targets {
-		if err := p.post(ctx, target, payload); err != nil {
-			slog.Error("approval callback failed", "url", target, "event", event.Event, "request_id", event.RequestID, "error", err)
-			if firstErr == nil {
-				firstErr = err
-			}
-		}
-	}
-	return firstErr
-}
-
-func (p *HTTPApprovalPublisher) post(ctx context.Context, target string, payload []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if p.token != "" {
-		req.Header.Set("X-Internal-Service-Token", p.token)
-	}
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("send request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= http.StatusMultipleChoices {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("status %d body %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	return nil
-}
-
-func (p *HTTPApprovalPublisher) urlsFor(event string) []string {
-	switch strings.TrimSpace(event) {
-	case EventApprovalPending:
-		return p.pendingURLs
-	case EventApprovalResolved:
-		return p.resolvedURLs
-	default:
-		return nil
-	}
-}
-
-func normalizeURLs(urls []string) []string {
-	out := make([]string, 0, len(urls))
-	seen := make(map[string]struct{}, len(urls))
-	for _, raw := range urls {
-		url := strings.TrimSpace(raw)
-		if url == "" {
-			continue
-		}
-		if _, ok := seen[url]; ok {
-			continue
-		}
-		seen[url] = struct{}{}
-		out = append(out, url)
-	}
-	return out
+// Publish envía el evento al conjunto de URLs correspondiente.
+func (h *HTTPApprovalPublisher) Publish(ctx context.Context, event ApprovalEvent) error {
+	return h.pub.Publish(ctx, event.Event, event)
 }
