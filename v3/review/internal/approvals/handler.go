@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"github.com/devpablocristo/core/http/go/httpjson"
 	approvaldto "github.com/devpablocristo/nexus/v3/review/internal/approvals/handler/dto"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 const defaultListLimit = 50
@@ -104,6 +104,9 @@ func toApprovalResponse(a approvaldomain.Approval) approvaldto.ApprovalResponse 
 		BreakGlass:        a.BreakGlass,
 		RequiredApprovals: a.RequiredApprovals,
 		CurrentApprovals:  approveCount,
+	}
+	if a.OrgID != nil {
+		resp.OrgID = strings.TrimSpace(*a.OrgID)
 	}
 	if a.DecidedAt != nil {
 		s := a.DecidedAt.Format("2006-01-02T15:04:05Z")

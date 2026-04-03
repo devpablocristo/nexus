@@ -11,10 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	approvaldto "github.com/devpablocristo/nexus/v3/review/internal/approvals/handler/dto"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
+	"github.com/devpablocristo/nexus/v3/review/internal/callbacks"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
+	"github.com/google/uuid"
 )
+
+const testApprovalOrgID = "org-test-001"
 
 // --- Fakes ---
 
@@ -142,6 +146,26 @@ func (s *fakeAuditSink) getEvents() []auditEvent {
 	return cp
 }
 
+type fakeApprovalCallbackPublisher struct {
+	mu     sync.Mutex
+	events []callbacks.ApprovalEvent
+}
+
+func (p *fakeApprovalCallbackPublisher) Publish(_ context.Context, event callbacks.ApprovalEvent) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, event)
+	return nil
+}
+
+func (p *fakeApprovalCallbackPublisher) snapshot() []callbacks.ApprovalEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]callbacks.ApprovalEvent, len(p.events))
+	copy(out, p.events)
+	return out
+}
+
 // --- Helpers ---
 
 // setupMux crea un mux con el handler de approvals sin audit sink.
@@ -172,8 +196,10 @@ func seedApproval(t *testing.T, repo *fakeApprovalRepo, reqUpdater *fakeRequestU
 	reqUpdater.mu.Lock()
 	reqUpdater.requests[requestID] = requestdomain.Request{ID: requestID, Status: requestdomain.StatusPendingApproval}
 	reqUpdater.mu.Unlock()
+	orgID := testApprovalOrgID
 	a := approvaldomain.Approval{
 		ID:        uuid.New(),
+		OrgID:     &orgID,
 		RequestID: requestID,
 		Status:    approvaldomain.ApprovalStatusPending,
 		ExpiresAt: time.Now().Add(time.Hour),
@@ -240,13 +266,18 @@ func TestListPending(t *testing.T) {
 				t.Fatalf("código esperado %d, obtenido %d", tc.wantCode, rec.Code)
 			}
 			var resp struct {
-				Data []approvaldomain.Approval `json:"data"`
+				Data []approvaldto.ApprovalResponse `json:"data"`
 			}
 			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 				t.Fatalf("error decodificando respuesta: %v", err)
 			}
 			if len(resp.Data) != tc.wantLen {
 				t.Fatalf("se esperaban %d approvals, se obtuvieron %d", tc.wantLen, len(resp.Data))
+			}
+			for _, item := range resp.Data {
+				if item.OrgID != testApprovalOrgID {
+					t.Fatalf("se esperaba org_id %q, se obtuvo %q", testApprovalOrgID, item.OrgID)
+				}
 			}
 		})
 	}
@@ -279,13 +310,16 @@ func TestListPendingExcludesNonPending(t *testing.T) {
 		t.Fatalf("código esperado 200, obtenido %d", rec.Code)
 	}
 	var resp struct {
-		Data []approvaldomain.Approval `json:"data"`
+		Data []approvaldto.ApprovalResponse `json:"data"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("error decodificando respuesta: %v", err)
 	}
 	if len(resp.Data) != 1 {
 		t.Fatalf("se esperaba 1 approval pendiente, se obtuvieron %d", len(resp.Data))
+	}
+	if resp.Data[0].OrgID != testApprovalOrgID {
+		t.Fatalf("se esperaba org_id %q, se obtuvo %q", testApprovalOrgID, resp.Data[0].OrgID)
 	}
 }
 
@@ -318,9 +352,9 @@ func TestApprove(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name: "approval no encontrada retorna 404",
-			path: "/v1/approvals/" + uuid.New().String() + "/approve",
-			body: `{"decided_by":"admin"}`,
+			name:     "approval no encontrada retorna 404",
+			path:     "/v1/approvals/" + uuid.New().String() + "/approve",
+			body:     `{"decided_by":"admin"}`,
 			wantCode: http.StatusNotFound,
 		},
 		{
@@ -406,6 +440,49 @@ func TestApproveUpdatesRequestStatus(t *testing.T) {
 	}
 }
 
+func TestApprovePublishesResolvedCallback(t *testing.T) {
+	t.Parallel()
+
+	repo := newFakeApprovalRepo()
+	reqUpdater := newFakeRequestUpdater()
+	publisher := &fakeApprovalCallbackPublisher{}
+	orgID := "00000000-0000-0000-0000-000000000001"
+	requestID := uuid.New()
+	reqUpdater.requests[requestID] = requestdomain.Request{
+		ID:     requestID,
+		OrgID:  &orgID,
+		Status: requestdomain.StatusPendingApproval,
+	}
+	approvalID := uuid.New()
+	repo.byID[approvalID] = approvaldomain.Approval{
+		ID:        approvalID,
+		OrgID:     &orgID,
+		RequestID: requestID,
+		Status:    approvaldomain.ApprovalStatusPending,
+		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: time.Now().UTC(),
+	}
+	uc := NewUsecases(repo, reqUpdater).WithApprovalCallbacks(publisher)
+
+	if err := uc.Approve(context.Background(), approvalID, "admin", "ok"); err != nil {
+		t.Fatalf("Approve() error = %v", err)
+	}
+
+	events := publisher.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 callback event, got %d", len(events))
+	}
+	if events[0].Event != callbacks.EventApprovalResolved {
+		t.Fatalf("expected resolved event, got %s", events[0].Event)
+	}
+	if events[0].Decision != string(approvaldomain.ApprovalStatusApproved) {
+		t.Fatalf("expected approved decision, got %s", events[0].Decision)
+	}
+	if events[0].OrgID != orgID {
+		t.Fatalf("expected org_id %s, got %s", orgID, events[0].OrgID)
+	}
+}
+
 // --- Tests: Reject ---
 
 func TestReject(t *testing.T) {
@@ -435,9 +512,9 @@ func TestReject(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name: "approval no encontrada retorna 404",
-			path: "/v1/approvals/" + uuid.New().String() + "/reject",
-			body: `{"decided_by":"admin"}`,
+			name:     "approval no encontrada retorna 404",
+			path:     "/v1/approvals/" + uuid.New().String() + "/reject",
+			body:     `{"decided_by":"admin"}`,
 			wantCode: http.StatusNotFound,
 		},
 		{

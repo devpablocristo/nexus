@@ -1,17 +1,11 @@
 FROM golang:1.26-alpine AS builder
 
-WORKDIR /workspace
+WORKDIR /app
 
-COPY core/ai/go/ core/ai/go/
-COPY core/errors/go/ core/errors/go/
-COPY core/http/go/ core/http/go/
-COPY core/observability/go/ core/observability/go/
-COPY core/security/go/ core/security/go/
-COPY core/databases/postgres/go/ core/databases/postgres/go/
-COPY nexus/v3/review/ nexus/v3/review/
-
-WORKDIR /workspace/nexus/v3/review
+COPY go.mod go.sum ./
 RUN go mod download
+
+COPY . .
 RUN CGO_ENABLED=0 go build -o /nexus-review ./cmd/api
 
 FROM alpine:3.23

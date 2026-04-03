@@ -14,9 +14,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"
+	approvaldto "github.com/devpablocristo/nexus/v3/review/internal/approvals/handler/dto"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
 )
+
+const testApprovalOrgID = "org-test-001"
 
 // --- Fakes ---
 
@@ -175,9 +178,11 @@ func seedPendingApproval(t *testing.T, env testEnv) uuid.UUID {
 		Status: requestdomain.StatusPendingApproval,
 	}
 	env.reqUpdater.mu.Unlock()
+	orgID := testApprovalOrgID
 
 	a := approvaldomain.Approval{
 		ID:                uuid.New(),
+		OrgID:             &orgID,
 		RequestID:         requestID,
 		Status:            approvaldomain.ApprovalStatusPending,
 		RequiredApprovals: 1,
@@ -573,6 +578,15 @@ func TestListPendingReturnsOnlyPending(t *testing.T) {
 	}
 	if len(resp.Data) != 2 {
 		t.Fatalf("se esperaban 2 approvals pendientes, se obtuvieron %d", len(resp.Data))
+	}
+	for _, raw := range resp.Data {
+		var item approvaldto.ApprovalResponse
+		if err := json.Unmarshal(raw, &item); err != nil {
+			t.Fatalf("error decodificando approval: %v", err)
+		}
+		if item.OrgID != testApprovalOrgID {
+			t.Fatalf("se esperaba org_id %q, se obtuvo %q", testApprovalOrgID, item.OrgID)
+		}
 	}
 }
 

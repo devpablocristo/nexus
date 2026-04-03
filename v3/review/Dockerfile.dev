@@ -3,18 +3,10 @@ FROM golang:1.26-alpine
 RUN apk add --no-cache git wget
 RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
 
-WORKDIR /workspace
+WORKDIR /app
 
-COPY core/errors/go/go.mod ./core/errors/go/go.mod
-COPY core/http/go/go.mod ./core/http/go/go.mod
-COPY core/observability/go/go.mod ./core/observability/go/go.mod
-COPY core/security/go/go.mod ./core/security/go/go.mod
-COPY core/databases/postgres/go/go.mod ./core/databases/postgres/go/go.mod
-COPY nexus/v3/review/go.mod nexus/v3/review/go.sum ./nexus/v3/review/
-WORKDIR /workspace/nexus/v3/review
+COPY go.mod go.sum ./
 RUN go mod download
-
-WORKDIR /workspace/nexus/v3/review
 
 EXPOSE 8080
 

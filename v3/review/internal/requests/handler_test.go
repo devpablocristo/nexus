@@ -17,6 +17,7 @@ import (
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	auditdomain "github.com/devpablocristo/nexus/v3/review/internal/audit/usecases/domain"
+	"github.com/devpablocristo/nexus/v3/review/internal/callbacks"
 	"github.com/devpablocristo/nexus/v3/review/internal/requests"
 	requestdto "github.com/devpablocristo/nexus/v3/review/internal/requests/handler/dto"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
@@ -177,6 +178,26 @@ func (s *fakeIdemStore) Set(_ context.Context, key string, id uuid.UUID, resp ma
 	return nil
 }
 
+type fakeApprovalCallbackPublisher struct {
+	mu     sync.Mutex
+	events []callbacks.ApprovalEvent
+}
+
+func (p *fakeApprovalCallbackPublisher) Publish(_ context.Context, event callbacks.ApprovalEvent) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, event)
+	return nil
+}
+
+func (p *fakeApprovalCallbackPublisher) snapshot() []callbacks.ApprovalEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]callbacks.ApprovalEvent, len(p.events))
+	copy(out, p.events)
+	return out
+}
+
 // --- Helpers ---
 
 // setupRequestMux crea un mux con fakes y sin políticas activas (default risk → allow para low).
@@ -270,6 +291,59 @@ func TestSubmitRequestRequireApproval(t *testing.T) {
 	}
 	if resp.AISummary == "" {
 		t.Fatal("esperaba ai_summary no vacio con stub contextualizer")
+	}
+}
+
+func TestSubmitPublishesApprovalPendingCallbackWithOrgIDFromParams(t *testing.T) {
+	t.Parallel()
+
+	reqRepo := newFakeRequestRepo()
+	approvalRepo := newFakeApprovalRepo()
+	publisher := &fakeApprovalCallbackPublisher{}
+	uc := requests.NewUsecases(reqRepo, &fakePolicyLister{}, approvalRepo, requests.NewPolicyEvaluator(),
+		requests.WithIdempotencyStore(newFakeIdemStore()),
+		requests.WithAuditSink(requests.NewAuditSinkAdapter(&fakeAuditRepo{})),
+		requests.WithAI(requests.NewStubContextualizer()),
+		requests.WithApprovalTTL(time.Hour),
+		requests.WithApprovalCallbacks(publisher),
+	)
+
+	out, err := uc.Submit(context.Background(), requests.SubmitInput{
+		RequesterType:  "service",
+		RequesterID:    "ai-service",
+		ActionType:     "alert.silence",
+		TargetSystem:   "pymes",
+		TargetResource: "sale-1",
+		Params:         map[string]any{"org_id": "00000000-0000-0000-0000-000000000001"},
+		Reason:         "requires approval",
+	})
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if out.Approval == nil {
+		t.Fatal("expected approval payload")
+	}
+
+	events := publisher.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 callback event, got %d", len(events))
+	}
+	if events[0].Event != callbacks.EventApprovalPending {
+		t.Fatalf("expected pending event, got %s", events[0].Event)
+	}
+	if events[0].OrgID != "00000000-0000-0000-0000-000000000001" {
+		t.Fatalf("expected org_id propagated, got %q", events[0].OrgID)
+	}
+	if events[0].ApprovalID != out.Approval.ID.String() {
+		t.Fatalf("expected approval id %s, got %s", out.Approval.ID, events[0].ApprovalID)
+	}
+
+	storedApproval, err := approvalRepo.GetByID(context.Background(), out.Approval.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if storedApproval.OrgID == nil || *storedApproval.OrgID != "00000000-0000-0000-0000-000000000001" {
+		t.Fatalf("expected approval org_id stored, got %#v", storedApproval.OrgID)
 	}
 }
 
@@ -896,9 +970,9 @@ func TestSubmitRiskLevels(t *testing.T) {
 	mux := setupRequestMux()
 
 	tests := []struct {
-		name       string
-		actionType string
-		wantRisk   string
+		name         string
+		actionType   string
+		wantRisk     string
 		wantDecision string
 	}{
 		{

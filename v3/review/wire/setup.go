@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/devpablocristo/core/http/go/health"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
+	"github.com/devpablocristo/core/http/go/health"
 	"github.com/devpablocristo/nexus/v3/review/internal/actiontypes"
 	"github.com/devpablocristo/nexus/v3/review/internal/approvals"
 	"github.com/devpablocristo/nexus/v3/review/internal/audit"
+	"github.com/devpablocristo/nexus/v3/review/internal/callbacks"
 	nexusconfig "github.com/devpablocristo/nexus/v3/review/internal/config"
 	"github.com/devpablocristo/nexus/v3/review/internal/dashboard"
 	"github.com/devpablocristo/nexus/v3/review/internal/delegations"
@@ -22,14 +23,17 @@ import (
 )
 
 type Config struct {
-	DatabaseURL    string
-	APIKeys        string
-	AuthIssuerURL  string
-	AuthAudience   string
-	ApprovalTTL    time.Duration
-	AnthropicKey   string
-	SigningKey     string
-	MigrationFiles fs.FS
+	DatabaseURL          string
+	APIKeys              string
+	AuthIssuerURL        string
+	AuthAudience         string
+	ApprovalTTL          time.Duration
+	AnthropicKey         string
+	SigningKey           string
+	CallbackToken        string
+	PendingCallbackURLs  []string
+	ResolvedCallbackURLs []string
+	MigrationFiles       fs.FS
 }
 
 func NewServer(cfg Config) (http.Handler, func(), error) {
@@ -61,6 +65,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	auditSink := requests.NewAuditSinkAdapter(auditRepo)
 	evaluator := requests.NewPolicyEvaluator()
 	riskConfig := requests.DefaultRiskConfig()
+	callbackPublisher := callbacks.NewHTTPApprovalPublisher(cfg.CallbackToken, cfg.PendingCallbackURLs, cfg.ResolvedCallbackURLs)
 
 	// AI contextualizer
 	var ai requests.AIContextualizer = requests.NewStubContextualizer()
@@ -107,8 +112,11 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		requests.WithDelegationChecker(newDelegationCheckerAdapter(delegationUC)),
 		requests.WithAttestationStore(attestationStore),
 		requests.WithApprovalGetter(approvalRepo),
+		requests.WithApprovalCallbacks(callbackPublisher),
 	)
-	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).WithAuditSink(auditSink)
+	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).
+		WithAuditSink(auditSink).
+		WithApprovalCallbacks(callbackPublisher)
 	replayGetter := newReplayRequestGetter(reqRepo)
 	auditUC := audit.NewUsecases(auditRepo, replayGetter)
 

@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	auditdomain "github.com/devpablocristo/nexus/v3/review/internal/audit/usecases/domain"
+	"github.com/devpablocristo/nexus/v3/review/internal/callbacks"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
+	"github.com/google/uuid"
 )
 
 const DefaultApprovalTTL = time.Hour
@@ -73,27 +75,28 @@ type BreakGlassRule struct {
 
 // BreakGlassConfig provee las reglas de break-glass
 type BreakGlassConfig struct {
-	Rules          []BreakGlassRule
+	Rules            []BreakGlassRule
 	DefaultApprovals int
 }
 
 type Usecases struct {
-	reqRepo         Repository
-	policyRepo      PolicyLister
-	approvalRepo    approvalCreator
-	idemStore       IdempotencyStore
-	audit           AuditSink
-	evaluator       *PolicyEvaluator
-	riskConfig      RiskConfig
-	ai              AIContextualizer
-	approvalTTL     time.Duration
-	shadowHits      ShadowHitRecorder
-	execStats       ExecutionStatsStore
-	breakGlassCfg   BreakGlassConfig
-	actionTypes     ActionTypeChecker
-	delegations     DelegationChecker
-	attestations    AttestationStore
-	approvalGetter  ApprovalGetter
+	reqRepo        Repository
+	policyRepo     PolicyLister
+	approvalRepo   approvalCreator
+	idemStore      IdempotencyStore
+	audit          AuditSink
+	evaluator      *PolicyEvaluator
+	riskConfig     RiskConfig
+	ai             AIContextualizer
+	approvalTTL    time.Duration
+	shadowHits     ShadowHitRecorder
+	execStats      ExecutionStatsStore
+	breakGlassCfg  BreakGlassConfig
+	actionTypes    ActionTypeChecker
+	delegations    DelegationChecker
+	attestations   AttestationStore
+	approvalGetter ApprovalGetter
+	approvalEvents callbacks.ApprovalPublisher
 }
 
 // Option configura el constructor de Usecases (functional options pattern — Uber).
@@ -145,6 +148,10 @@ func WithAttestationStore(s AttestationStore) Option {
 
 func WithApprovalGetter(g ApprovalGetter) Option {
 	return func(u *Usecases) { u.approvalGetter = g }
+}
+
+func WithApprovalCallbacks(p callbacks.ApprovalPublisher) Option {
+	return func(u *Usecases) { u.approvalEvents = p }
 }
 
 // NewUsecases crea Usecases con los 3 repos obligatorios + evaluator, y opciones para el resto.
@@ -208,6 +215,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 	now := time.Now().UTC()
 	req := requestdomain.Request{
 		ID:             uuid.New(),
+		OrgID:          orgIDFromParams(in.Params),
 		IdempotencyKey: in.IdempotencyKey,
 		RequesterType:  requestdomain.RequesterType(in.RequesterType),
 		RequesterID:    in.RequesterID,
@@ -385,6 +393,7 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 	// Crear approval después (referencia a request existente)
 	approval := approvaldomain.Approval{
 		ID:                uuid.New(),
+		OrgID:             req.OrgID,
 		RequestID:         req.ID,
 		Status:            approvaldomain.ApprovalStatusPending,
 		ExpiresAt:         expiresAt,
@@ -408,6 +417,20 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 			"Sent to approval. Expires at "+expiresAt.Format(time.RFC3339), nil),
 		req.ID, auditdomain.EventSentToApproval,
 	)
+	u.emitApprovalCallback(ctx, callbacks.ApprovalEvent{
+		Event:          callbacks.EventApprovalPending,
+		ApprovalID:     approval.ID.String(),
+		OrgID:          stringOrEmpty(req.OrgID),
+		RequestID:      req.ID.String(),
+		Decision:       string(approval.Status),
+		ActionType:     req.ActionType,
+		TargetResource: req.TargetResource,
+		Reason:         req.Reason,
+		RiskLevel:      string(req.RiskLevel),
+		AISummary:      stringPtrOrNil(strings.TrimSpace(req.AISummary)),
+		CreatedAt:      approval.CreatedAt.UTC().Format(time.RFC3339Nano),
+		ExpiresAt:      timePtrRFC3339(&approval.ExpiresAt),
+	})
 
 	out := SubmitOutput{
 		RequestID:      req.ID,
@@ -424,6 +447,53 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 	}
 	u.cacheIdempotency(ctx, in.IdempotencyKey, req.ID, out, expiresAt)
 	return out, nil
+}
+
+func (u *Usecases) emitApprovalCallback(ctx context.Context, event callbacks.ApprovalEvent) {
+	if u.approvalEvents == nil {
+		return
+	}
+	if err := u.approvalEvents.Publish(ctx, event); err != nil {
+		slog.Error("approval callback publish failed", "event", event.Event, "request_id", event.RequestID, "error", err)
+	}
+}
+
+func stringOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
+}
+
+func stringPtrOrNil(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func orgIDFromParams(params map[string]any) *string {
+	if len(params) == 0 {
+		return nil
+	}
+	raw, ok := params["org_id"]
+	if !ok {
+		return nil
+	}
+	value := strings.TrimSpace(fmt.Sprint(raw))
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func timePtrRFC3339(value *time.Time) *string {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	formatted := value.UTC().Format(time.RFC3339Nano)
+	return &formatted
 }
 
 func (u *Usecases) cacheIdempotency(ctx context.Context, idemKey *string, reqID uuid.UUID, out SubmitOutput, expiresAt time.Time) {
@@ -540,14 +610,14 @@ func requestToMap(r requestdomain.Request) map[string]any {
 
 // SimulateOutput es el resultado de una simulación (dry-run)
 type SimulateOutput struct {
-	Decision       string         `json:"decision"`
-	RiskLevel      string         `json:"risk_level"`
-	DecisionReason string         `json:"decision_reason"`
-	Status         string         `json:"status"`
-	PolicyMatched  *string        `json:"policy_matched,omitempty"`
-	RiskAssessment *RiskAssessment `json:"risk_assessment"`
-	WouldRequireApproval bool     `json:"would_require_approval"`
-	AISummary      string         `json:"ai_summary,omitempty"`
+	Decision             string          `json:"decision"`
+	RiskLevel            string          `json:"risk_level"`
+	DecisionReason       string          `json:"decision_reason"`
+	Status               string          `json:"status"`
+	PolicyMatched        *string         `json:"policy_matched,omitempty"`
+	RiskAssessment       *RiskAssessment `json:"risk_assessment"`
+	WouldRequireApproval bool            `json:"would_require_approval"`
+	AISummary            string          `json:"ai_summary,omitempty"`
 }
 
 // Simulate evalúa una request sin persistir nada. Dry-run puro.
@@ -555,6 +625,7 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 	now := time.Now().UTC()
 
 	req := requestdomain.Request{
+		OrgID:          orgIDFromParams(in.Params),
 		RequesterType:  requestdomain.RequesterType(in.RequesterType),
 		RequesterID:    in.RequesterID,
 		ActionType:     in.ActionType,
@@ -665,22 +736,22 @@ type BatchSimulateInput struct {
 
 // BatchSimulateOutput contiene los resultados agregados y por request.
 type BatchSimulateOutput struct {
-	Total          int                  `json:"total"`
-	Allowed        int                  `json:"allowed"`
-	Denied         int                  `json:"denied"`
+	Total           int                 `json:"total"`
+	Allowed         int                 `json:"allowed"`
+	Denied          int                 `json:"denied"`
 	RequireApproval int                 `json:"require_approval"`
-	ByRisk         map[string]int       `json:"by_risk"`
-	Results        []BatchSimulateItem  `json:"results"`
+	ByRisk          map[string]int      `json:"by_risk"`
+	Results         []BatchSimulateItem `json:"results"`
 }
 
 // BatchSimulateItem es el resultado de una simulación individual dentro de un batch.
 type BatchSimulateItem struct {
-	ActionType     string `json:"action_type"`
-	RequesterID    string `json:"requester_id"`
-	TargetSystem   string `json:"target_system"`
-	Decision       string `json:"decision"`
-	RiskLevel      string `json:"risk_level"`
-	DecisionReason string `json:"decision_reason"`
+	ActionType     string  `json:"action_type"`
+	RequesterID    string  `json:"requester_id"`
+	TargetSystem   string  `json:"target_system"`
+	Decision       string  `json:"decision"`
+	RiskLevel      string  `json:"risk_level"`
+	DecisionReason string  `json:"decision_reason"`
 	PolicyMatched  *string `json:"policy_matched,omitempty"`
 }
 
@@ -740,15 +811,15 @@ type ApprovalSimulateInput struct {
 
 // ApprovalSimulateOutput muestra el estado resultante sin ejecutar.
 type ApprovalSimulateOutput struct {
-	CurrentStatus      string `json:"current_status"`
-	SimulatedStatus    string `json:"simulated_status"`
-	BreakGlass         bool   `json:"break_glass"`
-	RequiredApprovals  int    `json:"required_approvals"`
-	CurrentApprovals   int    `json:"current_approvals"`
-	AfterApprovals     int    `json:"after_approvals"`
-	WouldFinalize      bool   `json:"would_finalize"`
-	AlreadyDecided     bool   `json:"already_decided"`
-	Reason             string `json:"reason"`
+	CurrentStatus     string `json:"current_status"`
+	SimulatedStatus   string `json:"simulated_status"`
+	BreakGlass        bool   `json:"break_glass"`
+	RequiredApprovals int    `json:"required_approvals"`
+	CurrentApprovals  int    `json:"current_approvals"`
+	AfterApprovals    int    `json:"after_approvals"`
+	WouldFinalize     bool   `json:"would_finalize"`
+	AlreadyDecided    bool   `json:"already_decided"`
+	Reason            string `json:"reason"`
 }
 
 // SimulateApproval simula qué pasa si un aprobador aprueba o rechaza una request pendiente.

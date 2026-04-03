@@ -19,8 +19,7 @@ services:
 
   review:
     build:
-      context: ../../
-      dockerfile: nexus/v3/review/Dockerfile
+      context: ./review
     restart: unless-stopped
     environment:
       PORT: "8080"
@@ -44,8 +43,7 @@ services:
 
   companion:
     build:
-      context: ../../
-      dockerfile: nexus/v3/companion/Dockerfile
+      context: ./companion
     restart: unless-stopped
     environment:
       PORT: "8080"

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,14 +40,17 @@ func main() {
 	}
 
 	cfg := wire.Config{
-		DatabaseURL:    databaseURL,
-		APIKeys:        os.Getenv("NEXUS_API_KEYS"),
-		AuthIssuerURL:  os.Getenv("NEXUS_AUTH_ISSUER_URL"),
-		AuthAudience:   os.Getenv("NEXUS_AUTH_AUDIENCE"),
-		ApprovalTTL:    approvalTTL,
-		AnthropicKey:   os.Getenv("ANTHROPIC_API_KEY"),
-		SigningKey:     os.Getenv("NEXUS_SIGNING_KEY"),
-		MigrationFiles: migrations.Files,
+		DatabaseURL:          databaseURL,
+		APIKeys:              os.Getenv("NEXUS_API_KEYS"),
+		AuthIssuerURL:        os.Getenv("NEXUS_AUTH_ISSUER_URL"),
+		AuthAudience:         os.Getenv("NEXUS_AUTH_AUDIENCE"),
+		ApprovalTTL:          approvalTTL,
+		AnthropicKey:         os.Getenv("ANTHROPIC_API_KEY"),
+		SigningKey:           os.Getenv("NEXUS_SIGNING_KEY"),
+		CallbackToken:        strings.TrimSpace(os.Getenv("REVIEW_CALLBACK_TOKEN")),
+		PendingCallbackURLs:  splitCSV(os.Getenv("REVIEW_APPROVAL_PENDING_CALLBACK_URLS")),
+		ResolvedCallbackURLs: splitCSV(os.Getenv("REVIEW_APPROVAL_RESOLVED_CALLBACK_URLS")),
+		MigrationFiles:       migrations.Files,
 	}
 	if cfg.APIKeys == "" {
 		logger.Error("NEXUS_API_KEYS is required")
@@ -82,4 +86,15 @@ func main() {
 		logger.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func splitCSV(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := strings.TrimSpace(part); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }

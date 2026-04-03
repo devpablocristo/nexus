@@ -17,6 +17,7 @@ type ApprovalDecisionDTO struct {
 // ApprovalResponse representa una approval en la respuesta HTTP.
 type ApprovalResponse struct {
 	ID                string                `json:"id"`
+	OrgID             string                `json:"org_id,omitempty"`
 	RequestID         string                `json:"request_id"`
 	Status            string                `json:"status"`
 	DecidedBy         string                `json:"decided_by,omitempty"`

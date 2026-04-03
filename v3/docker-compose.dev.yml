@@ -1,20 +1,20 @@
 services:
   review:
     build:
-      context: ../../
-      dockerfile: nexus/v3/review/Dockerfile.dev
-    working_dir: /workspace/nexus/v3/review
+      context: ./review
+      dockerfile: Dockerfile.dev
+    working_dir: /app
     volumes:
-      - ./review:/workspace/nexus/v3/review
+      - ./review:/app
     command: ["air", "-c", ".air.toml"]
 
   companion:
     build:
-      context: ../../
-      dockerfile: nexus/v3/companion/Dockerfile.dev
-    working_dir: /workspace/nexus/v3/companion
+      context: ./companion
+      dockerfile: Dockerfile.dev
+    working_dir: /app
     volumes:
-      - ./companion:/workspace/nexus/v3/companion
+      - ./companion:/app
     command: ["air", "-c", ".air.toml"]
 
   console:

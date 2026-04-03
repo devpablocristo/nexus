@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	auditdomain "github.com/devpablocristo/nexus/v3/review/internal/audit/usecases/domain"
+	"github.com/devpablocristo/nexus/v3/review/internal/callbacks"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
+	"github.com/google/uuid"
 )
 
 type RequestUpdater interface {
@@ -26,6 +28,7 @@ type Usecases struct {
 	repo        Repository
 	requestRepo RequestUpdater
 	audit       AuditSink
+	callbacks   callbacks.ApprovalPublisher
 }
 
 func NewUsecases(repo Repository, requestRepo RequestUpdater) *Usecases {
@@ -35,6 +38,11 @@ func NewUsecases(repo Repository, requestRepo RequestUpdater) *Usecases {
 // WithAuditSink inyecta el audit sink (patrón builder de v2).
 func (u *Usecases) WithAuditSink(sink AuditSink) *Usecases {
 	u.audit = sink
+	return u
+}
+
+func (u *Usecases) WithApprovalCallbacks(publisher callbacks.ApprovalPublisher) *Usecases {
+	u.callbacks = publisher
 	return u
 }
 
@@ -115,6 +123,7 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
 		"Approved: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
+	u.emitApprovalResolved(ctx, req, a)
 
 	return nil
 }
@@ -164,6 +173,7 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventRejected, decidedBy,
 		"Rejected: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
+	u.emitApprovalResolved(ctx, req, a)
 
 	return nil
 }
@@ -178,3 +188,41 @@ func (u *Usecases) emitAudit(ctx context.Context, requestID uuid.UUID, eventType
 	}
 }
 
+func (u *Usecases) emitApprovalResolved(ctx context.Context, req requestdomain.Request, approval approvaldomain.Approval) {
+	if u.callbacks == nil {
+		return
+	}
+	if err := u.callbacks.Publish(ctx, callbacks.ApprovalEvent{
+		Event:        callbacks.EventApprovalResolved,
+		ApprovalID:   approval.ID.String(),
+		OrgID:        stringOrEmpty(req.OrgID, approval.OrgID),
+		RequestID:    approval.RequestID.String(),
+		Decision:     string(approval.Status),
+		DecidedBy:    strings.TrimSpace(approval.DecidedBy),
+		DecisionNote: strings.TrimSpace(approval.DecisionNote),
+		DecidedAt:    timePtrRFC3339(approval.DecidedAt),
+	}); err != nil {
+		slog.Error("approval callback publish failed", "event", callbacks.EventApprovalResolved, "request_id", approval.RequestID, "error", err)
+	}
+}
+
+func stringOrEmpty(values ...*string) string {
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		trimmed := strings.TrimSpace(*value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func timePtrRFC3339(value *time.Time) *string {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	formatted := value.UTC().Format(time.RFC3339Nano)
+	return &formatted
+}
