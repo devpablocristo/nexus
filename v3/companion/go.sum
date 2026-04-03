@@ -39,6 +39,8 @@ github.com/devpablocristo/core/governance/go v0.1.0 h1:g+485c7j/dSrjRgGJtCzsZzAL
 github.com/devpablocristo/core/governance/go v0.1.0/go.mod h1:IoHJZyEg61+lhQawpoWvDgVdL5JV6YZXxWmaz1Rke+0=
 github.com/devpablocristo/core/http/go v0.1.0 h1:90jYeCjE3JkM3UU6NFww3GaTLRFDUnFJX5yHh5q12gA=
 github.com/devpablocristo/core/http/go v0.1.0/go.mod h1:z4xQjIs6RFYQ0DdKZPi7N/0aWkOJFdBVTSPpf5kHcYA=
+github.com/devpablocristo/core/http/go v0.1.1 h1:sTqSbMjbULIpl7XMK/CJjZ8Gned3/LcxyQbx6h6ioMo=
+github.com/devpablocristo/core/http/go v0.1.1/go.mod h1:z4xQjIs6RFYQ0DdKZPi7N/0aWkOJFdBVTSPpf5kHcYA=
 github.com/devpablocristo/core/observability/go v0.0.0-20260328151810-084828e80b26 h1:9cx+TSIkrLflRn5m13TYnfqRe84GEImmrtaH7PO4qqA=
 github.com/devpablocristo/core/observability/go v0.0.0-20260328151810-084828e80b26/go.mod h1:nmhM2yaBjFGux4HzQVGQG4b/NlIAmAXKvx3qS4pP/Fg=
 github.com/devpablocristo/core/observability/go v0.1.0 h1:9YPGXrK8ySHFOkZrtNlw0IYYyBBooNN/PR+/YLl0GJs=
