@@ -41,6 +41,21 @@ services:
       timeout: 3s
       retries: 30
 
+  # LLM local (OpenAI-compatible API en :11434). Modelos: `docker compose exec ollama ollama pull <modelo>`.
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "${NEXUS_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   companion:
     build:
       context: ./companion
@@ -57,15 +72,17 @@ services:
       PYMES_BASE_URL: "${PYMES_BASE_URL:-}"
       PYMES_API_KEY: "${PYMES_API_KEY:-}"
       COMPANION_WATCHER_INTERVAL_SEC: "${COMPANION_WATCHER_INTERVAL_SEC:-0}"
-      NEXUS_LLM_PROVIDER: "${NEXUS_LLM_PROVIDER:-echo}"
-      NEXUS_LLM_API_KEY: "${NEXUS_LLM_API_KEY:-}"
-      NEXUS_LLM_MODEL: "${NEXUS_LLM_MODEL:-}"
+      NEXUS_LLM_PROVIDER: "${NEXUS_LLM_PROVIDER:-ollama}"
+      NEXUS_LLM_API_KEY: "${NEXUS_LLM_API_KEY:-http://ollama:11434}"
+      NEXUS_LLM_MODEL: "${NEXUS_LLM_MODEL:-qwen2.5:3b}"
     ports:
       - "${NEXUS_COMPANION_PORT:-18085}:8080"
     depends_on:
       postgres:
         condition: service_healthy
       review:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1 || exit 1"]
@@ -90,3 +107,4 @@ services:
 
 volumes:
   postgres-data:
+  ollama-data:
