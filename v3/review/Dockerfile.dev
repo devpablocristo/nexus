@@ -3,9 +3,9 @@ FROM golang:1.26-alpine
 RUN apk add --no-cache git wget
 RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.61.7
 
-WORKDIR /app
+WORKDIR /workspace/nexus/v3/review
 
-COPY go.mod go.sum ./
+COPY nexus/v3/review/go.mod nexus/v3/review/go.sum ./
 RUN go mod download
 
 EXPOSE 8080
