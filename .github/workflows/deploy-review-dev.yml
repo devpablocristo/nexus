@@ -116,18 +116,15 @@ jobs:
 
       - name: Smoke check
         run: |
+          # /healthz queda interceptado por el frontend de Cloud Run; usamos /readyz.
           for i in {1..20}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/healthz" || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/readyz" || true)
             if [[ "$code" == "200" ]]; then
-              echo "healthz OK"
-              break
+              echo "readyz OK"
+              exit 0
             fi
-            echo "attempt $i: healthz code=$code, retrying in 3s..."
+            echo "attempt $i: readyz code=$code, retrying in 3s..."
             sleep 3
           done
-          code=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/readyz" || true)
-          if [[ "$code" != "200" ]]; then
-            echo "::error::readyz no respondió 200 (code=$code)"
-            exit 1
-          fi
-          echo "readyz OK"
+          echo "::error::readyz no respondió 200 tras reintentos"
+          exit 1
