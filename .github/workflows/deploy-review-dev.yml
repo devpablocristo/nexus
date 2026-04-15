@@ -95,7 +95,7 @@ jobs:
             --image="$IMAGE_URI" \
             --service-account="$CLOUD_RUN_SERVICE_ACCOUNT" \
             --add-cloudsql-instances="$CLOUDSQL_INSTANCE" \
-            --set-env-vars="PORT=8080,APPROVAL_DEFAULT_TTL=3600,DATABASE_URL=${DATABASE_URL}" \
+            --set-env-vars="APPROVAL_DEFAULT_TTL=3600,DATABASE_URL=${DATABASE_URL}" \
             --set-secrets="NEXUS_API_KEYS=${SECRET_API_KEYS_NAME}:latest,NEXUS_SIGNING_KEY=${SECRET_SIGNING_KEY_NAME}:latest,REVIEW_CALLBACK_TOKEN=${SECRET_CALLBACK_TOKEN_NAME}:latest" \
             --allow-unauthenticated \
             --port=8080 \
