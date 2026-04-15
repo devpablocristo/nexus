@@ -79,13 +79,12 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$db_password"
-          db_password_enc="$(python3 -c "import os, urllib.parse; print(urllib.parse.quote(os.environ['DB_PASSWORD'], safe=''))" )"
+          export DB_PASSWORD="$db_password"
+          db_password_enc="$(python3 -c "import os, urllib.parse; print(urllib.parse.quote(os.environ['DB_PASSWORD'], safe=''))")"
           # Cloud Run conecta a Cloud SQL vía unix socket: /cloudsql/<instance-connection>
           database_url="postgres://${DB_USER}:${db_password_enc}@/${DB_NAME}?host=/cloudsql/${CLOUDSQL_INSTANCE}"
           echo "::add-mask::$database_url"
           echo "DATABASE_URL=$database_url" >> "$GITHUB_ENV"
-        env:
-          DB_PASSWORD: ${{ env.DB_PASSWORD }}
 
       - name: Deploy a Cloud Run
         run: |
