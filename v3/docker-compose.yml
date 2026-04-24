@@ -1,7 +1,5 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
+  review-postgres:
     environment:
       POSTGRES_DB: nexus_review
       POSTGRES_USER: postgres
@@ -9,7 +7,6 @@ services:
     ports:
       - "${NEXUS_POSTGRES_PORT:-15434}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_review"]
@@ -23,8 +20,8 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
-      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/nexus_review?sslmode=disable"
-      NEXUS_API_KEYS: "admin=${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key},prometheus=${NEXUS_REVIEW_PROMETHEUS_API_KEY:-nexus-review-prometheus-dev-key}"
+      DATABASE_URL: "postgres://postgres:postgres@review-postgres:5432/nexus_review?sslmode=disable"
+      NEXUS_API_KEYS: "admin=${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key},prometheus=${NEXUS_REVIEW_PROMETHEUS_API_KEY:-nexus-review-prometheus-dev-key},ponti=${NEXUS_REVIEW_PONTI_API_KEY:-nexus-review-ponti-dev-key}"
       NEXUS_AUTH_ISSUER_URL: "${NEXUS_AUTH_ISSUER_URL:-}"
       NEXUS_AUTH_AUDIENCE: "${NEXUS_AUTH_AUDIENCE:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
@@ -33,7 +30,7 @@ services:
     ports:
       - "${NEXUS_REVIEW_PORT:-18084}:8080"
     depends_on:
-      postgres:
+      review-postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1 || exit 1"]
@@ -41,28 +38,13 @@ services:
       timeout: 3s
       retries: 30
 
-  # LLM local (OpenAI-compatible API en :11434). Modelos: `docker compose exec ollama ollama pull <modelo>`.
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    ports:
-      - "${NEXUS_OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
   companion:
     build:
       context: ./companion
     restart: unless-stopped
     environment:
       PORT: "8080"
-      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/nexus_companion?sslmode=disable"
+      DATABASE_URL: "postgres://postgres:postgres@review-postgres:5432/nexus_companion?sslmode=disable"
       NEXUS_API_KEYS: "admin=${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}"
       NEXUS_AUTH_ISSUER_URL: "${NEXUS_AUTH_ISSUER_URL:-}"
       NEXUS_AUTH_AUDIENCE: "${NEXUS_AUTH_AUDIENCE:-}"
@@ -78,7 +60,7 @@ services:
     ports:
       - "${NEXUS_COMPANION_PORT:-18085}:8080"
     depends_on:
-      postgres:
+      review-postgres:
         condition: service_healthy
       review:
         condition: service_healthy
@@ -105,6 +87,3 @@ services:
       companion:
         condition: service_healthy
 
-volumes:
-  postgres-data:
-  ollama-data:

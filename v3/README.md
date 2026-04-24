@@ -1,6 +1,6 @@
 # Nexus v3
 
-Stack activo: **Nexus Governance** (categoría canónica: `GovernanceService`), **Companion** (categoría canónica: `ProductAgent` transversal), **console** (UI) y **Postgres**.
+Stack activo: **Nexus Governance** (categoría canónica: `GovernanceService`), **Companion** (categoría canónica: `ProductAgent` transversal), **console** (UI) y shared local infra (`postgres` + `ollama`) desde `local-infra`.
 
 ## Taxonomía IA
 
@@ -14,7 +14,7 @@ Desde este directorio (`v3/`):
 
 ```bash
 test -f .env || cp .env.example .env
-docker compose up -d --build
+docker compose --project-directory /home/pablo/Projects/Pablo/nexus/v3 -f /home/pablo/Projects/Pablo/local-infra/docker-compose.yml -f /home/pablo/Projects/Pablo/local-infra/docker-compose.ollama.yml -f docker-compose.yml up -d --build
 ```
 
 Si Postgres ya tenía volumen **sin** la base `nexus_companion`:
@@ -23,7 +23,7 @@ Si Postgres ya tenía volumen **sin** la base `nexus_companion`:
 bash scripts/dev/ensure-companion-db.sh
 ```
 
-Luego reiniciá **companion** si hacía falta la base (`docker compose restart companion`).
+Luego reiniciá **companion** si hacía falta la base (`docker compose --project-directory /home/pablo/Projects/Pablo/nexus/v3 -f /home/pablo/Projects/Pablo/local-infra/docker-compose.yml -f /home/pablo/Projects/Pablo/local-infra/docker-compose.ollama.yml -f docker-compose.yml restart companion`).
 
 ## URLs por defecto (host)
 
