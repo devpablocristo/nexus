@@ -44,8 +44,8 @@ func (a taskMemoryAdapter) UpsertTaskMemory(ctx context.Context, taskID uuid.UUI
 	return err
 }
 
-func reviewSyncInterval() time.Duration {
-	return envconfig.Duration("COMPANION_REVIEW_SYNC_INTERVAL_SEC", 30*time.Second)
+func nexusSyncInterval() time.Duration {
+	return envconfig.Duration("COMPANION_NEXUS_SYNC_INTERVAL_SEC", 30*time.Second)
 }
 
 func watcherInterval() time.Duration {
@@ -58,8 +58,8 @@ type Config struct {
 	APIKeys        string
 	AuthIssuerURL  string
 	AuthAudience   string
-	ReviewBaseURL  string
-	ReviewAPIKey   string
+	NexusBaseURL   string
+	NexusAPIKey    string
 	PymesBaseURL   string
 	PymesAPIKey    string
 	LLMProvider    string
@@ -82,8 +82,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		return nil, nil, fmt.Errorf("run migrations: %w", err)
 	}
 
-	reviewGateway := newReviewGateway(cfg.ReviewBaseURL, cfg.ReviewAPIKey)
-	rc := reviewGateway.client
+	nexusGateway := newNexusGateway(cfg.NexusBaseURL, cfg.NexusAPIKey)
+	rc := nexusGateway.client
 	pymesClient := pymesclient.NewClient(cfg.PymesBaseURL, cfg.PymesAPIKey)
 
 	// Connectors module
@@ -94,14 +94,14 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	}
 	connRepo := connectors.NewPostgresRepository(db)
 	reviewChecker := connectors.NewReviewCheckerAdapter(func(c context.Context, id uuid.UUID) (string, string, int, error) {
-		return reviewGateway.GetRequestMeta(c, id.String())
+		return nexusGateway.GetRequestMeta(c, id.String())
 	})
 	connUC := connectors.NewUsecases(connRepo, connReg, reviewChecker)
 	connHandler := connectors.NewHandler(connUC)
 
 	repo := tasks.NewPostgresRepository(db)
-	uc := tasks.NewUsecases(repo, reviewGateway)
-	uc.SetReviewSyncInterval(reviewSyncInterval())
+	uc := tasks.NewUsecases(repo, nexusGateway)
+	uc.SetReviewSyncInterval(nexusSyncInterval())
 	uc.SetExecutor(connUC)
 	h := tasks.NewHandler(uc)
 
@@ -155,7 +155,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	cleanup := func() {
 		db.Close()
 	}
-	if d := reviewSyncInterval(); d > 0 {
+	if d := nexusSyncInterval(); d > 0 {
 		syncCtx, syncCancel := context.WithCancel(context.Background())
 		go uc.RunReviewSyncLoop(syncCtx, d, 50)
 		prev := cleanup

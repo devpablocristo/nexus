@@ -19,8 +19,8 @@ permissions:
   contents: read
 
 jobs:
-  review:
-    name: review tests
+  nexus:
+    name: nexus tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -32,15 +32,15 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: nexus/v3/review/go.mod
-          cache-dependency-path: nexus/v3/review/go.sum
+          go-version-file: nexus/v3/nexus/go.mod
+          cache-dependency-path: nexus/v3/nexus/go.sum
 
       - name: Run go test
-        working-directory: nexus/v3/review
+        working-directory: nexus/v3/nexus
         run: go test ./...
 
       - name: Run go vet
-        working-directory: nexus/v3/review
+        working-directory: nexus/v3/nexus
         run: go vet ./...
 
       - name: Check migration versions
@@ -104,7 +104,7 @@ jobs:
     name: smoke
     runs-on: ubuntu-latest
     needs:
-      - review
+      - nexus
       - companion
       - console
     timeout-minutes: 25
@@ -122,9 +122,9 @@ jobs:
         working-directory: nexus/v3
         run: docker compose config --services
 
-      - name: Start review and companion stack
+      - name: Start nexus and companion stack
         working-directory: nexus/v3
-        run: docker compose up -d --build review-postgres review companion
+        run: docker compose up -d --build governance-postgres nexus companion
 
       - name: Run smoke suite
         working-directory: nexus/v3

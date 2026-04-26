@@ -1,11 +1,11 @@
 services:
-  review:
+  nexus:
     build:
-      context: ./review
+      context: ./nexus
       dockerfile: Dockerfile.dev
     working_dir: /app
     volumes:
-      - ./review:/app
+      - ./nexus:/app
     command: ["air", "-c", ".air.toml"]
 
   companion:
@@ -22,9 +22,9 @@ services:
       context: ./console
       dockerfile: Dockerfile.dev
     environment:
-      NEXUS_REVIEW_PROXY_TARGET: "http://review:8080"
+      NEXUS_PROXY_TARGET: "http://nexus:8080"
       NEXUS_COMPANION_PROXY_TARGET: "http://companion:8080"
-      NEXUS_REVIEW_PROXY_API_KEY: "${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key}"
+      NEXUS_PROXY_API_KEY: "${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
       NEXUS_COMPANION_PROXY_API_KEY: "${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}"
     volumes:
       - ./console/src:/app/src

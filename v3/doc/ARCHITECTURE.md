@@ -51,7 +51,7 @@ La frontera de confianza se materializa con un principal efectivo (`actor_id`, `
 ┌─────────────────────────────────────────────────────┐
 │                  PostgreSQL                          │
 │           (1 instancia, N databases)                │
-│           nexus_review │ nexus_companion │ ...      │
+│       nexus_governance │ nexus_companion │ ...      │
 └─────────────────────────────────────────────────────┘
 ```
 

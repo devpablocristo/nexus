@@ -1,7 +1,7 @@
 import { createBrowserStorageNamespace } from '@devpablocristo/core-browser/storage'
 
 const storage = createBrowserStorageNamespace({
-  namespace: 'nexus-review',
+  namespace: 'nexus',
   hostAware: false,
 })
 

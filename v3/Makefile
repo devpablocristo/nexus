@@ -10,7 +10,7 @@ check-migrations:
 	bash scripts/quality/check-migrations.sh
 
 test:
-	bash scripts/quality/go-in-env.sh review test ./... -count=1
+	bash scripts/quality/go-in-env.sh nexus test ./... -count=1
 	bash scripts/quality/go-in-env.sh companion test ./... -count=1
 
 qa: check-migrations
@@ -62,15 +62,15 @@ up-ponti-local:
 	@bash scripts/seed-ponti-policies.sh
 	@echo ""
 	@echo "Stack listo:"
-	@echo "  - Nexus review   : http://localhost:18084"
-	@echo "  - Nexus console  : http://localhost:13001"
-	@echo "  - Ponti backend  : http://localhost:8080"
-	@echo "  - Ponti AI       : http://localhost:8090"
-	@echo "  - Ponti BFF      : http://localhost:3000"
-	@echo "  - Ponti UI       : http://localhost:5173"
+	@echo "  - Nexus governance : http://localhost:18084"
+	@echo "  - Nexus console    : http://localhost:13001"
+	@echo "  - Ponti backend    : http://localhost:8080"
+	@echo "  - Ponti AI         : http://localhost:8090"
+	@echo "  - Ponti BFF        : http://localhost:3000"
+	@echo "  - Ponti UI         : http://localhost:5173"
 
 down-ponti-local:
 	$(DC_PONTI) down
 
 logs-ponti-local:
-	$(DC_PONTI) logs -f ponti-backend ponti-ai ponti-ui ponti-bff review
+	$(DC_PONTI) logs -f ponti-backend ponti-ai ponti-ui ponti-bff nexus

@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # Seed idempotente de action_types + policies que consume ponti-backend.
-# Se ejecuta despues de `up-ponti-local` contra el Nexus review local.
+# Se ejecuta despues de `up-ponti-local` contra el Nexus governance local.
 
 set -euo pipefail
 
-BASE="${NEXUS_REVIEW_URL:-http://localhost:18084}"
-ADMIN_KEY="${NEXUS_REVIEW_ADMIN_API_KEY:-nexus-review-admin-dev-key}"
-PONTI_KEY="${NEXUS_REVIEW_PONTI_API_KEY:-nexus-review-ponti-dev-key}"
+BASE="${NEXUS_BASE_URL:-http://localhost:18084}"
+ADMIN_KEY="${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
+PONTI_KEY="${NEXUS_PONTI_API_KEY:-nexus-ponti-dev-key}"
 
-echo "Seed Nexus Review en $BASE"
+echo "Seed Nexus governance en $BASE"
 echo ""
 
 wait_for_ready() {
   for i in {1..40}; do
     if curl -fsS "$BASE/readyz" >/dev/null 2>&1; then
-      echo "Nexus Review listo."
+      echo "Nexus governance listo."
       return 0
     fi
     sleep 1
   done
-  echo "ERROR: Nexus Review no respondio en 40s" >&2
+  echo "ERROR: Nexus governance no respondio en 40s" >&2
   exit 1
 }
 

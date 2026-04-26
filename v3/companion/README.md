@@ -28,7 +28,7 @@ Las capacidades especificas de un sistema externo viven en **connectors**. Pymes
 ## Requisitos
 
 - PostgreSQL (base dedicada `nexus_companion` en la misma instancia que `Nexus Governance`).
-- `Nexus Governance` accesible con `REVIEW_BASE_URL` y `REVIEW_API_KEY` (misma clave que un rol válido en `NEXUS_API_KEYS` del servicio de governance, p. ej. `admin`).
+- `Nexus Governance` accesible con `NEXUS_BASE_URL` y `NEXUS_API_KEY` (misma clave que un rol válido en `NEXUS_API_KEYS` del servicio de governance, p. ej. `admin`).
 
 ## Variables de entorno
 

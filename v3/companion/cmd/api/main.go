@@ -28,14 +28,14 @@ func main() {
 		logger.Error("DATABASE_URL is required")
 		os.Exit(1)
 	}
-	reviewBase := os.Getenv("REVIEW_BASE_URL")
-	if reviewBase == "" {
-		logger.Error("REVIEW_BASE_URL is required")
+	nexusBase := os.Getenv("NEXUS_BASE_URL")
+	if nexusBase == "" {
+		logger.Error("NEXUS_BASE_URL is required")
 		os.Exit(1)
 	}
-	reviewKey := os.Getenv("REVIEW_API_KEY")
-	if reviewKey == "" {
-		logger.Error("REVIEW_API_KEY is required")
+	nexusKey := os.Getenv("NEXUS_API_KEY")
+	if nexusKey == "" {
+		logger.Error("NEXUS_API_KEY is required")
 		os.Exit(1)
 	}
 	apiKeys := os.Getenv("NEXUS_API_KEYS")
@@ -49,8 +49,8 @@ func main() {
 		APIKeys:        apiKeys,
 		AuthIssuerURL:  os.Getenv("NEXUS_AUTH_ISSUER_URL"),
 		AuthAudience:   os.Getenv("NEXUS_AUTH_AUDIENCE"),
-		ReviewBaseURL:  reviewBase,
-		ReviewAPIKey:   reviewKey,
+		NexusBaseURL:   nexusBase,
+		NexusAPIKey:    nexusKey,
 		PymesBaseURL:   os.Getenv("PYMES_BASE_URL"),
 		PymesAPIKey:    os.Getenv("PYMES_API_KEY"),
 		LLMProvider:    os.Getenv("NEXUS_LLM_PROVIDER"),

@@ -5,7 +5,7 @@ Autor: Pablo Cristo
 Fecha: 19 de marzo de 2026
 Version: 5.0
 
-Nota de naming: este RFC conserva el nombre histórico `Nexus Review`. En la taxonomía actual del ecosistema, el nombre comercial vigente es `Nexus Governance` y su categoría canónica es `GovernanceService`. El código sigue viviendo en `v3/review/`.
+Nota de naming: este RFC conserva el nombre histórico `Nexus Review`. En la taxonomía actual del ecosistema, el nombre comercial vigente es `Nexus Governance` y su categoría canónica es `GovernanceService`. El código vive en `v3/nexus/` (renombrado desde `v3/review/`).
 
 ## 1. Resumen
 

@@ -27,7 +27,7 @@ services:
     depends_on:
       ponti-postgres:
         condition: service_healthy
-      review:
+      nexus:
         condition: service_healthy
     environment:
       HTTP_SERVER_NAME: http-server
@@ -58,9 +58,9 @@ services:
       AI_SERVICE_URL: http://ponti-ai:8090
       AI_SERVICE_KEY: servicekey123
       AI_SERVICE_TIMEOUT_MS: "300000"
-      # Nexus (intra-red: review es el service de nexus/v3/docker-compose.yml)
-      REVIEW_URL: http://review:8080
-      REVIEW_API_KEY: ${NEXUS_REVIEW_PONTI_API_KEY:-nexus-review-ponti-dev-key}
+      # Nexus (intra-red: nexus es el servicio de governance en nexus/v3/docker-compose.yml)
+      REVIEW_URL: http://nexus:8080
+      REVIEW_API_KEY: ${NEXUS_PONTI_API_KEY:-nexus-ponti-dev-key}
       REVIEW_SYNC_COOLDOWN_SEC: "60"
       GO_MODULES_TOKEN: ${GO_MODULES_TOKEN:-}
     ports:

@@ -49,8 +49,8 @@ NEXUS_CONSOLE_PORT=13001
 NEXUS_POSTGRES_PORT=15434
 
 # API keys
-NEXUS_REVIEW_ADMIN_API_KEY=nexus-review-admin-dev-key
-NEXUS_REVIEW_PROMETHEUS_API_KEY=nexus-review-prometheus-dev-key
+NEXUS_ADMIN_API_KEY=nexus-admin-dev-key
+NEXUS_PROMETHEUS_API_KEY=nexus-prometheus-dev-key
 NEXUS_COMPANION_ADMIN_API_KEY=nexus-companion-admin-dev-key
 
 # Auth humano opcional (OIDC/JWKS, ej. Clerk)
@@ -61,7 +61,7 @@ NEXUS_AUTH_AUDIENCE=
 ANTHROPIC_API_KEY=          # opcional, sin key usa fallback
 
 # Config
-NEXUS_REVIEW_APPROVAL_TTL=3600   # segundos
+NEXUS_APPROVAL_TTL=3600   # segundos
 ```
 
 ### Variables internas (dentro del container)
@@ -69,7 +69,7 @@ NEXUS_REVIEW_APPROVAL_TTL=3600   # segundos
 | Variable | Descripción | Ejemplo |
 |----------|-------------|---------|
 | `PORT` | Puerto HTTP | 8080 |
-| `DATABASE_URL` | Connection string PostgreSQL | postgres://...@postgres:5432/nexus_review |
+| `DATABASE_URL` | Connection string PostgreSQL | postgres://...@governance-postgres:5432/nexus_governance |
 | `NEXUS_API_KEYS` | Pares key=value separados por coma | admin=key1,prometheus=key2 |
 | `ANTHROPIC_API_KEY` | API key de Claude (opcional) | sk-ant-... |
 | `APPROVAL_DEFAULT_TTL` | TTL de approvals en segundos | 3600 |

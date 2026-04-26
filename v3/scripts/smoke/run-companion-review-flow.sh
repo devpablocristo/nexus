@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke: Companion crea task → propose → Review persiste request y Companion guarda vínculo.
-# Requiere: docker compose up (review + companion + postgres), migraciones aplicadas,
-# action_type companion.propose (migración Review 0009).
+# Smoke: Companion crea task → propose → Nexus governance persiste request y Companion guarda vínculo.
+# Requiere: docker compose up (nexus + companion + governance-postgres), migraciones aplicadas,
+# action_type companion.propose (migración Nexus 0009).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

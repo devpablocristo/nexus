@@ -2,7 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: /v3/review
+    directory: /v3/nexus
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
@@ -32,12 +32,12 @@ updates:
           - "*"
 
   - package-ecosystem: docker
-    directory: /v3/review
+    directory: /v3/nexus
     schedule:
       interval: monthly
     open-pull-requests-limit: 1
     groups:
-      docker-review:
+      docker-nexus:
         patterns:
           - "*"
 

@@ -11,14 +11,14 @@ bash "$ROOT/scripts/quality/check-migrations.sh"
 echo "=== docker compose config ==="
 docker compose --project-directory "$ROOT" -f "$ROOT/docker-compose.yml" config --services >/dev/null
 
-echo "=== review go build ==="
-"$GO_IN_ENV" review build ./...
+echo "=== nexus go build ==="
+"$GO_IN_ENV" nexus build ./...
 
-echo "=== review go vet ==="
-"$GO_IN_ENV" review vet ./...
+echo "=== nexus go vet ==="
+"$GO_IN_ENV" nexus vet ./...
 
-echo "=== review go test ==="
-"$GO_IN_ENV" review test ./... -count=1 -race
+echo "=== nexus go test ==="
+"$GO_IN_ENV" nexus test ./... -count=1 -race
 
 echo "=== companion go build ==="
 "$GO_IN_ENV" companion build ./...

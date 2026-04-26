@@ -4,7 +4,7 @@
 set -euo pipefail
 
 API_BASE="${API_BASE:-http://localhost:18084}"
-API_KEY="${API_KEY:-nexus-review-admin-dev-key}"
+API_KEY="${API_KEY:-nexus-admin-dev-key}"
 
 # Companion (puerto host por defecto alineado con docker-compose)
 COMPANION_BASE="${COMPANION_BASE:-http://localhost:18085}"

@@ -2,7 +2,7 @@
 
 ## 1. Contexto
 
-Repositorio activo de Nexus: `v3/` (`review/` + `console/`).
+Repositorio activo de Nexus: `v3/` (`nexus/` governance + `companion/` agente IA + `console/` UI).
 
 Las capacidades reutilizables ya viven en el repo externo `core/`.
 
@@ -219,9 +219,10 @@ Los nombres de servicio NO llevan prefijo `nexus-`. El `COMPOSE_PROJECT_NAME` ya
 
 | Tipo | Servicio compose | Container resultante |
 |------|-----------------|---------------------|
-| Servicio Go | `review` | `nexus-v3-review-1` |
-| DB | `review-postgres` | `nexus-v3-review-postgres-1` |
-| Volumen | `review-postgres-data` | — |
+| Servicio Go (governance) | `nexus` | `nexus-v3-nexus-1` |
+| Servicio Go (agente IA) | `companion` | `nexus-v3-companion-1` |
+| DB governance | `governance-postgres` | `nexus-v3-governance-postgres-1` |
+| Volumen | `governance-postgres-data` | — |
 | Frontend | `console` | `nexus-v3-console-1` |
 
 ### Variables de entorno
