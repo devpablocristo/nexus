@@ -57,6 +57,11 @@ func (e *PolicyEvaluator) Matches(expression string, request map[string]any, now
 	return b, nil
 }
 
+func (e *PolicyEvaluator) Validate(expression string) error {
+	_, err := e.program(expression)
+	return err
+}
+
 func (e *PolicyEvaluator) program(expression string) (cel.Program, error) {
 	if e.envErr != nil {
 		return nil, e.envErr

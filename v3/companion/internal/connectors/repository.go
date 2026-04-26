@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	domain "github.com/devpablocristo/nexus/v3/companion/internal/connectors/usecases/domain"
@@ -35,9 +36,9 @@ func (r *PostgresRepository) SaveConnector(ctx context.Context, c domain.Connect
 	}
 
 	_, err := r.db.Pool().Exec(ctx, `
-		INSERT INTO companion_connectors (id, name, kind, enabled, config_json, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-	`, c.ID, c.Name, c.Kind, c.Enabled, c.ConfigJSON, c.CreatedAt, c.UpdatedAt)
+		INSERT INTO companion_connectors (id, org_id, name, kind, enabled, config_json, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+	`, c.ID, c.OrgID, c.Name, c.Kind, c.Enabled, c.ConfigJSON, c.CreatedAt, c.UpdatedAt)
 	if err != nil {
 		return domain.Connector{}, fmt.Errorf("insert connector: %w", err)
 	}
@@ -47,7 +48,7 @@ func (r *PostgresRepository) SaveConnector(ctx context.Context, c domain.Connect
 // GetConnector obtiene un conector por ID.
 func (r *PostgresRepository) GetConnector(ctx context.Context, id uuid.UUID) (domain.Connector, error) {
 	row := r.db.Pool().QueryRow(ctx, `
-		SELECT id, name, kind, enabled, config_json, created_at, updated_at
+		SELECT id, org_id, name, kind, enabled, config_json, created_at, updated_at
 		FROM companion_connectors WHERE id = $1
 	`, id)
 	c, err := scanConnector(row)
@@ -63,7 +64,7 @@ func (r *PostgresRepository) GetConnector(ctx context.Context, id uuid.UUID) (do
 // ListConnectors lista todos los conectores.
 func (r *PostgresRepository) ListConnectors(ctx context.Context) ([]domain.Connector, error) {
 	rows, err := r.db.Pool().Query(ctx, `
-		SELECT id, name, kind, enabled, config_json, created_at, updated_at
+		SELECT id, org_id, name, kind, enabled, config_json, created_at, updated_at
 		FROM companion_connectors ORDER BY created_at ASC
 	`)
 	if err != nil {
@@ -87,9 +88,9 @@ func (r *PostgresRepository) UpdateConnector(ctx context.Context, c domain.Conne
 	c.UpdatedAt = time.Now().UTC()
 	tag, err := r.db.Pool().Exec(ctx, `
 		UPDATE companion_connectors
-		SET name = $2, enabled = $3, config_json = $4, updated_at = $5
+		SET org_id = $2, name = $3, enabled = $4, config_json = $5, updated_at = $6
 		WHERE id = $1
-	`, c.ID, c.Name, c.Enabled, c.ConfigJSON, c.UpdatedAt)
+	`, c.ID, c.OrgID, c.Name, c.Enabled, c.ConfigJSON, c.UpdatedAt)
 	if err != nil {
 		return domain.Connector{}, fmt.Errorf("update connector: %w", err)
 	}
@@ -122,22 +123,84 @@ func (r *PostgresRepository) SaveExecution(ctx context.Context, e domain.Executi
 	if len(e.ResultJSON) == 0 {
 		e.ResultJSON = json.RawMessage(`{}`)
 	}
+	if len(e.EvidenceJSON) == 0 {
+		e.EvidenceJSON = json.RawMessage(`{}`)
+	}
 	if len(e.Payload) == 0 {
 		e.Payload = json.RawMessage(`{}`)
 	}
 
 	_, err := r.db.Pool().Exec(ctx, `
 		INSERT INTO companion_connector_executions
-			(id, connector_id, operation, status, external_ref, payload, result_json,
-			 error_message, retryable, duration_ms, task_id, review_request_id, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-	`, e.ID, e.ConnectorID, e.Operation, e.Status, e.ExternalRef,
-		e.Payload, e.ResultJSON, nullIfEmpty(e.ErrorMessage),
-		e.Retryable, e.DurationMS, e.TaskID, e.ReviewRequestID, e.CreatedAt)
+			(id, connector_id, org_id, actor_id, operation, status, external_ref, payload, result_json,
+			 evidence_json, error_message, retryable, duration_ms, idempotency_key, task_id, review_request_id, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+	`, e.ID, e.ConnectorID, e.OrgID, e.ActorID, e.Operation, e.Status, e.ExternalRef,
+		e.Payload, e.ResultJSON, e.EvidenceJSON, nullIfEmpty(e.ErrorMessage),
+		e.Retryable, e.DurationMS, e.IdempotencyKey, e.TaskID, e.ReviewRequestID, e.CreatedAt)
 	if err != nil {
+		if isUniqueViolation(err) {
+			return ErrConflict
+		}
 		return fmt.Errorf("save execution: %w", err)
 	}
 	return nil
+}
+
+func (r *PostgresRepository) AcquireExecutionLock(ctx context.Context, lockKey string) (bool, error) {
+	if lockKey == "" {
+		return true, nil
+	}
+	tag, err := r.db.Pool().Exec(ctx, `
+		INSERT INTO companion_connector_execution_locks (lock_key, created_at)
+		VALUES ($1, now())
+		ON CONFLICT (lock_key) DO NOTHING
+	`, lockKey)
+	if err != nil {
+		return false, fmt.Errorf("acquire execution lock: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+func (r *PostgresRepository) ReleaseExecutionLock(ctx context.Context, lockKey string) error {
+	if lockKey == "" {
+		return nil
+	}
+	_, err := r.db.Pool().Exec(ctx, `DELETE FROM companion_connector_execution_locks WHERE lock_key = $1`, lockKey)
+	if err != nil {
+		return fmt.Errorf("release execution lock: %w", err)
+	}
+	return nil
+}
+
+// GetExecutionByIdempotency devuelve una ejecución ya registrada para una key de idempotencia.
+func (r *PostgresRepository) GetExecutionByIdempotency(ctx context.Context, taskID uuid.UUID, operation string, reviewRequestID *uuid.UUID, idempotencyKey string) (domain.ExecutionResult, error) {
+	if taskID == uuid.Nil || idempotencyKey == "" {
+		return domain.ExecutionResult{}, ErrNotFound
+	}
+	var reviewID any
+	if reviewRequestID != nil {
+		reviewID = *reviewRequestID
+	}
+	row := r.db.Pool().QueryRow(ctx, `
+		SELECT id, connector_id, org_id, actor_id, operation, status, external_ref, payload, result_json,
+		       evidence_json, error_message, retryable, duration_ms, idempotency_key, task_id, review_request_id, created_at
+		FROM companion_connector_executions
+		WHERE task_id = $1
+		  AND operation = $2
+		  AND idempotency_key = $3
+		  AND (($4::uuid IS NULL AND review_request_id IS NULL) OR review_request_id = $4::uuid)
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, taskID, operation, idempotencyKey, reviewID)
+	execution, err := scanExecution(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ExecutionResult{}, ErrNotFound
+		}
+		return domain.ExecutionResult{}, fmt.Errorf("get execution by idempotency: %w", err)
+	}
+	return execution, nil
 }
 
 // ListExecutions lista resultados de ejecución de un conector.
@@ -146,8 +209,8 @@ func (r *PostgresRepository) ListExecutions(ctx context.Context, connectorID uui
 		limit = 50
 	}
 	rows, err := r.db.Pool().Query(ctx, `
-		SELECT id, connector_id, operation, status, external_ref, payload, result_json,
-		       error_message, retryable, duration_ms, task_id, review_request_id, created_at
+		SELECT id, connector_id, org_id, actor_id, operation, status, external_ref, payload, result_json,
+		       evidence_json, error_message, retryable, duration_ms, idempotency_key, task_id, review_request_id, created_at
 		FROM companion_connector_executions
 		WHERE connector_id = $1
 		ORDER BY created_at DESC LIMIT $2
@@ -182,7 +245,7 @@ type rowScanner interface {
 func scanConnector(row rowScanner) (domain.Connector, error) {
 	var c domain.Connector
 	var configRaw []byte
-	err := row.Scan(&c.ID, &c.Name, &c.Kind, &c.Enabled, &configRaw, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.OrgID, &c.Name, &c.Kind, &c.Enabled, &configRaw, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return domain.Connector{}, err
 	}
@@ -194,13 +257,13 @@ func scanConnector(row rowScanner) (domain.Connector, error) {
 
 func scanExecution(row rowScanner) (domain.ExecutionResult, error) {
 	var e domain.ExecutionResult
-	var payloadRaw, resultRaw []byte
+	var payloadRaw, resultRaw, evidenceRaw []byte
 	var errMsg *string
 
 	err := row.Scan(
-		&e.ID, &e.ConnectorID, &e.Operation, &e.Status, &e.ExternalRef,
-		&payloadRaw, &resultRaw, &errMsg, &e.Retryable, &e.DurationMS,
-		&e.TaskID, &e.ReviewRequestID, &e.CreatedAt,
+		&e.ID, &e.ConnectorID, &e.OrgID, &e.ActorID, &e.Operation, &e.Status, &e.ExternalRef,
+		&payloadRaw, &resultRaw, &evidenceRaw, &errMsg, &e.Retryable, &e.DurationMS,
+		&e.IdempotencyKey, &e.TaskID, &e.ReviewRequestID, &e.CreatedAt,
 	)
 	if err != nil {
 		return domain.ExecutionResult{}, err
@@ -211,8 +274,16 @@ func scanExecution(row rowScanner) (domain.ExecutionResult, error) {
 	if resultRaw != nil {
 		e.ResultJSON = json.RawMessage(resultRaw)
 	}
+	if evidenceRaw != nil {
+		e.EvidenceJSON = json.RawMessage(evidenceRaw)
+	}
 	if errMsg != nil {
 		e.ErrorMessage = *errMsg
 	}
 	return e, nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

@@ -11,6 +11,14 @@ import (
 	sharedapikey "github.com/devpablocristo/core/security/go/apikey"
 )
 
+type apiKeyMetadata struct {
+	Actor            string
+	Role             string
+	OrgID            string
+	Scopes           []string
+	ServicePrincipal bool
+}
+
 func newAuthMiddleware(apiKeys, issuerURL, audience string) (func(http.Handler) http.Handler, error) {
 	apiKeyAuth, err := newAPIKeyAuthenticator(apiKeys)
 	if err != nil {
@@ -47,7 +55,8 @@ func newAuthMiddleware(apiKeys, issuerURL, audience string) (func(http.Handler) 
 }
 
 func newAPIKeyAuthenticator(raw string) (authn.Authenticator, error) {
-	base, err := sharedapikey.NewAuthenticator(raw)
+	sanitized, metadata := parseAPIKeyConfig(raw)
+	base, err := sharedapikey.NewAuthenticator(sanitized)
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +66,19 @@ func newAPIKeyAuthenticator(raw string) (authn.Authenticator, error) {
 			if !ok {
 				return nil, errors.New("authn: invalid api key")
 			}
+			meta := metadata[principal.Name]
+			actor := firstNonEmpty(meta.Actor, principal.Name)
+			role := firstNonEmpty(meta.Role, principal.Name)
+			scopes := append([]string(nil), meta.Scopes...)
+			if len(scopes) == 0 {
+				scopes = defaultAPIKeyScopes(principal.Name)
+			}
 			return &authn.Principal{
-				Actor:      principal.Name,
-				Role:       principal.Name,
+				OrgID:      meta.OrgID,
+				Actor:      actor,
+				Role:       role,
+				Scopes:     scopes,
+				Claims:     map[string]any{"service_principal": meta.ServicePrincipal},
 				AuthMethod: "api_key",
 			}, nil
 		},
@@ -106,17 +125,37 @@ func newJWTAuthenticator(issuerURL, audience string) authn.Authenticator {
 }
 
 func withIdentityHeaders(r *http.Request, principal *authn.Principal, method string) *http.Request {
-	if principal == nil || method != "jwt" {
+	if principal == nil {
 		return r
 	}
 
 	req := r.Clone(r.Context())
 	req.Header = r.Header.Clone()
-	if strings.TrimSpace(req.Header.Get("X-User-ID")) == "" && strings.TrimSpace(principal.Actor) != "" {
-		req.Header.Set("X-User-ID", principal.Actor)
+	req.Header.Del("X-User-ID")
+	req.Header.Del("X-Org-ID")
+	req.Header.Del("X-Auth-Role")
+	req.Header.Del("X-Auth-Scopes")
+	req.Header.Del("X-Auth-Method")
+	req.Header.Del("X-Service-Principal")
+	if actor := strings.TrimSpace(principal.Actor); actor != "" {
+		req.Header.Set("X-User-ID", actor)
 	}
-	if strings.TrimSpace(req.Header.Get("X-Org-ID")) == "" && strings.TrimSpace(principal.OrgID) != "" {
-		req.Header.Set("X-Org-ID", principal.OrgID)
+	if orgID := strings.TrimSpace(principal.OrgID); orgID != "" {
+		req.Header.Set("X-Org-ID", orgID)
+	}
+	if role := strings.TrimSpace(principal.Role); role != "" {
+		req.Header.Set("X-Auth-Role", role)
+	}
+	if len(principal.Scopes) > 0 {
+		req.Header.Set("X-Auth-Scopes", strings.Join(principal.Scopes, " "))
+	}
+	if principal.AuthMethod != "" {
+		req.Header.Set("X-Auth-Method", principal.AuthMethod)
+	} else if method != "" {
+		req.Header.Set("X-Auth-Method", method)
+	}
+	if principalServicePrincipal(principal) {
+		req.Header.Set("X-Service-Principal", "true")
 	}
 	return req
 }
@@ -196,4 +235,137 @@ func claimScopes(claims map[string]any) []string {
 	default:
 		return nil
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func parseAPIKeyConfig(raw string) (string, map[string]apiKeyMetadata) {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n'
+	})
+	sanitized := make([]string, 0, len(parts))
+	metadata := make(map[string]apiKeyMetadata, len(parts))
+	for _, part := range parts {
+		piece := strings.TrimSpace(part)
+		if piece == "" {
+			continue
+		}
+		name, rhs, ok := strings.Cut(piece, "=")
+		if !ok {
+			sanitized = append(sanitized, piece)
+			continue
+		}
+		name = strings.TrimSpace(name)
+		rhs = strings.TrimSpace(rhs)
+		if name == "" || rhs == "" {
+			sanitized = append(sanitized, piece)
+			continue
+		}
+		secret, meta := parseAPIKeyValue(rhs)
+		if secret == "" {
+			secret = rhs
+		}
+		sanitized = append(sanitized, name+"="+secret)
+		if meta.Actor == "" {
+			meta.Actor = name
+		}
+		if meta.Role == "" {
+			meta.Role = name
+		}
+		metadata[name] = meta
+	}
+	return strings.Join(sanitized, ","), metadata
+}
+
+func parseAPIKeyValue(value string) (string, apiKeyMetadata) {
+	segments := strings.Split(value, "|")
+	secret := strings.TrimSpace(segments[0])
+	meta := apiKeyMetadata{}
+	for _, segment := range segments[1:] {
+		key, raw, ok := strings.Cut(strings.TrimSpace(segment), "=")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(strings.ToLower(key)) {
+		case "actor", "actor_id", "user", "user_id":
+			meta.Actor = strings.TrimSpace(raw)
+		case "role":
+			meta.Role = strings.TrimSpace(raw)
+		case "org", "org_id", "tenant", "tenant_id":
+			meta.OrgID = strings.TrimSpace(raw)
+		case "scope", "scopes":
+			meta.Scopes = parseScopeList(raw)
+		case "service", "service_principal":
+			meta.ServicePrincipal = parseBool(raw)
+		}
+	}
+	return secret, meta
+}
+
+func parseScopeList(raw string) []string {
+	raw = strings.NewReplacer(";", " ", "+", " ").Replace(raw)
+	fields := strings.Fields(raw)
+	out := make([]string, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		scope := strings.TrimSpace(field)
+		if scope == "" {
+			continue
+		}
+		if _, exists := seen[scope]; exists {
+			continue
+		}
+		seen[scope] = struct{}{}
+		out = append(out, scope)
+	}
+	return out
+}
+
+func parseBool(raw string) bool {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "1", "true", "yes", "y", "service":
+		return true
+	default:
+		return false
+	}
+}
+
+func defaultAPIKeyScopes(name string) []string {
+	switch strings.TrimSpace(strings.ToLower(name)) {
+	case "admin":
+		return []string{
+			"companion:tasks:read",
+			"companion:tasks:write",
+			"companion:connectors:execute",
+			"companion:connectors:admin",
+		}
+	default:
+		return nil
+	}
+}
+
+func principalServicePrincipal(principal *authn.Principal) bool {
+	if principal == nil || principal.Claims == nil {
+		return false
+	}
+	for _, key := range []string{"service_principal", "service"} {
+		switch value := principal.Claims[key].(type) {
+		case bool:
+			if value {
+				return true
+			}
+		case string:
+			if parseBool(value) {
+				return true
+			}
+		}
+	}
+	return false
 }

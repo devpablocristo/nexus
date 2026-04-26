@@ -17,6 +17,7 @@ const defaultListLimit = 50
 
 type approvalUsecase interface {
 	ListPending(ctx context.Context, limit int) ([]approvaldomain.Approval, error)
+	GetByID(ctx context.Context, approvalID uuid.UUID) (approvaldomain.Approval, error)
 	Approve(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error
 	Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error
 }
@@ -36,6 +37,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) listPending(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusApprovalsDecide) {
+		return
+	}
 	list, err := h.uc.ListPending(r.Context(), defaultListLimit)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list pending approvals failed")
@@ -43,12 +47,18 @@ func (h *Handler) listPending(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]approvaldto.ApprovalResponse, 0, len(list))
 	for _, a := range list {
+		if !canAccessApprovalOrg(r, a) {
+			continue
+		}
 		out = append(out, toApprovalResponse(a))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusApprovalsDecide) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -59,7 +69,21 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
-	if err := h.uc.Approve(r.Context(), id, decisionActorID(r, body.DecidedBy), body.Note); err != nil {
+	actorID := decisionActorID(r, body.DecidedBy)
+	if actorID == "" {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "decided_by or authenticated user is required")
+		return
+	}
+	approval, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writeApprovalUsecaseError(w, err)
+		return
+	}
+	if !canAccessApprovalOrg(r, approval) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "approval org is not allowed for this principal")
+		return
+	}
+	if err := h.uc.Approve(r.Context(), id, actorID, body.Note); err != nil {
 		writeApprovalUsecaseError(w, err)
 		return
 	}
@@ -67,6 +91,9 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusApprovalsDecide) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -77,7 +104,21 @@ func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
-	if err := h.uc.Reject(r.Context(), id, decisionActorID(r, body.DecidedBy), body.Note); err != nil {
+	actorID := decisionActorID(r, body.DecidedBy)
+	if actorID == "" {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "decided_by or authenticated user is required")
+		return
+	}
+	approval, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writeApprovalUsecaseError(w, err)
+		return
+	}
+	if !canAccessApprovalOrg(r, approval) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "approval org is not allowed for this principal")
+		return
+	}
+	if err := h.uc.Reject(r.Context(), id, actorID, body.Note); err != nil {
 		writeApprovalUsecaseError(w, err)
 		return
 	}
@@ -142,8 +183,8 @@ func writeApprovalUsecaseError(w http.ResponseWriter, err error) {
 }
 
 func decisionActorID(r *http.Request, explicit string) string {
-	if value := strings.TrimSpace(explicit); value != "" {
-		return value
+	if actor := strings.TrimSpace(r.Header.Get("X-User-ID")); actor != "" {
+		return actor
 	}
-	return strings.TrimSpace(r.Header.Get("X-User-ID"))
+	return strings.TrimSpace(explicit)
 }

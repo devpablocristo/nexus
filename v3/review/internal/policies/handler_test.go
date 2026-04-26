@@ -355,7 +355,7 @@ func TestCreatePolicyResponseFields(t *testing.T) {
 	body := `{
 		"name":"full-policy",
 		"description":"politica completa de test",
-		"expression":"amount > 100",
+		"expression":"request.action_type == 'payment'",
 		"effect":"deny",
 		"risk_override":"high",
 		"priority":5,
@@ -375,8 +375,8 @@ func TestCreatePolicyResponseFields(t *testing.T) {
 	if resp.Description != "politica completa de test" {
 		t.Errorf("description: expected 'politica completa de test', got %s", resp.Description)
 	}
-	if resp.Expression != "amount > 100" {
-		t.Errorf("expression: expected 'amount > 100', got %s", resp.Expression)
+	if resp.Expression != "request.action_type == 'payment'" {
+		t.Errorf("expression: expected valid action_type expression, got %s", resp.Expression)
 	}
 	if resp.Effect != "deny" {
 		t.Errorf("effect: expected deny, got %s", resp.Effect)
@@ -654,10 +654,10 @@ func TestPolicyUpdatePartialFields(t *testing.T) {
 		},
 		{
 			name: "update expression",
-			body: `{"expression":"amount > 50"}`,
+			body: `{"expression":"request.action_type == 'transfer'"}`,
 			check: func(t *testing.T, resp policydto.PolicyResponse) {
-				if resp.Expression != "amount > 50" {
-					t.Errorf("expression: expected 'amount > 50', got %s", resp.Expression)
+				if resp.Expression != "request.action_type == 'transfer'" {
+					t.Errorf("expression: expected valid transfer expression, got %s", resp.Expression)
 				}
 			},
 		},
@@ -699,10 +699,10 @@ func TestPolicyUpdatePartialFields(t *testing.T) {
 		},
 		{
 			name: "update risk_override",
-			body: `{"risk_override":"critical"}`,
+			body: `{"risk_override":"high"}`,
 			check: func(t *testing.T, resp policydto.PolicyResponse) {
-				if resp.RiskOverride == nil || *resp.RiskOverride != "critical" {
-					t.Errorf("risk_override: expected critical, got %v", resp.RiskOverride)
+				if resp.RiskOverride == nil || *resp.RiskOverride != "high" {
+					t.Errorf("risk_override: expected high, got %v", resp.RiskOverride)
 				}
 			},
 		},
@@ -860,7 +860,7 @@ func TestCreateShadowPolicy(t *testing.T) {
 	mux := setupPolicyMux()
 
 	resp := createPolicy(t, mux,
-		`{"name":"shadow-pol","expression":"amount > 1000","effect":"deny","priority":1,"enabled":true,"mode":"shadow"}`)
+		`{"name":"shadow-pol","expression":"request.action_type == 'payment'","effect":"deny","priority":1,"enabled":true,"mode":"shadow"}`)
 
 	if resp.Mode != "shadow" {
 		t.Errorf("mode: expected shadow, got %s", resp.Mode)

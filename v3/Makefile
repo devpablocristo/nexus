@@ -1,16 +1,19 @@
 # Nexus v3
-.PHONY: test qa smoke e2e acceptance up down build logs dev up-ponti-local down-ponti-local logs-ponti-local
+.PHONY: test qa check-migrations smoke e2e acceptance up down build logs dev dev-logs dev-down up-ponti-local down-ponti-local logs-ponti-local
 
-LOCAL_INFRA_DIR := /home/pablo/Projects/Pablo/local-infra
-DC := docker compose --project-directory $(CURDIR) -f $(LOCAL_INFRA_DIR)/docker-compose.yml -f $(LOCAL_INFRA_DIR)/docker-compose.ollama.yml -f $(CURDIR)/docker-compose.yml
-DC_PONTI := docker compose --project-directory $(CURDIR) -f $(LOCAL_INFRA_DIR)/docker-compose.yml -f $(LOCAL_INFRA_DIR)/docker-compose.ollama.yml -f $(CURDIR)/docker-compose.yml -f $(CURDIR)/docker-compose.ponti.yml
+DC := docker compose --project-directory $(CURDIR) -f $(CURDIR)/docker-compose.yml
+DC_DEV := $(DC) -f $(CURDIR)/docker-compose.dev.yml
+DC_PONTI := $(DC) -f $(CURDIR)/docker-compose.ponti.yml
 
 # --- Quality ---
-test:
-	cd review && go test ./... -count=1
-	cd companion && go test ./... -count=1
+check-migrations:
+	bash scripts/quality/check-migrations.sh
 
-qa:
+test:
+	bash scripts/quality/go-in-env.sh review test ./... -count=1
+	bash scripts/quality/go-in-env.sh companion test ./... -count=1
+
+qa: check-migrations
 	bash scripts/quality/check-api.sh
 
 # --- Docker ---
@@ -42,13 +45,13 @@ acceptance: smoke e2e
 # --- Dev (hot reload) ---
 dev:
 	@test -f .env || cp .env.example .env
-	docker compose --project-directory $(CURDIR) -f /home/pablo/Projects/Pablo/local-infra/docker-compose.yml -f /home/pablo/Projects/Pablo/local-infra/docker-compose.ollama.yml -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+	$(DC_DEV) up -d --build
 
 dev-logs:
-	docker compose --project-directory $(CURDIR) -f /home/pablo/Projects/Pablo/local-infra/docker-compose.yml -f /home/pablo/Projects/Pablo/local-infra/docker-compose.ollama.yml -f docker-compose.yml -f docker-compose.dev.yml logs -f
+	$(DC_DEV) logs -f
 
 dev-down:
-	docker compose --project-directory $(CURDIR) -f /home/pablo/Projects/Pablo/local-infra/docker-compose.yml -f /home/pablo/Projects/Pablo/local-infra/docker-compose.ollama.yml -f docker-compose.yml -f docker-compose.dev.yml down
+	$(DC_DEV) down
 
 # --- Ponti local (infra + nexus + ponti-backend + ponti-ai + frontend) ---
 # Levanta todo el stack necesario para probar ponti contra Nexus local.

@@ -13,7 +13,6 @@ import (
 
 	"github.com/devpablocristo/core/config/go/envconfig"
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
-	"github.com/devpablocristo/core/governance/go/reviewclient"
 	"github.com/devpablocristo/core/http/go/health"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors"
 	"github.com/devpablocristo/nexus/v3/companion/internal/connectors/registry"
@@ -83,7 +82,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		return nil, nil, fmt.Errorf("run migrations: %w", err)
 	}
 
-	rc := reviewclient.NewClient(cfg.ReviewBaseURL, cfg.ReviewAPIKey)
+	reviewGateway := newReviewGateway(cfg.ReviewBaseURL, cfg.ReviewAPIKey)
+	rc := reviewGateway.client
 	pymesClient := pymesclient.NewClient(cfg.PymesBaseURL, cfg.PymesAPIKey)
 
 	// Connectors module
@@ -93,18 +93,14 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		connReg.Register(registry.NewPymesConnector(pymesClient))
 	}
 	connRepo := connectors.NewPostgresRepository(db)
-	reviewChecker := connectors.NewReviewCheckerAdapter(func(c context.Context, id uuid.UUID) (string, int, error) {
-		summary, status, err := rc.GetRequest(c, id.String())
-		if err != nil {
-			return "", status, err
-		}
-		return summary.Status, status, nil
+	reviewChecker := connectors.NewReviewCheckerAdapter(func(c context.Context, id uuid.UUID) (string, string, int, error) {
+		return reviewGateway.GetRequestMeta(c, id.String())
 	})
 	connUC := connectors.NewUsecases(connRepo, connReg, reviewChecker)
 	connHandler := connectors.NewHandler(connUC)
 
 	repo := tasks.NewPostgresRepository(db)
-	uc := tasks.NewUsecases(repo, rc)
+	uc := tasks.NewUsecases(repo, reviewGateway)
 	uc.SetReviewSyncInterval(reviewSyncInterval())
 	uc.SetExecutor(connUC)
 	h := tasks.NewHandler(uc)

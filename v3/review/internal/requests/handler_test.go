@@ -227,12 +227,21 @@ func setupRequestMuxWithPolicies(policies []requests.PolicyForEval) *http.ServeM
 
 func doReq(t *testing.T, mux *http.ServeMux, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	return doReqWithHeaders(t, mux, method, path, body, nil)
+}
+
+func doReqWithHeaders(t *testing.T, mux *http.ServeMux, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
 	var r io.Reader
 	if body != "" {
 		r = strings.NewReader(body)
 	}
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(method, path, r))
+	req := httptest.NewRequest(method, path, r)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	mux.ServeHTTP(rec, req)
 	return rec
 }
 
@@ -291,6 +300,39 @@ func TestSubmitRequestRequireApproval(t *testing.T) {
 	}
 	if resp.AISummary == "" {
 		t.Fatal("esperaba ai_summary no vacio con stub contextualizer")
+	}
+}
+
+func TestSubmitRequestRejectsForeignOrgParam(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	rec := doReqWithHeaders(t, mux, http.MethodPost, "/v1/requests", `{
+		"requester_type":"agent",
+		"requester_id":"bot",
+		"action_type":"alert.escalate",
+		"params":{"org_id":"org-b"}
+	}`, map[string]string{"X-Org-ID": "org-a"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("esperaba 403, obtuvo %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetRequestRejectsForeignOrg(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	createRec := doReqWithHeaders(t, mux, http.MethodPost, "/v1/requests", `{
+		"requester_type":"agent",
+		"requester_id":"bot",
+		"action_type":"alert.escalate"
+	}`, map[string]string{"X-Org-ID": "org-a"})
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+
+	rec := doReqWithHeaders(t, mux, http.MethodGet, "/v1/requests/"+submitResp.RequestID, "", map[string]string{"X-Org-ID": "org-b"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("esperaba 403, obtuvo %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -847,6 +889,23 @@ func TestReportResultFailure(t *testing.T) {
 	decJSON(t, getRec, &getResp)
 	if getResp.Status != "failed" {
 		t.Fatalf("esperaba status failed, obtuvo %s", getResp.Status)
+	}
+}
+
+func TestReportResultPendingApprovalConflict(t *testing.T) {
+	t.Parallel()
+	mux := setupRequestMux()
+
+	createRec := doReq(t, mux, http.MethodPost, "/v1/requests", `{"requester_type":"agent","requester_id":"bot","action_type":"alert.silence"}`)
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+	if submitResp.Status != "pending_approval" {
+		t.Fatalf("esperaba status pending_approval, obtuvo %s", submitResp.Status)
+	}
+
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/result", `{"success":true}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("esperaba 409, obtuvo %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

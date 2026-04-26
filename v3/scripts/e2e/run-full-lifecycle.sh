@@ -65,12 +65,12 @@ echo "=== E2E: full lifecycle ==="
 wait_for_http "$API_BASE/healthz"
 
 # Setup: crear policy
-POLICY=$(api_post "/v1/policies" '{"name":"e2e-require-approval","expression":"request.action_type == '\''runbook.execute'\''","effect":"require_approval","priority":5,"enabled":true}')
+POLICY=$(api_post "/v1/policies" '{"name":"e2e-require-approval","expression":"request.action_type == '\''alert.escalate'\''","effect":"require_approval","priority":5,"enabled":true}')
 POLICY_ID=$(echo "$POLICY" | json_get 'id')
 pass "Setup: policy created"
 
 # 1. Submit request que matchea policy
-R=$(api_post "/v1/requests" '{"requester_type":"service","requester_id":"deploy-svc","action_type":"runbook.execute","target_system":"internal","target_resource":"restart-api-gateway","reason":"memory leak detected","context":"RSS 4.2GB, threshold 4GB"}')
+R=$(api_post "/v1/requests" '{"requester_type":"service","requester_id":"deploy-svc","action_type":"alert.escalate","target_system":"internal","target_resource":"api-gateway","reason":"memory leak detected","context":"RSS 4.2GB, threshold 4GB"}')
 REQUEST_ID=$(echo "$R" | json_get 'request_id')
 DECISION=$(echo "$R" | json_get 'decision')
 APPROVAL_ID=$(echo "$R" | json_get 'approval.id')

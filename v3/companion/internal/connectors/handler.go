@@ -55,6 +55,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]dto.ConnectorResponse, 0, len(conns))
 	for _, c := range conns {
+		if !canAccessConnectorOrg(r, c) {
+			continue
+		}
 		out = append(out, dto.ConnectorToResponse(c))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, dto.ConnectorListResponse{Connectors: out})
@@ -75,10 +78,17 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatInternalError(w, err, "get connector failed")
 		return
 	}
+	if !canAccessConnectorOrg(r, conn) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "connector org is not allowed for this principal")
+		return
+	}
 	httpjson.WriteJSON(w, http.StatusOK, dto.ConnectorToResponse(conn))
 }
 
 func (h *Handler) save(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionConnectorsAdmin) {
+		return
+	}
 	var body dto.SaveConnectorRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -93,6 +103,7 @@ func (h *Handler) save(w http.ResponseWriter, r *http.Request) {
 		configJSON = json.RawMessage(`{}`)
 	}
 	conn, err := h.uc.SaveConnector(r.Context(), domain.Connector{
+		OrgID:      principalOrgID(r),
 		Name:       body.Name,
 		Kind:       body.Kind,
 		Enabled:    body.Enabled,
@@ -106,9 +117,25 @@ func (h *Handler) save(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionConnectorsAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	conn, err := h.uc.GetConnector(r.Context(), id)
+	if err != nil {
+		if IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "connector not found")
+			return
+		}
+		httpjson.WriteFlatInternalError(w, err, "get connector failed")
+		return
+	}
+	if !canAccessConnectorOrg(r, conn) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "connector org is not allowed for this principal")
 		return
 	}
 	if err := h.uc.DeleteConnector(r.Context(), id); err != nil {
@@ -123,6 +150,9 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionConnectorsExecute) {
+		return
+	}
 	var body dto.ExecuteRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -139,10 +169,17 @@ func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	payload, ok := bindPayloadToPrincipalOrg(r, body.Payload)
+	if !ok {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "payload org is not allowed for this principal")
+		return
+	}
 	spec := domain.ExecutionSpec{
 		ConnectorID:    connID,
+		OrgID:          principalOrgID(r),
+		ActorID:        principalActorID(r),
 		Operation:      body.Operation,
-		Payload:        body.Payload,
+		Payload:        payload,
 		IdempotencyKey: body.IdempotencyKey,
 	}
 	if body.TaskID != "" {
@@ -176,6 +213,14 @@ func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
 			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "unknown operation for connector")
 			return
 		}
+		if IsInvalidPayload(err) {
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+			return
+		}
+		if IsForbidden(err) {
+			httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "connector org is not allowed for this principal")
+			return
+		}
 		httpjson.WriteFlatInternalError(w, err, "execute connector failed")
 		return
 	}
@@ -195,6 +240,9 @@ func (h *Handler) listExecutions(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]dto.ExecutionResponse, 0, len(execs))
 	for _, e := range execs {
+		if !canAccessExecutionOrg(r, e) {
+			continue
+		}
 		out = append(out, dto.ExecutionToResponse(e))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, dto.ExecutionListResponse{Executions: out})

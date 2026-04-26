@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/devpablocristo/core/http/go/httpjson"
 	"github.com/google/uuid"
@@ -50,6 +51,10 @@ func (h *Handler) upsert(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "kind, scope_type, scope_id, and key are required")
 		return
 	}
+	if !authorizeMemoryScope(r, domain.ScopeType(body.ScopeType), body.ScopeID) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "memory scope is not allowed for this principal")
+		return
+	}
 
 	entry, err := h.uc.Upsert(r.Context(), UpsertInput{
 		Kind:        domain.MemoryKind(body.Kind),
@@ -87,6 +92,10 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatInternalError(w, err, "get memory failed")
 		return
 	}
+	if !authorizeMemoryScope(r, entry.ScopeType, entry.ScopeID) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "memory scope is not allowed for this principal")
+		return
+	}
 	httpjson.WriteJSON(w, http.StatusOK, dto.EntryToResponse(entry))
 }
 
@@ -96,6 +105,10 @@ func (h *Handler) find(w http.ResponseWriter, r *http.Request) {
 	scopeID := q.Get("scope_id")
 	if scopeType == "" || scopeID == "" {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "scope_type and scope_id are required")
+		return
+	}
+	if !authorizeMemoryScope(r, domain.ScopeType(scopeType), scopeID) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "memory scope is not allowed for this principal")
 		return
 	}
 
@@ -123,6 +136,19 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
 		return
 	}
+	entry, err := h.uc.Get(r.Context(), id)
+	if err != nil {
+		if IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "memory entry not found")
+			return
+		}
+		httpjson.WriteFlatInternalError(w, err, "get memory failed")
+		return
+	}
+	if !authorizeMemoryScope(r, entry.ScopeType, entry.ScopeID) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "memory scope is not allowed for this principal")
+		return
+	}
 	if err := h.uc.Delete(r.Context(), id); err != nil {
 		if IsNotFound(err) {
 			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "memory entry not found")
@@ -132,4 +158,23 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func authorizeMemoryScope(r *http.Request, scopeType domain.ScopeType, scopeID string) bool {
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if orgID == "" {
+		return true
+	}
+
+	scopeID = strings.TrimSpace(scopeID)
+	switch scopeType {
+	case domain.ScopeOrg:
+		return scopeID == orgID
+	case domain.ScopeUser:
+		return scopeID != "" && scopeID == strings.TrimSpace(r.Header.Get("X-User-ID"))
+	case domain.ScopeTask:
+		return true
+	default:
+		return false
+	}
 }

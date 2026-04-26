@@ -24,8 +24,28 @@ func (m *MockConnector) Kind() string { return "mock" }
 
 func (m *MockConnector) Capabilities() []domain.Capability {
 	return []domain.Capability{
-		{Operation: "mock.echo", SideEffect: false, ReadOnly: true},
-		{Operation: "mock.write", SideEffect: true, ReadOnly: false},
+		{
+			Operation: "mock.echo",
+			Mode:      domain.CapabilityModeRead,
+			ReadOnly:  true,
+			RiskClass: "low",
+			InputSchema: map[string]any{
+				"type": "object",
+			},
+			EvidenceFields: []string{"mock", "message"},
+		},
+		{
+			Operation:      "mock.write",
+			Mode:           domain.CapabilityModeWrite,
+			SideEffect:     true,
+			RiskClass:      "low",
+			RequiresReview: true,
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"message"},
+			},
+			EvidenceFields: []string{"mock", "message", "external_ref"},
+		},
 	}
 }
 
@@ -44,16 +64,19 @@ func (m *MockConnector) Execute(ctx context.Context, spec domain.ExecutionSpec) 
 		"message": "operation logged successfully",
 	})
 	return domain.ExecutionResult{
-		ID:          uuid.New(),
-		ConnectorID: spec.ConnectorID,
-		Operation:   spec.Operation,
-		Status:      domain.ExecSuccess,
-		ExternalRef: "mock-" + uuid.New().String()[:8],
-		Payload:     spec.Payload,
-		ResultJSON:  json.RawMessage(resultJSON),
-		DurationMS:  1,
-		TaskID:      spec.TaskID,
+		ID:              uuid.New(),
+		ConnectorID:     spec.ConnectorID,
+		OrgID:           spec.OrgID,
+		ActorID:         spec.ActorID,
+		Operation:       spec.Operation,
+		Status:          domain.ExecSuccess,
+		ExternalRef:     "mock-" + uuid.New().String()[:8],
+		Payload:         spec.Payload,
+		ResultJSON:      json.RawMessage(resultJSON),
+		DurationMS:      1,
+		IdempotencyKey:  spec.IdempotencyKey,
+		TaskID:          spec.TaskID,
 		ReviewRequestID: spec.ReviewRequestID,
-		CreatedAt:   time.Now().UTC(),
+		CreatedAt:       time.Now().UTC(),
 	}, nil
 }

@@ -48,6 +48,14 @@ make dev       # requiere postgres en :15434 (docker compose up review-postgres)
 
 Auth: `X-API-Key` para servicio a servicio. También acepta `Authorization: Bearer` si `NEXUS_AUTH_ISSUER_URL` está configurado.
 
+API keys aceptan scopes explicitos:
+
+```text
+companion=secret|service_principal=true|org_id=org-a|scopes=nexus:requests:read+nexus:requests:write+nexus:requests:result+nexus:evidence:write
+```
+
+El formato legacy `admin=secret` mantiene compatibilidad local/dev. En runtime, Nexus deriva `actor_id`, `org_id`, role/scopes y método de auth; no confía en `X-User-ID`/`X-Org-ID` enviados por el cliente.
+
 ## Estructura
 
 ```

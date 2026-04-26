@@ -12,7 +12,9 @@ type actionTypeRepository interface {
 	Create(ctx context.Context, at domain.ActionType) (domain.ActionType, error)
 	GetByID(ctx context.Context, id uuid.UUID) (domain.ActionType, error)
 	GetByName(ctx context.Context, name string) (domain.ActionType, error)
+	GetByNameForOrg(ctx context.Context, name string, orgID *string) (domain.ActionType, error)
 	List(ctx context.Context) ([]domain.ActionType, error)
+	ListForOrg(ctx context.Context, orgID *string, includeGlobal bool) ([]domain.ActionType, error)
 	Update(ctx context.Context, at domain.ActionType) (domain.ActionType, error)
 	DeleteByID(ctx context.Context, id uuid.UUID) error
 }
@@ -47,8 +49,16 @@ func (u *Usecases) GetByName(ctx context.Context, name string) (domain.ActionTyp
 	return u.repo.GetByName(ctx, name)
 }
 
+func (u *Usecases) GetByNameForOrg(ctx context.Context, name string, orgID *string) (domain.ActionType, error) {
+	return u.repo.GetByNameForOrg(ctx, name, orgID)
+}
+
 func (u *Usecases) List(ctx context.Context) ([]domain.ActionType, error) {
 	return u.repo.List(ctx)
+}
+
+func (u *Usecases) ListForOrg(ctx context.Context, orgID *string, includeGlobal bool) ([]domain.ActionType, error) {
+	return u.repo.ListForOrg(ctx, orgID, includeGlobal)
 }
 
 func (u *Usecases) Update(ctx context.Context, at domain.ActionType) (domain.ActionType, error) {

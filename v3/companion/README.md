@@ -9,6 +9,22 @@ Servicio Go que modela **tareas** del “compañero de trabajo” y las integra 
 - dependencia soberana: `Nexus Governance` (`GovernanceService`)
 - alcance: coordinar trabajo y propuestas multi-sistema bajo governance; no reemplaza a agentes embebidos de producto
 
+## Modelo De Producto
+
+Companion se diseña como un **empleado digital generalista**. Su core no debe depender de un negocio especifico.
+
+Capacidades base:
+
+- conversación;
+- tareas;
+- memoria;
+- observación/watchers;
+- planificación;
+- ejecución;
+- reporting a Nexus.
+
+Las capacidades especificas de un sistema externo viven en **connectors**. Pymes es un adapter concreto de Companion en esta etapa, no una libreria reusable del ecosistema.
+
 ## Requisitos
 
 - PostgreSQL (base dedicada `nexus_companion` en la misma instancia que `Nexus Governance`).
@@ -20,7 +36,7 @@ Servicio Go que modela **tareas** del “compañero de trabajo” y las integra 
 |----------|-------------|-------------|
 | `PORT` | no | Default `8080` |
 | `DATABASE_URL` | sí | Postgres `nexus_companion` |
-| `NEXUS_API_KEYS` | sí | Mismo patrón que `Nexus Governance` (`admin=...`) |
+| `NEXUS_API_KEYS` | sí | API keys con scopes. Legacy `admin=...` sigue funcionando en local/dev |
 | `NEXUS_AUTH_ISSUER_URL` | no | Issuer OIDC/JWKS para aceptar Bearer JWT humano además de API key |
 | `NEXUS_AUTH_AUDIENCE` | no | Audience esperada del JWT humano (opcional) |
 | `REVIEW_BASE_URL` | sí | Ej. `http://review:8080` |
@@ -51,6 +67,29 @@ En el repo **core**:
 
 - **Loop** (opcional): `COMPANION_REVIEW_SYNC_INTERVAL_SEC` — intervalo en segundos; por defecto `30`. `0` desactiva el ticker en segundo plano.
 - **Manual**: `POST /v1/tasks/{id}/sync` — para tareas en `waiting_for_approval`, consulta el último `review_request_id` del último `propose` y aplica la misma FSM si `Nexus Governance` ya resolvió (`approved`, `rejected`, `expired`, etc.).
+
+## Connectors
+
+Connectors son las manos y ojos de Companion. Viven dentro de Companion hasta que haya un contrato agnostico y reutilizacion real fuera de este producto.
+
+- Read-only operations pueden ejecutarse sin approval.
+- Write/side-effect operations requieren Nexus `allowed` o `approved`.
+- Cada capability declara `operation`, `mode`, `risk_class`, `requires_review`, `input_schema` y `evidence_fields`.
+- Companion reporta el resultado de ejecuciones autorizadas a Nexus con `/result`.
+
+Ver [../doc/CONNECTORS.md](../doc/CONNECTORS.md).
+
+## Frontera De Confianza
+
+Companion deriva `actor_id`, `org_id`, `roles`, `scopes` y `service_principal` desde API key/JWT. Los headers `X-User-ID` y `X-Org-ID` entrantes se descartan en el middleware y se reinyectan desde el principal efectivo.
+
+Ejemplo de API key:
+
+```text
+admin=dev-key|service_principal=true|org_id=org-a|scopes=companion:tasks:read+companion:tasks:write+companion:connectors:execute+companion:connectors:admin
+```
+
+Tasks, connectors y executions quedan asociados a `org_id`; las respuestas se filtran por tenant cuando el principal lo trae. Toda ejecucion con side effect requiere una request de Nexus `allowed` o `approved`, se persiste como execution y se reporta a Nexus con `/result`.
 
 ## Postgres: volumen ya inicializado
 

@@ -16,14 +16,15 @@ func newActionTypeCheckerAdapter(uc *actiontypes.Usecases) requests.ActionTypeCh
 	return &actionTypeCheckerAdapter{uc: uc}
 }
 
-func (a *actionTypeCheckerAdapter) GetByName(ctx context.Context, name string) (requests.ActionTypeInfo, error) {
-	at, err := a.uc.GetByName(ctx, name)
+func (a *actionTypeCheckerAdapter) GetByName(ctx context.Context, name string, orgID *string) (requests.ActionTypeInfo, error) {
+	at, err := a.uc.GetByNameForOrg(ctx, name, orgID)
 	if err != nil {
 		return requests.ActionTypeInfo{}, err
 	}
 	return requests.ActionTypeInfo{
 		Name:               at.Name,
 		RiskClass:          string(at.RiskClass),
+		Schema:             at.Schema,
 		RequiresBreakGlass: at.RequiresBreakGlass,
 		Enabled:            at.Enabled,
 	}, nil

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
 	"fmt"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,9 +18,11 @@ import (
 
 // Sentinel errors
 var (
-	ErrNotFound = domainerr.NotFound("not found")
+	ErrNotFound       = domainerr.NotFound("not found")
 	ErrNotPending     = domainerr.Conflict("approval is not pending")
 	ErrAlreadyDecided = domainerr.Conflict("approver already decided on this approval")
+	ErrExpired        = domainerr.Conflict("approval is expired")
+	ErrActorRequired  = domainerr.Conflict("approval actor is required")
 )
 
 // Repository define el port de persistencia para approvals.

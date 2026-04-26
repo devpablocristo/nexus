@@ -1,6 +1,7 @@
 package dto
 
 type CreateActionTypeRequest struct {
+	OrgID              *string        `json:"org_id,omitempty"`
 	Name               string         `json:"name"`
 	Description        string         `json:"description,omitempty"`
 	Category           string         `json:"category,omitempty"`
@@ -11,6 +12,7 @@ type CreateActionTypeRequest struct {
 }
 
 type UpdateActionTypeRequest struct {
+	OrgID              *string         `json:"org_id,omitempty"`
 	Name               *string         `json:"name,omitempty"`
 	Description        *string         `json:"description,omitempty"`
 	Category           *string         `json:"category,omitempty"`
@@ -23,6 +25,7 @@ type UpdateActionTypeRequest struct {
 
 type ActionTypeResponse struct {
 	ID                 string         `json:"id"`
+	OrgID              string         `json:"org_id,omitempty"`
 	Name               string         `json:"name"`
 	Description        string         `json:"description,omitempty"`
 	Category           string         `json:"category,omitempty"`

@@ -7,10 +7,13 @@ import (
 )
 
 var (
-	ErrNotFound = domainerr.NotFound("not found")
+	ErrNotFound         = domainerr.NotFound("not found")
 	ErrDisabled         = errors.New("connector is disabled")
 	ErrUngated          = errors.New("execution requires review approval")
 	ErrOperationUnknown = errors.New("unknown operation for connector")
+	ErrInvalidPayload   = errors.New("invalid connector payload")
+	ErrForbidden        = domainerr.Forbidden("connector access forbidden")
+	ErrConflict         = domainerr.Conflict("connector execution conflict")
 )
 
 // IsNotFound verifica si el error es de conector no encontrado.
@@ -21,4 +24,17 @@ func IsNotFound(err error) bool {
 // IsUngated verifica si la ejecución no tiene aprobación de Review.
 func IsUngated(err error) bool {
 	return errors.Is(err, ErrUngated)
+}
+
+// IsInvalidPayload verifica si el payload no cumple el contrato de operación.
+func IsInvalidPayload(err error) bool {
+	return errors.Is(err, ErrInvalidPayload)
+}
+
+func IsForbidden(err error) bool {
+	return domainerr.IsForbidden(err)
+}
+
+func IsConflict(err error) bool {
+	return domainerr.IsConflict(err)
 }

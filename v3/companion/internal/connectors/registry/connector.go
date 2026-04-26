@@ -12,7 +12,7 @@ type Connector interface {
 	ID() string
 	// Kind tipo de conector (pymes, whatsapp, mock, etc.).
 	Kind() string
-	// Capabilities lista de operaciones que soporta.
+	// Capabilities lista operaciones y su contrato v1 (mode, risk, review, schema, evidence).
 	Capabilities() []domain.Capability
 	// Validate verifica que la spec es válida para este conector.
 	Validate(spec domain.ExecutionSpec) error

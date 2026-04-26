@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"github.com/devpablocristo/core/http/go/httpjson"
 	policydto "github.com/devpablocristo/nexus/v3/review/internal/policies/handler/dto"
 	policydomain "github.com/devpablocristo/nexus/v3/review/internal/policies/usecases/domain"
+	requesteval "github.com/devpablocristo/nexus/v3/review/internal/requests"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 // Port mínimo: solo lo que el handler necesita
@@ -45,6 +47,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusPoliciesAdmin) {
+		return
+	}
 	var body policydto.CreatePolicyRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -54,13 +59,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "name, expression and effect are required")
 		return
 	}
-	if len(body.Expression) > maxExpressionLen {
-		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "expression too long")
-		return
-	}
-	validEffects := map[string]bool{"allow": true, "deny": true, "require_approval": true}
-	if !validEffects[body.Effect] {
-		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "effect must be allow, deny or require_approval")
+	if err := validatePolicyFields(body.Expression, body.Effect, body.RiskOverride, body.Priority, body.Mode); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
 		return
 	}
 	mode := policydomain.PolicyModeEnforced
@@ -80,6 +80,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		TargetSystem: body.TargetSystem,
 		Origin:       "manual",
 	}
+	if orgID := principalOrgID(r); orgID != nil {
+		p.OrgID = orgID
+	}
 	created, err := h.uc.Create(r.Context(), p)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "create policy failed")
@@ -89,8 +92,20 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusPoliciesAdmin) {
+		return
+	}
 	archived := r.URL.Query().Get("archived") == "true"
-	list, err := h.uc.List(r.Context(), ListFilters{IncludeArchived: archived})
+	filters := ListFilters{IncludeArchived: archived}
+	if !requestHasScope(r, scopeNexusCrossOrg) {
+		if orgID := principalOrgID(r); orgID != nil {
+			filters.OrgID = orgID
+		} else if !requestHasNoAuthContext(r) {
+			globalOnly := ""
+			filters.OrgID = &globalOnly
+		}
+	}
+	list, err := h.uc.List(r.Context(), filters)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list policies failed")
 		return
@@ -103,6 +118,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusPoliciesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -111,12 +129,19 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	p, err := h.uc.GetByID(r.Context(), id)
 	if err != nil {
 		writePolicyUsecaseError(w, err)
+		return
+	}
+	if !canAccessPolicyOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "policy org is not allowed for this principal")
 		return
 	}
 	httpjson.WriteJSON(w, http.StatusOK, toPolicyResponse(p))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusPoliciesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -125,6 +150,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	p, err := h.uc.GetByID(r.Context(), id)
 	if err != nil {
 		writePolicyUsecaseError(w, err)
+		return
+	}
+	if !canAccessPolicyOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "policy org is not allowed for this principal")
 		return
 	}
 	var body policydto.UpdatePolicyRequest
@@ -163,6 +192,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	if body.Mode != nil {
 		p.Mode = policydomain.PolicyMode(*body.Mode)
 	}
+	if err := validatePolicyFields(p.Expression, p.Effect, p.RiskOverride, p.Priority, string(p.Mode)); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", err.Error())
+		return
+	}
 	updated, err := h.uc.Update(r.Context(), p)
 	if err != nil {
 		writePolicyUsecaseError(w, err)
@@ -172,9 +205,21 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusPoliciesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	p, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writePolicyUsecaseError(w, err)
+		return
+	}
+	if !canAccessPolicyOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "policy org is not allowed for this principal")
 		return
 	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {
@@ -185,9 +230,21 @@ func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) archiveByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusPoliciesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	p, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writePolicyUsecaseError(w, err)
+		return
+	}
+	if !canAccessPolicyOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "policy org is not allowed for this principal")
 		return
 	}
 	if err := h.uc.ArchiveByID(r.Context(), id); err != nil {
@@ -198,9 +255,21 @@ func (h *Handler) archiveByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) restoreByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusPoliciesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	p, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writePolicyUsecaseError(w, err)
+		return
+	}
+	if !canAccessPolicyOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "policy org is not allowed for this principal")
 		return
 	}
 	if err := h.uc.RestoreByID(r.Context(), id); err != nil {
@@ -251,4 +320,34 @@ func writePolicyUsecaseError(w http.ResponseWriter, err error) {
 		return
 	}
 	httpjson.WriteFlatInternalError(w, err, "policy operation failed")
+}
+
+func validatePolicyFields(expression, effect string, riskOverride *string, priority int, mode string) error {
+	if len(expression) > maxExpressionLen {
+		return errors.New("expression too long")
+	}
+	if err := requesteval.NewPolicyEvaluator().Validate(expression); err != nil {
+		return errors.New("invalid CEL expression: " + err.Error())
+	}
+	switch effect {
+	case "allow", "deny", "require_approval":
+	default:
+		return errors.New("effect must be allow, deny or require_approval")
+	}
+	if riskOverride != nil {
+		switch strings.TrimSpace(*riskOverride) {
+		case "", "low", "medium", "high":
+		default:
+			return errors.New("risk_override must be low, medium or high")
+		}
+	}
+	switch mode {
+	case "", string(policydomain.PolicyModeEnforced), string(policydomain.PolicyModeShadow):
+	default:
+		return errors.New("mode must be enforced or shadow")
+	}
+	if priority < 0 {
+		return errors.New("priority must be greater than or equal to 0")
+	}
+	return nil
 }

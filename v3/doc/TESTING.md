@@ -5,7 +5,7 @@
 | Nivel | Qué prueba | Cómo correr |
 |-------|-----------|-------------|
 | Unit tests | Lógica de negocio, handlers, mappers | `make test` |
-| Quality | Build + vet + test -race | `make qa` |
+| Quality | Migraciones duplicadas + build + vet + test -race + console si está instalada | `make qa` |
 | Smoke | Endpoints individuales contra API corriendo | `make smoke` |
 | E2E | Flujo completo de punta a punta | `make e2e` |
 | Acceptance | Smoke + E2E | `make acceptance` |
@@ -62,6 +62,17 @@ Prueba el flujo completo de requests:
 7. Replay (≥3 events)
 8. Dashboard (≥2 requests)
 9. Cleanup
+
+## Migraciones
+
+El historial de migraciones debe ser lineal por servicio. Antes de abrir PR o correr smoke:
+
+```bash
+make check-migrations
+docker compose config --services
+```
+
+`make check-migrations` falla si `review/migrations` o `companion/migrations` tienen dos archivos `.up.sql` con el mismo prefijo numérico. En bases persistidas que hayan aplicado migraciones renumeradas, validar primero la versión registrada antes de correr `up`; si ya existe una versión aplicada con número viejo, usar una migración correctiva específica para ese ambiente en lugar de reescribir estado manualmente.
 
 ## E2E test
 

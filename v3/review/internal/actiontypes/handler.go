@@ -5,17 +5,18 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"github.com/devpablocristo/core/http/go/httpjson"
 	dto "github.com/devpablocristo/nexus/v3/review/internal/actiontypes/handler/dto"
 	domain "github.com/devpablocristo/nexus/v3/review/internal/actiontypes/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 type actionTypeUsecase interface {
 	Create(ctx context.Context, at domain.ActionType) (domain.ActionType, error)
 	GetByID(ctx context.Context, id uuid.UUID) (domain.ActionType, error)
 	List(ctx context.Context) ([]domain.ActionType, error)
+	ListForOrg(ctx context.Context, orgID *string, includeGlobal bool) ([]domain.ActionType, error)
 	Update(ctx context.Context, at domain.ActionType) (domain.ActionType, error)
 	DeleteByID(ctx context.Context, id uuid.UUID) error
 }
@@ -37,6 +38,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusActionTypesAdmin) {
+		return
+	}
 	var body dto.CreateActionTypeRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -46,8 +50,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "name is required")
 		return
 	}
+	orgID, ok := effectiveActionTypeOrg(r, body.OrgID)
+	if !ok {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "action type org is not allowed for this principal")
+		return
+	}
 
 	at := domain.ActionType{
+		OrgID:              orgID,
 		Name:               body.Name,
 		Description:        body.Description,
 		Category:           body.Category,
@@ -66,7 +76,25 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	list, err := h.uc.List(r.Context())
+	if !requireScope(w, r, scopeNexusActionTypesAdmin) {
+		return
+	}
+	var (
+		list []domain.ActionType
+		err  error
+	)
+	if requestHasNoAuthContext(r) || requestHasScope(r, scopeNexusCrossOrg) {
+		rawOrgID := r.URL.Query().Get("org_id")
+		orgID := normalizeOrgPtr(&rawOrgID)
+		if orgID != nil {
+			list, err = h.uc.ListForOrg(r.Context(), orgID, true)
+		} else {
+			list, err = h.uc.List(r.Context())
+		}
+	} else {
+		orgID, includeGlobal := listActionTypesOrg(r)
+		list, err = h.uc.ListForOrg(r.Context(), orgID, includeGlobal)
+	}
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list action types")
 		return
@@ -79,6 +107,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusActionTypesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -87,12 +118,19 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	at, err := h.uc.GetByID(r.Context(), id)
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+	if !canAccessActionTypeOrg(r, at.OrgID) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "action type org is not allowed for this principal")
 		return
 	}
 	httpjson.WriteJSON(w, http.StatusOK, toResponse(at))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusActionTypesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -103,10 +141,22 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	if !canWriteActionTypeOrg(r, at.OrgID) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "action type org is not writable for this principal")
+		return
+	}
 	var body dto.UpdateActionTypeRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
+	}
+	if body.OrgID != nil {
+		orgID, ok := effectiveActionTypeOrg(r, body.OrgID)
+		if !ok {
+			httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "action type org is not allowed for this principal")
+			return
+		}
+		at.OrgID = orgID
 	}
 	if body.Name != nil {
 		at.Name = *body.Name
@@ -142,9 +192,21 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusActionTypesAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	at, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !canWriteActionTypeOrg(r, at.OrgID) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "action type org is not writable for this principal")
 		return
 	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {
@@ -155,8 +217,13 @@ func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func toResponse(at domain.ActionType) dto.ActionTypeResponse {
+	orgID := ""
+	if at.OrgID != nil {
+		orgID = *at.OrgID
+	}
 	return dto.ActionTypeResponse{
 		ID:                 at.ID.String(),
+		OrgID:              orgID,
 		Name:               at.Name,
 		Description:        at.Description,
 		Category:           at.Category,

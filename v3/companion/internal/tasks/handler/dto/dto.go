@@ -22,6 +22,7 @@ type CreateTaskRequest struct {
 
 type TaskResponse struct {
 	ID                  string          `json:"id"`
+	OrgID               string          `json:"org_id,omitempty"`
 	Title               string          `json:"title"`
 	Goal                string          `json:"goal"`
 	Status              string          `json:"status"`
@@ -176,14 +177,18 @@ type ExecuteTaskResponse struct {
 type ExecutionResultResponse struct {
 	ID              string          `json:"id"`
 	ConnectorID     string          `json:"connector_id"`
+	OrgID           string          `json:"org_id,omitempty"`
+	ActorID         string          `json:"actor_id,omitempty"`
 	Operation       string          `json:"operation"`
 	Status          string          `json:"status"`
 	ExternalRef     string          `json:"external_ref"`
 	Payload         json.RawMessage `json:"payload,omitempty"`
 	Result          json.RawMessage `json:"result,omitempty"`
+	Evidence        json.RawMessage `json:"evidence,omitempty"`
 	ErrorMessage    string          `json:"error_message,omitempty"`
 	Retryable       bool            `json:"retryable"`
 	DurationMS      int64           `json:"duration_ms"`
+	IdempotencyKey  string          `json:"idempotency_key,omitempty"`
 	ReviewRequestID *string         `json:"review_request_id,omitempty"`
 	CreatedAt       string          `json:"created_at"`
 }
@@ -201,6 +206,7 @@ func TaskToResponse(t domain.Task) TaskResponse {
 	}
 	return TaskResponse{
 		ID:                  t.ID.String(),
+		OrgID:               t.OrgID,
 		Title:               t.Title,
 		Goal:                t.Goal,
 		Status:              t.Status,
@@ -309,14 +315,18 @@ func ExecutionResultToResponse(result connectordomain.ExecutionResult) Execution
 	return ExecutionResultResponse{
 		ID:              result.ID.String(),
 		ConnectorID:     result.ConnectorID.String(),
+		OrgID:           result.OrgID,
+		ActorID:         result.ActorID,
 		Operation:       result.Operation,
 		Status:          result.Status,
 		ExternalRef:     result.ExternalRef,
 		Payload:         result.Payload,
 		Result:          result.ResultJSON,
+		Evidence:        result.EvidenceJSON,
 		ErrorMessage:    result.ErrorMessage,
 		Retryable:       result.Retryable,
 		DurationMS:      result.DurationMS,
+		IdempotencyKey:  result.IdempotencyKey,
 		ReviewRequestID: reviewRequestID,
 		CreatedAt:       result.CreatedAt.UTC().Format(time.RFC3339),
 	}

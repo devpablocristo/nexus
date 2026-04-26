@@ -259,9 +259,9 @@ func (uc *Usecases) queryPymes(ctx context.Context, w domain.Watcher) ([]domain.
 		if comparison.DropPercent >= cfg.ThresholdPercent {
 			meta, _ := json.Marshal(comparison)
 			return []domain.PymesItem{{
-				ID:   "revenue_alert",
-				Type: "revenue",
-				Name: fmt.Sprintf("Caida de %.1f%% en facturacion", comparison.DropPercent),
+				ID:       "revenue_alert",
+				Type:     "revenue",
+				Name:     fmt.Sprintf("Caida de %.1f%% en facturacion", comparison.DropPercent),
 				Metadata: meta,
 			}}, nil
 		}
@@ -299,13 +299,13 @@ func (uc *Usecases) processItem(ctx context.Context, w domain.Watcher, item doma
 	// Consultar Review
 	idempotencyKey := fmt.Sprintf("companion-watcher-%s-%s", w.ID, proposal.ID)
 	reviewResp, err := uc.review.SubmitRequest(ctx, idempotencyKey, reviewclient.SubmitRequestBody{
-		RequesterType: "service",
-		RequesterID:   "nexus_companion",
-		RequesterName: "Nexus Companion Watcher",
-		ActionType:    actionType,
-		TargetSystem:  "pymes",
+		RequesterType:  "service",
+		RequesterID:    "nexus_companion",
+		RequesterName:  "Nexus Companion Watcher",
+		ActionType:     actionType,
+		TargetSystem:   "pymes",
 		TargetResource: item.ID,
-		Reason:        proposal.Reason,
+		Reason:         proposal.Reason,
 	})
 	if err != nil {
 		slog.Error("watcher review submit failed", "proposal_id", proposal.ID, "error", err)
@@ -436,8 +436,8 @@ func (uc *Usecases) SyncPendingProposals(ctx context.Context, orgID string, limi
 			now := time.Now().UTC()
 			p.ResolvedAt = &now
 			if status == "approved" || status == "allowed" {
-				p.ExecutionStatus = domain.ProposalExecuted
-				// Ejecución retrasada no implementada aún — marcar como ejecutado
+				p.ExecutionStatus = domain.ProposalSkipped
+				p.ExecutionResult = json.RawMessage(`{"status":"approved_not_executed","reason":"delayed execution is not implemented in sync loop"}`)
 			} else {
 				p.ExecutionStatus = domain.ProposalSkipped
 			}

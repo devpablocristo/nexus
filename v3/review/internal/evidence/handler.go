@@ -33,6 +33,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) generate(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead) {
+		return
+	}
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -45,6 +49,10 @@ func (h *Handler) generate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpjson.WriteFlatInternalError(w, err, "generate evidence pack failed")
+		return
+	}
+	if !canAccessEvidenceOrg(r, pack) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "evidence org is not allowed for this principal")
 		return
 	}
 	httpjson.WriteJSON(w, http.StatusOK, toEvidenceResponse(pack))

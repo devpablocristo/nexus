@@ -1,12 +1,13 @@
 package watchers
 
 import (
-	"github.com/devpablocristo/core/errors/go/domainerr"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"github.com/google/uuid"
 
 	"github.com/devpablocristo/core/http/go/httpjson"
@@ -52,9 +53,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
+	orgID, ok := effectiveWatcherOrgID(r, req.OrgID)
+	if !ok {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "forbidden", "watcher org is not allowed for this principal")
+		return
+	}
 
 	result, err := h.uc.Create(r.Context(), CreateWatcherInput{
-		OrgID:       req.OrgID,
+		OrgID:       orgID,
 		Name:        req.Name,
 		WatcherType: domain.WatcherType(req.WatcherType),
 		Config:      req.Config,
@@ -69,7 +75,11 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	orgID := r.URL.Query().Get("org_id")
+	orgID, ok := effectiveWatcherOrgID(r, r.URL.Query().Get("org_id"))
+	if !ok {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "forbidden", "watcher org is not allowed for this principal")
+		return
+	}
 	if orgID == "" {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "missing_org_id", "org_id query parameter required")
 		return
@@ -104,6 +114,10 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not get watcher")
 		return
 	}
+	if !canAccessWatcherOrg(r, watcher) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "forbidden", "watcher org is not allowed for this principal")
+		return
+	}
 
 	httpjson.WriteJSON(w, http.StatusOK, dto.WatcherToResponse(watcher))
 }
@@ -118,6 +132,19 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	var req dto.UpdateWatcherRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+	watcher, err := h.uc.Get(r.Context(), id)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
+			return
+		}
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not get watcher")
+		return
+	}
+	if !canAccessWatcherOrg(r, watcher) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "forbidden", "watcher org is not allowed for this principal")
 		return
 	}
 
@@ -148,6 +175,19 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
 		return
 	}
+	watcher, err := h.uc.Get(r.Context(), id)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
+			return
+		}
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not get watcher")
+		return
+	}
+	if !canAccessWatcherOrg(r, watcher) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "forbidden", "watcher org is not allowed for this principal")
+		return
+	}
 
 	if err := h.uc.Delete(r.Context(), id); err != nil {
 		if domainerr.IsNotFound(err) {
@@ -165,6 +205,19 @@ func (h *Handler) run(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
+		return
+	}
+	watcher, err := h.uc.Get(r.Context(), id)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
+			return
+		}
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not get watcher")
+		return
+	}
+	if !canAccessWatcherOrg(r, watcher) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "forbidden", "watcher org is not allowed for this principal")
 		return
 	}
 
@@ -195,6 +248,19 @@ func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "invalid_id", "invalid watcher id")
 		return
 	}
+	watcher, err := h.uc.Get(r.Context(), id)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "not_found", "watcher not found")
+			return
+		}
+		httpjson.WriteFlatError(w, http.StatusInternalServerError, "internal_error", "could not get watcher")
+		return
+	}
+	if !canAccessWatcherOrg(r, watcher) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "forbidden", "watcher org is not allowed for this principal")
+		return
+	}
 
 	proposals, err := h.uc.ListProposals(r.Context(), id, 50)
 	if err != nil {
@@ -207,4 +273,21 @@ func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
 		items = append(items, dto.ProposalToResponse(p))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, dto.ProposalListResponse{Proposals: items})
+}
+
+func effectiveWatcherOrgID(r *http.Request, requested string) (string, bool) {
+	effective := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	requested = strings.TrimSpace(requested)
+	if effective == "" {
+		return requested, true
+	}
+	if requested == "" || requested == effective {
+		return effective, true
+	}
+	return "", false
+}
+
+func canAccessWatcherOrg(r *http.Request, watcher domain.Watcher) bool {
+	effective := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	return effective == "" || strings.TrimSpace(watcher.OrgID) == effective
 }

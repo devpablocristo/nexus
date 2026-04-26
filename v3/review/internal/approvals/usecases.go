@@ -50,7 +50,15 @@ func (u *Usecases) ListPending(ctx context.Context, limit int) ([]approvaldomain
 	return u.repo.ListPending(ctx, limit)
 }
 
+func (u *Usecases) GetByID(ctx context.Context, approvalID uuid.UUID) (approvaldomain.Approval, error) {
+	return u.repo.GetByID(ctx, approvalID)
+}
+
 func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error {
+	decidedBy = strings.TrimSpace(decidedBy)
+	if decidedBy == "" {
+		return ErrActorRequired
+	}
 	a, err := u.repo.GetByID(ctx, approvalID)
 	if err != nil {
 		return fmt.Errorf("get approval: %w", err)
@@ -60,6 +68,9 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 	}
 
 	now := time.Now().UTC()
+	if !a.ExpiresAt.IsZero() && !now.Before(a.ExpiresAt) {
+		return ErrExpired
+	}
 
 	// Break-glass: verificar que el aprobador no haya decidido antes
 	if a.BreakGlass {
@@ -129,6 +140,10 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 }
 
 func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error {
+	decidedBy = strings.TrimSpace(decidedBy)
+	if decidedBy == "" {
+		return ErrActorRequired
+	}
 	a, err := u.repo.GetByID(ctx, approvalID)
 	if err != nil {
 		return fmt.Errorf("get approval: %w", err)
@@ -138,6 +153,9 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 	}
 
 	now := time.Now().UTC()
+	if !a.ExpiresAt.IsZero() && !now.Before(a.ExpiresAt) {
+		return ErrExpired
+	}
 
 	// Break-glass: verificar que no haya decidido antes
 	if a.BreakGlass {

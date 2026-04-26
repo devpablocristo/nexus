@@ -2,11 +2,15 @@ package requests
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	approvaldomain "github.com/devpablocristo/nexus/v3/review/internal/approvals/usecases/domain"
 	auditdomain "github.com/devpablocristo/nexus/v3/review/internal/audit/usecases/domain"
 	"github.com/devpablocristo/nexus/v3/review/internal/callbacks"
@@ -33,13 +37,14 @@ type ShadowHitRecorder interface {
 
 // ActionTypeChecker verifica que un action_type existe y está habilitado
 type ActionTypeChecker interface {
-	GetByName(ctx context.Context, name string) (ActionTypeInfo, error)
+	GetByName(ctx context.Context, name string, orgID *string) (ActionTypeInfo, error)
 }
 
 // ActionTypeInfo contiene lo que Submit necesita de un action_type
 type ActionTypeInfo struct {
 	Name               string
 	RiskClass          string
+	Schema             map[string]any
 	RequiresBreakGlass bool
 	Enabled            bool
 }
@@ -97,6 +102,7 @@ type Usecases struct {
 	attestations   AttestationStore
 	approvalGetter ApprovalGetter
 	approvalEvents callbacks.ApprovalPublisher
+	resultReports  ResultReportStore
 }
 
 // Option configura el constructor de Usecases (functional options pattern — Uber).
@@ -154,6 +160,10 @@ func WithApprovalCallbacks(p callbacks.ApprovalPublisher) Option {
 	return func(u *Usecases) { u.approvalEvents = p }
 }
 
+func WithResultReportStore(s ResultReportStore) Option {
+	return func(u *Usecases) { u.resultReports = s }
+}
+
 // NewUsecases crea Usecases con los 3 repos obligatorios + evaluator, y opciones para el resto.
 func NewUsecases(
 	reqRepo Repository,
@@ -206,7 +216,7 @@ type SubmitOutput struct {
 
 func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, error) {
 	// Idempotencia: si ya existe, retornar respuesta cacheada
-	if in.IdempotencyKey != nil && *in.IdempotencyKey != "" {
+	if u.idemStore != nil && in.IdempotencyKey != nil && *in.IdempotencyKey != "" {
 		if reqID, resp, ok := u.idemStore.Get(ctx, *in.IdempotencyKey); ok {
 			return rebuildOutputFromCache(reqID, resp), nil
 		}
@@ -237,15 +247,22 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		req.Params = make(map[string]any)
 	}
 
+	var actionTypeRiskOverride *string
+	forceBreakGlass := false
 	// Validar action_type si el checker está configurado
 	if u.actionTypes != nil {
-		atInfo, atErr := u.actionTypes.GetByName(ctx, req.ActionType)
+		atInfo, atErr := u.actionTypes.GetByName(ctx, req.ActionType, req.OrgID)
 		if atErr != nil {
 			return SubmitOutput{}, fmt.Errorf("unknown action_type: %s", req.ActionType)
 		}
 		if !atInfo.Enabled {
 			return SubmitOutput{}, fmt.Errorf("action_type %s is disabled", req.ActionType)
 		}
+		if err := validateParamsSchema(req.Params, atInfo.Schema); err != nil {
+			return SubmitOutput{}, err
+		}
+		actionTypeRiskOverride = riskOverrideFromActionType(atInfo.RiskClass)
+		forceBreakGlass = atInfo.RequiresBreakGlass
 	}
 
 	// Validar delegación si el checker está configurado
@@ -302,7 +319,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		}
 
 		matched = true
-		req.RiskLevel = TierRisk(req.ActionType, p.RiskOverride, u.riskConfig)
+		req.RiskLevel = TierRisk(req.ActionType, firstRiskOverride(p.RiskOverride, actionTypeRiskOverride), u.riskConfig)
 		dec, ok := DecideFromPolicy(p.Effect, req.RiskLevel)
 		if !ok {
 			continue
@@ -313,7 +330,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		break
 	}
 	if !matched {
-		req.RiskLevel = TierRisk(req.ActionType, nil, u.riskConfig)
+		req.RiskLevel = TierRisk(req.ActionType, actionTypeRiskOverride, u.riskConfig)
 		req.Decision = DefaultDecision(req.RiskLevel)
 		req.DecisionReason = "No policy matched; default for risk " + string(req.RiskLevel)
 	}
@@ -335,7 +352,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 	}
 
 	// Require approval
-	return u.handleRequireApproval(ctx, req, in, now)
+	return u.handleRequireApproval(ctx, req, in, now, forceBreakGlass)
 }
 
 func (u *Usecases) finalizeDecision(ctx context.Context, req requestdomain.Request, idemKey *string, now time.Time, auditEvent string, status requestdomain.RequestStatus) (SubmitOutput, error) {
@@ -344,6 +361,9 @@ func (u *Usecases) finalizeDecision(ctx context.Context, req requestdomain.Reque
 	req.UpdatedAt = now
 
 	if _, err := u.reqRepo.Create(ctx, req); err != nil {
+		if domainerr.IsConflict(err) {
+			return u.rebuildSubmitOutputByIdempotency(ctx, idemKey)
+		}
 		return SubmitOutput{}, fmt.Errorf("create request: %w", err)
 	}
 
@@ -363,7 +383,7 @@ func (u *Usecases) finalizeDecision(ctx context.Context, req requestdomain.Reque
 	return out, nil
 }
 
-func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.Request, in SubmitInput, now time.Time) (SubmitOutput, error) {
+func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.Request, in SubmitInput, now time.Time, forceBreakGlass bool) (SubmitOutput, error) {
 	expiresAt := now.Add(u.approvalTTL)
 
 	// AI: best-effort con fallback (antes de persistir para incluir en la request)
@@ -384,11 +404,21 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 
 	// Crear request primero (FK: approvals.request_id → requests.id)
 	if _, err := u.reqRepo.Create(ctx, req); err != nil {
+		if domainerr.IsConflict(err) {
+			return u.rebuildSubmitOutputByIdempotency(ctx, in.IdempotencyKey)
+		}
 		return SubmitOutput{}, fmt.Errorf("create request: %w", err)
 	}
 
 	// Determinar si es break-glass
 	breakGlass, requiredApprovals := u.checkBreakGlass(req.ActionType, string(req.RiskLevel))
+	if forceBreakGlass && !breakGlass {
+		breakGlass = true
+		requiredApprovals = u.breakGlassCfg.DefaultApprovals
+		if requiredApprovals <= 1 {
+			requiredApprovals = 2
+		}
+	}
 
 	// Crear approval después (referencia a request existente)
 	approval := approvaldomain.Approval{
@@ -497,7 +527,7 @@ func timePtrRFC3339(value *time.Time) *string {
 }
 
 func (u *Usecases) cacheIdempotency(ctx context.Context, idemKey *string, reqID uuid.UUID, out SubmitOutput, expiresAt time.Time) {
-	if idemKey == nil || *idemKey == "" {
+	if u.idemStore == nil || idemKey == nil || *idemKey == "" {
 		return
 	}
 	resp := map[string]any{
@@ -514,6 +544,48 @@ func (u *Usecases) cacheIdempotency(ctx context.Context, idemKey *string, reqID 
 	if err := u.idemStore.Set(ctx, *idemKey, reqID, resp, expiresAt); err != nil {
 		slog.Error("idempotency store set failed", "error", err, "key", *idemKey)
 	}
+}
+
+func (u *Usecases) rebuildSubmitOutputByIdempotency(ctx context.Context, idemKey *string) (SubmitOutput, error) {
+	if idemKey == nil || strings.TrimSpace(*idemKey) == "" {
+		return SubmitOutput{}, ErrIdempotencyConflict
+	}
+	for i := 0; i < 20; i++ {
+		existing, err := u.reqRepo.GetByIdempotencyKey(ctx, strings.TrimSpace(*idemKey))
+		if err != nil {
+			return SubmitOutput{}, fmt.Errorf("get request by idempotency key: %w", err)
+		}
+		if existing != nil {
+			if existing.Status != requestdomain.StatusPendingApproval || existing.ApprovalID != nil || i == 19 {
+				return submitOutputFromRequest(*existing), nil
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return SubmitOutput{}, ErrIdempotencyConflict
+}
+
+func submitOutputFromRequest(req requestdomain.Request) SubmitOutput {
+	out := SubmitOutput{
+		RequestID:      req.ID,
+		Decision:       string(req.Decision),
+		RiskLevel:      string(req.RiskLevel),
+		DecisionReason: req.DecisionReason,
+		Status:         string(req.Status),
+		AISummary:      req.AISummary,
+		AIDegraded:     req.AIDegraded,
+	}
+	if req.ApprovalID != nil {
+		expiresAt := time.Time{}
+		if req.ExpiresAt != nil {
+			expiresAt = *req.ExpiresAt
+		}
+		out.Approval = &struct {
+			ID        uuid.UUID
+			ExpiresAt time.Time
+		}{ID: *req.ApprovalID, ExpiresAt: expiresAt}
+	}
+	return out
 }
 
 func rebuildOutputFromCache(reqID uuid.UUID, resp map[string]any) SubmitOutput {
@@ -591,6 +663,78 @@ func (u *Usecases) checkBreakGlass(actionType, riskLevel string) (bool, int) {
 	return false, 1
 }
 
+func riskOverrideFromActionType(riskClass string) *string {
+	riskClass = strings.TrimSpace(strings.ToLower(riskClass))
+	switch riskClass {
+	case "critical", "high":
+		v := "high"
+		return &v
+	case "medium":
+		v := "medium"
+		return &v
+	case "low":
+		v := "low"
+		return &v
+	default:
+		return nil
+	}
+}
+
+func firstRiskOverride(values ...*string) *string {
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		trimmed := strings.TrimSpace(*value)
+		if trimmed != "" {
+			return value
+		}
+	}
+	return nil
+}
+
+func validateParamsSchema(params map[string]any, schema map[string]any) error {
+	if len(schema) == 0 {
+		return nil
+	}
+	if typ, ok := schema["type"].(string); ok && typ != "" && typ != "object" {
+		return fmt.Errorf("action_type schema must describe an object")
+	}
+	rawRequired, ok := schema["required"]
+	if !ok {
+		return nil
+	}
+	required, ok := requiredKeys(rawRequired)
+	if !ok {
+		return fmt.Errorf("action_type schema required must be an array")
+	}
+	for _, key := range required {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, exists := params[key]; !exists {
+			return fmt.Errorf("missing required param %q for action_type", key)
+		}
+	}
+	return nil
+}
+
+func requiredKeys(raw any) ([]string, bool) {
+	switch values := raw.(type) {
+	case []any:
+		keys := make([]string, 0, len(values))
+		for _, item := range values {
+			keys = append(keys, fmt.Sprint(item))
+		}
+		return keys, true
+	case []string:
+		return values, true
+	default:
+		return nil, false
+	}
+}
+
 func requestToMap(r requestdomain.Request) map[string]any {
 	params := r.Params
 	if params == nil {
@@ -641,6 +785,20 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 	if req.Params == nil {
 		req.Params = make(map[string]any)
 	}
+	var actionTypeRiskOverride *string
+	if u.actionTypes != nil {
+		atInfo, atErr := u.actionTypes.GetByName(ctx, req.ActionType, req.OrgID)
+		if atErr != nil {
+			return SimulateOutput{}, fmt.Errorf("unknown action_type: %s", req.ActionType)
+		}
+		if !atInfo.Enabled {
+			return SimulateOutput{}, fmt.Errorf("action_type %s is disabled", req.ActionType)
+		}
+		if err := validateParamsSchema(req.Params, atInfo.Schema); err != nil {
+			return SimulateOutput{}, err
+		}
+		actionTypeRiskOverride = riskOverrideFromActionType(atInfo.RiskClass)
+	}
 
 	// Evaluar políticas (misma lógica que Submit, filtradas por org)
 	policyList, err := u.policyRepo.ListActive(ctx, req.OrgID)
@@ -667,8 +825,8 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 		}
 		matched = true
 		matchedPolicyName = p.Name
-		policyRiskOverride = p.RiskOverride
-		req.RiskLevel = TierRisk(req.ActionType, p.RiskOverride, u.riskConfig)
+		policyRiskOverride = firstRiskOverride(p.RiskOverride, actionTypeRiskOverride)
+		req.RiskLevel = TierRisk(req.ActionType, policyRiskOverride, u.riskConfig)
 		dec, ok := DecideFromPolicy(p.Effect, req.RiskLevel)
 		if !ok {
 			continue
@@ -678,7 +836,7 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 		break
 	}
 	if !matched {
-		req.RiskLevel = TierRisk(req.ActionType, nil, u.riskConfig)
+		req.RiskLevel = TierRisk(req.ActionType, actionTypeRiskOverride, u.riskConfig)
 		req.Decision = DefaultDecision(req.RiskLevel)
 		req.DecisionReason = "No policy matched; default for risk " + string(req.RiskLevel)
 	}
@@ -1012,6 +1170,9 @@ func (u *Usecases) List(ctx context.Context, status, actionType string, limit in
 }
 
 type ReportResultInput struct {
+	ResultKey    string
+	ActorID      string
+	OrgID        *string
 	Success      bool
 	Result       map[string]any
 	DurationMs   int64
@@ -1019,11 +1180,57 @@ type ReportResultInput struct {
 }
 
 func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in ReportResultInput) error {
+	if in.Result == nil {
+		in.Result = make(map[string]any)
+	}
+	resultHash, err := resultPayloadHash(in)
+	if err != nil {
+		return err
+	}
+	if u.resultReports != nil && strings.TrimSpace(in.ResultKey) != "" {
+		existing, ok, err := u.resultReports.Get(ctx, requestID, strings.TrimSpace(in.ResultKey))
+		if err != nil {
+			return fmt.Errorf("get result report: %w", err)
+		}
+		if ok {
+			if existing.PayloadHash == resultHash {
+				return nil
+			}
+			return ErrIdempotencyConflict
+		}
+	}
+
 	req, err := u.reqRepo.GetByID(ctx, requestID)
 	if err != nil {
 		return fmt.Errorf("get request: %w", err)
 	}
+	if req.Status != requestdomain.StatusAllowed && req.Status != requestdomain.StatusApproved {
+		return ErrInvalidState
+	}
 	now := time.Now().UTC()
+	if u.resultReports != nil && strings.TrimSpace(in.ResultKey) != "" {
+		_, err := u.resultReports.Save(ctx, ResultReport{
+			ID:           uuid.New(),
+			RequestID:    requestID,
+			ResultKey:    strings.TrimSpace(in.ResultKey),
+			ActorID:      strings.TrimSpace(in.ActorID),
+			OrgID:        in.OrgID,
+			Success:      in.Success,
+			Result:       sanitizeResultPayload(in.Result),
+			ErrorMessage: in.ErrorMessage,
+			DurationMs:   in.DurationMs,
+			PayloadHash:  resultHash,
+			CreatedAt:    now,
+		})
+		if err != nil {
+			if existing, ok, getErr := u.resultReports.Get(ctx, requestID, strings.TrimSpace(in.ResultKey)); getErr == nil && ok {
+				if existing.PayloadHash == resultHash {
+					return nil
+				}
+			}
+			return err
+		}
+	}
 	req.UpdatedAt = now
 	req.ExecutedAt = &now
 	if in.Success {
@@ -1059,6 +1266,58 @@ func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in Rep
 		return fmt.Errorf("update request: %w", err)
 	}
 	return nil
+}
+
+func resultPayloadHash(in ReportResultInput) (string, error) {
+	payload := map[string]any{
+		"success":       in.Success,
+		"result":        sanitizeResultPayload(in.Result),
+		"error_message": strings.TrimSpace(in.ErrorMessage),
+		"duration_ms":   in.DurationMs,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal result report hash payload: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func sanitizeResultPayload(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		if isSensitiveResultKey(key) {
+			out[key] = "***"
+			continue
+		}
+		out[key] = sanitizeResultValue(value)
+	}
+	return out
+}
+
+func sanitizeResultValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return sanitizeResultPayload(v)
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = sanitizeResultValue(item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func isSensitiveResultKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	switch normalized {
+	case "password", "passwd", "secret", "token", "api_key", "apikey", "authorization", "private_key", "client_secret":
+		return true
+	default:
+		return false
+	}
 }
 
 // AttestInput es el input para registrar una attestation verificable.

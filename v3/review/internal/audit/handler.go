@@ -26,6 +26,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) replay(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -34,6 +37,10 @@ func (h *Handler) replay(w http.ResponseWriter, r *http.Request) {
 	out, err := h.uc.Replay(r.Context(), id)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "replay failed")
+		return
+	}
+	if !canAccessReplayOrg(r, out) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "replay org is not allowed for this principal")
 		return
 	}
 	httpjson.WriteJSON(w, http.StatusOK, toReplayResponse(out))
@@ -52,6 +59,7 @@ func toReplayResponse(out ReplayOutput) auditdto.ReplayResponse {
 	}
 	return auditdto.ReplayResponse{
 		RequestID:     out.RequestID,
+		OrgID:         out.OrgID,
 		Requester:     auditdto.RequesterInfo{Type: out.Requester.Type, ID: out.Requester.ID},
 		ActionType:    out.ActionType,
 		Target:        out.Target,

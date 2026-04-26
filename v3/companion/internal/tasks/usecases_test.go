@@ -292,6 +292,7 @@ func (f *fakeRepo) countActions(actionType string) int {
 type stubReview struct {
 	submitFn func(ctx context.Context, idempotencyKey string, body reviewclient.SubmitRequestBody) (reviewclient.SubmitResponse, error)
 	getFn    func(ctx context.Context, id string) (reviewclient.RequestSummary, int, error)
+	reportFn func(ctx context.Context, id string, success bool, result map[string]any, durationMS int64, errorMessage string) (int, error)
 }
 
 type stubExecutor struct {
@@ -367,6 +368,13 @@ func (s *stubReview) GetRequest(ctx context.Context, id string) (reviewclient.Re
 		return s.getFn(ctx, id)
 	}
 	return reviewclient.RequestSummary{}, http.StatusNotFound, nil
+}
+
+func (s *stubReview) ReportResult(ctx context.Context, id string, success bool, result map[string]any, durationMS int64, errorMessage string) (int, error) {
+	if s.reportFn != nil {
+		return s.reportFn(ctx, id, success, result, durationMS, errorMessage)
+	}
+	return http.StatusOK, nil
 }
 
 func createWaitingTask(t *testing.T, repo *fakeRepo) domain.Task {

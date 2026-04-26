@@ -1,6 +1,6 @@
 # Nexus v3
 
-Stack activo: **Nexus Governance** (categoría canónica: `GovernanceService`), **Companion** (categoría canónica: `ProductAgent` transversal), **console** (UI) y shared local infra (`postgres` + `ollama`) desde `local-infra`.
+Stack activo: **Nexus Governance** (categoría canónica: `GovernanceService`), **Companion** (categoría canónica: `ProductAgent` transversal), **console** (UI) y Postgres local definido en este directorio.
 
 ## Taxonomía IA
 
@@ -14,7 +14,13 @@ Desde este directorio (`v3/`):
 
 ```bash
 test -f .env || cp .env.example .env
-docker compose --project-directory /home/pablo/Projects/Pablo/nexus/v3 -f /home/pablo/Projects/Pablo/local-infra/docker-compose.yml -f /home/pablo/Projects/Pablo/local-infra/docker-compose.ollama.yml -f docker-compose.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+Companion usa `NEXUS_LLM_PROVIDER=echo` por defecto para que el stack local no dependa de Ollama. Para usar Ollama local:
+
+```bash
+NEXUS_LLM_PROVIDER=ollama docker compose --profile ollama -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 Si Postgres ya tenía volumen **sin** la base `nexus_companion`:
@@ -23,7 +29,7 @@ Si Postgres ya tenía volumen **sin** la base `nexus_companion`:
 bash scripts/dev/ensure-companion-db.sh
 ```
 
-Luego reiniciá **companion** si hacía falta la base (`docker compose --project-directory /home/pablo/Projects/Pablo/nexus/v3 -f /home/pablo/Projects/Pablo/local-infra/docker-compose.yml -f /home/pablo/Projects/Pablo/local-infra/docker-compose.ollama.yml -f docker-compose.yml restart companion`).
+Luego reiniciá **companion** si hacía falta la base (`docker compose -f docker-compose.yml -f docker-compose.dev.yml restart companion`).
 
 ## URLs por defecto (host)
 
@@ -39,7 +45,9 @@ Variables: ver `.env.example`.
 
 ```bash
 make test          # Go unit (review + companion)
+make qa            # migraciones + Go build/vet/test -race + console si node_modules existe
 make smoke         # Requiere APIs levantadas (compose)
+make e2e           # Flujo de ciclo completo
 ```
 
 Smoke incluye flujo **Companion → Nexus Governance** (`scripts/smoke/run-companion-review-flow.sh`): comprueba el vínculo `review_request_id`, que el **estado de la tarea** coincida con el resultado de governance (`allowed` → `done`, `pending_approval` → `waiting_for_approval`, etc.) y que responda `POST /v1/tasks/{id}/sync`.
@@ -60,6 +68,8 @@ En local (`localhost`), `console` usa proxy same-origin para hablar con `review`
 
 ## Documentación
 
+- [doc/MONOREPO_BOUNDARIES.md](doc/MONOREPO_BOUNDARIES.md) — fronteras: Nexus decide, Companion trabaja, Connectors conectan
+- [doc/CONNECTORS.md](doc/CONNECTORS.md) — contrato interno v1 de connectors en Companion
 - [doc/NEXUS_COWORKER_VISION.md](doc/NEXUS_COWORKER_VISION.md) — visión: de capa de control a **compañero de trabajo completo**
 - [companion/README.md](companion/README.md)
 - [review/README.md](review/README.md)

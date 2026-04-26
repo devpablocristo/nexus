@@ -1,7 +1,25 @@
 # Nexus v3 — API Reference
 
 Base URL: `http://localhost:18084`
-Auth: `X-API-Key` header en todos los endpoints (excepto health).
+Auth: `X-API-Key` o JWT Bearer en todos los endpoints (excepto health). El backend deriva un principal efectivo con `actor_id`, `org_id`, roles/scopes y método de auth. Headers manuales como `X-User-ID` y `X-Org-ID` no son autoridad de identidad cuando hay middleware de auth.
+
+Formato extendido de API key:
+
+```text
+name=secret|org_id=org-a|actor=companion|service_principal=true|scopes=nexus:requests:read+nexus:requests:write
+```
+
+El formato legacy `admin=secret` sigue funcionando en local/dev. Los scopes principales son:
+
+| Scope | Uso |
+|-------|-----|
+| `nexus:requests:read` | leer/listar/simular/replay de requests |
+| `nexus:requests:write` | crear requests |
+| `nexus:requests:result` | reportar `/result` |
+| `nexus:approvals:decide` | listar/decidir approvals |
+| `nexus:policies:admin` | administrar policies |
+| `nexus:evidence:write` | crear attestations/evidence write |
+| `nexus:cross_org` | acceso cross-org explicito |
 
 ## Health
 
@@ -16,7 +34,7 @@ Auth: `X-API-Key` header en todos los endpoints (excepto health).
 
 ```
 POST /v1/requests
-Header: Idempotency-Key: ... (opcional)
+Header: Idempotency-Key: ... (opcional, fuente canónica)
 ```
 
 ```json
@@ -44,7 +62,7 @@ Header: Idempotency-Key: ... (opcional)
 | params | | object |
 | reason | | string |
 | context | | string |
-| idempotency_key | | string (también acepta header) |
+| idempotency_key | | string (compatibilidad gradual; si existe header, gana `Idempotency-Key`) |
 
 Respuesta (201):
 ```json
@@ -87,6 +105,10 @@ POST /v1/requests/{id}/result
   "duration_ms": 180
 }
 ```
+
+Solo acepta resultados para requests en estado ejecutable (`allowed` o `approved`). Estados como `denied`, `pending_approval`, `rejected`, `executed` o `failed` devuelven `409`.
+
+Requiere scope `nexus:requests:result` y respeta `org_id` del principal efectivo salvo principal con `nexus:cross_org`.
 
 ### Replay
 
@@ -160,6 +182,8 @@ Respuesta:
 
 **Shadow mode:** cuando `mode: "shadow"`, la policy evalúa pero no actúa. Se incrementa `shadow_hits` en cada match. Útil para probar policies antes de activarlas. Se promueve a enforced cambiando `mode` via PATCH.
 
+Create/update valida que la expresión CEL compile y retorne bool, que `effect`, `mode`, `risk_override` y prioridad sean válidos, y rechaza configuraciones inválidas con `400`.
+
 ### Variables CEL disponibles
 
 ```
@@ -207,6 +231,8 @@ Evalúa una expresión CEL propuesta contra el historial de requests existentes.
   "note": "Ventana de mantenimiento confirmada"
 }
 ```
+
+`decided_by` se deriva del principal autenticado cuando está disponible; el body queda como compatibilidad local. Una approval vencida o ya decidida devuelve `409`.
 
 ### Break-glass
 
@@ -258,6 +284,36 @@ GET /v1/metrics/summary?period=7d
 | List | GET | `/v1/action-types` | 200 |
 | Update | PATCH | `/v1/action-types/{id}` | 200 |
 | Delete | DELETE | `/v1/action-types/{id}` | 204 |
+
+`risk_class`, `schema` y `requires_break_glass` impactan el runtime de Submit/Simulate: el riesgo base sale del action type, `params` se valida contra `schema.required` cuando existe y `requires_break_glass` activa approvals múltiples.
+
+## Companion Connectors
+
+Base URL Companion: `http://localhost:18085`
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/v1/connectors` | GET | Lista connectors configurados, con secretos enmascarados |
+| `/v1/connectors/capabilities` | GET | Lista capabilities declaradas por adapter |
+| `/v1/connectors/execute` | POST | Ejecuta una operación de connector |
+| `/v1/connectors/{id}/executions` | GET | Lista ejecuciones persistidas |
+
+Capability contract v1:
+
+```json
+{
+  "operation": "pymes.send_whatsapp_text",
+  "mode": "write",
+  "side_effect": true,
+  "read_only": false,
+  "risk_class": "medium",
+  "requires_review": true,
+  "input_schema": {"type": "object", "required": ["org_id", "party_id", "body"]},
+  "evidence_fields": ["sent", "external_ref", "party_id"]
+}
+```
+
+Las operaciones `read` pueden ejecutarse sin approval. Las operaciones `write` o con `side_effect` requieren `review_request_id` y Nexus debe devolver estado `allowed` o `approved`.
 
 ### Create action type
 

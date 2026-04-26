@@ -3,6 +3,7 @@ package requests
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -11,10 +12,10 @@ import (
 
 	"github.com/devpablocristo/core/http/go/httpjson"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	requestdto "github.com/devpablocristo/nexus/v3/review/internal/requests/handler/dto"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 // Port mínimo: solo lo que el handler necesita
@@ -59,6 +60,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead, scopeNexusRequestsWrite) {
+		return
+	}
 	var body requestdto.SimulateRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -66,6 +70,11 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.ActionType == "" {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "action_type is required")
+		return
+	}
+	params, ok := bindParamsToPrincipalOrg(r, body.Params)
+	if !ok {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
 		return
 	}
 
@@ -76,7 +85,7 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 		ActionType:     body.ActionType,
 		TargetSystem:   body.TargetSystem,
 		TargetResource: body.TargetResource,
-		Params:         body.Params,
+		Params:         params,
 		Reason:         body.Reason,
 		Context:        body.Context,
 	})
@@ -99,6 +108,9 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) replaySimulate(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead) {
+		return
+	}
 	var body requestdto.ReplaySimulateRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -124,6 +136,9 @@ func (h *Handler) replaySimulate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsWrite) {
+		return
+	}
 	var body requestdto.SubmitRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -134,12 +149,23 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var idemKey *string
-	if k := r.Header.Get("Idempotency-Key"); k != "" {
+	if k := strings.TrimSpace(r.Header.Get("Idempotency-Key")); k != "" {
 		if len(k) > maxIdempotencyKeyLen {
 			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "idempotency key too long")
 			return
 		}
 		idemKey = &k
+	} else if k := strings.TrimSpace(body.IdempotencyKey); k != "" {
+		if len(k) > maxIdempotencyKeyLen {
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "idempotency key too long")
+			return
+		}
+		idemKey = &k
+	}
+	params, ok := bindParamsToPrincipalOrg(r, body.Params)
+	if !ok {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
+		return
 	}
 	out, err := h.uc.Submit(r.Context(), SubmitInput{
 		IdempotencyKey: idemKey,
@@ -149,7 +175,7 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 		ActionType:     body.ActionType,
 		TargetSystem:   body.TargetSystem,
 		TargetResource: body.TargetResource,
-		Params:         body.Params,
+		Params:         params,
 		Reason:         body.Reason,
 		Context:        body.Context,
 	})
@@ -159,6 +185,11 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 			strings.Contains(errMsg, "is disabled") ||
 			strings.Contains(errMsg, "not delegated") {
 			httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", errMsg)
+			return
+		}
+		if strings.Contains(errMsg, "missing required param") ||
+			strings.Contains(errMsg, "action_type schema") {
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", errMsg)
 			return
 		}
 		httpjson.WriteFlatInternalError(w, err, "request submission failed")
@@ -183,6 +214,9 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead) {
+		return
+	}
 	q := r.URL.Query()
 	status := q.Get("status")
 	actionType := q.Get("action_type")
@@ -199,12 +233,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]requestdto.RequestResponse, 0, len(list))
 	for _, req := range list {
+		if !canAccessRequestOrg(r, req) {
+			continue
+		}
 		out = append(out, toRequestResponse(req))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -219,10 +259,17 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatInternalError(w, err, "get request failed")
 		return
 	}
+	if !canAccessRequestOrg(r, req) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
+		return
+	}
 	httpjson.WriteJSON(w, http.StatusOK, toRequestResponse(req))
 }
 
 func (h *Handler) reportResult(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsResult) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -233,7 +280,28 @@ func (h *Handler) reportResult(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
+	resultKey := resultKeyFromRequest(r, body.ResultID)
+	if len(resultKey) > maxIdempotencyKeyLen {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "result idempotency key too long")
+		return
+	}
+	req, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+			return
+		}
+		httpjson.WriteFlatInternalError(w, err, "get request failed")
+		return
+	}
+	if !canAccessRequestOrg(r, req) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
+		return
+	}
 	err = h.uc.ReportResult(r.Context(), id, ReportResultInput{
+		ResultKey:    resultKey,
+		ActorID:      strings.TrimSpace(r.Header.Get("X-User-ID")),
+		OrgID:        stringPtrOrNil(strings.TrimSpace(r.Header.Get("X-Org-ID"))),
 		Success:      body.Success,
 		Result:       body.Result,
 		DurationMs:   body.DurationMs,
@@ -244,6 +312,10 @@ func (h *Handler) reportResult(w http.ResponseWriter, r *http.Request) {
 			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
 			return
 		}
+		if domainerr.IsConflict(err) {
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", "request is not executable")
+			return
+		}
 		httpjson.WriteFlatInternalError(w, err, "report result failed")
 		return
 	}
@@ -251,6 +323,9 @@ func (h *Handler) reportResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) attest(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusEvidenceWrite) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -263,6 +338,19 @@ func (h *Handler) attest(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Status == "" || body.Attester == "" || body.Signature == "" {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "status, attester and signature are required")
+		return
+	}
+	req, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+			return
+		}
+		httpjson.WriteFlatInternalError(w, err, "get request failed")
+		return
+	}
+	if !canAccessRequestOrg(r, req) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
 		return
 	}
 
@@ -290,9 +378,25 @@ func (h *Handler) attest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getAttestation(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	req, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+			return
+		}
+		httpjson.WriteFlatInternalError(w, err, "get request failed")
+		return
+	}
+	if !canAccessRequestOrg(r, req) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
 		return
 	}
 	attestation, err := h.uc.GetAttestation(r.Context(), id)
@@ -308,6 +412,9 @@ func (h *Handler) getAttestation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead, scopeNexusRequestsWrite) {
+		return
+	}
 	var body requestdto.BatchSimulateRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -324,6 +431,11 @@ func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
 
 	inputs := make([]SubmitInput, 0, len(body.Requests))
 	for _, req := range body.Requests {
+		params, ok := bindParamsToPrincipalOrg(r, req.Params)
+		if !ok {
+			httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
+			return
+		}
 		inputs = append(inputs, SubmitInput{
 			RequesterType:  req.RequesterType,
 			RequesterID:    req.RequesterID,
@@ -331,7 +443,7 @@ func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
 			ActionType:     req.ActionType,
 			TargetSystem:   req.TargetSystem,
 			TargetResource: req.TargetResource,
-			Params:         req.Params,
+			Params:         params,
 			Reason:         req.Reason,
 			Context:        req.Context,
 		})
@@ -366,6 +478,9 @@ func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) simulateApproval(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusRequestsRead) {
+		return
+	}
 	var body requestdto.ApprovalSimulateRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -383,6 +498,19 @@ func (h *Handler) simulateApproval(w http.ResponseWriter, r *http.Request) {
 	reqID, err := uuid.Parse(body.RequestID)
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid request_id")
+		return
+	}
+	req, err := h.uc.GetByID(r.Context(), reqID)
+	if err != nil {
+		if domainerr.IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "request not found")
+			return
+		}
+		httpjson.WriteFlatInternalError(w, err, "get request failed")
+		return
+	}
+	if !canAccessRequestOrg(r, req) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "request org is not allowed for this principal")
 		return
 	}
 
@@ -429,7 +557,7 @@ func toAttestResponse(a requestdomain.Attestation) requestdto.AttestResponse {
 // --- Helpers ---
 
 func toRequestResponse(req requestdomain.Request) requestdto.RequestResponse {
-	return requestdto.RequestResponse{
+	resp := requestdto.RequestResponse{
 		ID:             req.ID.String(),
 		RequesterType:  string(req.RequesterType),
 		RequesterID:    req.RequesterID,
@@ -448,6 +576,70 @@ func toRequestResponse(req requestdomain.Request) requestdto.RequestResponse {
 		CreatedAt:      req.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:      req.UpdatedAt.Format(time.RFC3339),
 	}
+	if req.OrgID != nil {
+		resp.OrgID = strings.TrimSpace(*req.OrgID)
+	}
+	return resp
+}
+
+func bindParamsToPrincipalOrg(r *http.Request, params map[string]any) (map[string]any, bool) {
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if orgID == "" {
+		if requestHasNoAuthContext(r) || requestHasScope(r, scopeNexusCrossOrg) {
+			return params, true
+		}
+		if raw, exists := params["org_id"]; exists && strings.TrimSpace(rawToString(raw)) != "" {
+			return nil, false
+		}
+		return params, true
+	}
+	out := make(map[string]any, len(params)+1)
+	for key, value := range params {
+		out[key] = value
+	}
+	if raw, exists := out["org_id"]; exists {
+		requested := strings.TrimSpace(rawToString(raw))
+		if requested != "" && requested != orgID {
+			return nil, false
+		}
+	}
+	out["org_id"] = orgID
+	return out, true
+}
+
+func canAccessRequestOrg(r *http.Request, req requestdomain.Request) bool {
+	if requestHasScope(r, scopeNexusCrossOrg) {
+		return true
+	}
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if orgID != "" {
+		if req.OrgID == nil {
+			return false
+		}
+		return strings.TrimSpace(*req.OrgID) == orgID
+	}
+	if requestHasNoAuthContext(r) {
+		return true
+	}
+	return req.OrgID == nil
+}
+
+func rawToString(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func resultKeyFromRequest(r *http.Request, bodyResultID string) string {
+	if key := strings.TrimSpace(r.Header.Get("Idempotency-Key")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(bodyResultID)
 }
 
 // logAuditError loguea errores de audit sin fallar la request (best-effort).

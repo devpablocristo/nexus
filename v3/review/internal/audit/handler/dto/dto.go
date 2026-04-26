@@ -3,6 +3,7 @@ package dto
 // ReplayResponse representa la respuesta HTTP del replay.
 type ReplayResponse struct {
 	RequestID     string          `json:"request_id"`
+	OrgID         string          `json:"org_id,omitempty"`
 	Requester     RequesterInfo   `json:"requester"`
 	ActionType    string          `json:"action_type"`
 	Target        string          `json:"target"`

@@ -4,11 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
 	auditdomain "github.com/devpablocristo/nexus/v3/review/internal/audit/usecases/domain"
+	"github.com/google/uuid"
 )
 
 type ReplayRequestInfo struct {
+	OrgID          string
 	RequesterType  string
 	RequesterID    string
 	ActionType     string
@@ -31,13 +32,14 @@ func NewUsecases(repo Repository, requestRepo RequestGetter) *Usecases {
 }
 
 type ReplayOutput struct {
-	RequestID    string     `json:"request_id"`
-	Requester    struct{ Type, ID string } `json:"requester"`
-	ActionType   string     `json:"action_type"`
-	Target       string     `json:"target"`
-	FinalStatus  string     `json:"final_status"`
-	DurationTotal string    `json:"duration_total,omitempty"`
-	Timeline     []TimelineEntry `json:"timeline"`
+	RequestID     string                    `json:"request_id"`
+	OrgID         string                    `json:"org_id,omitempty"`
+	Requester     struct{ Type, ID string } `json:"requester"`
+	ActionType    string                    `json:"action_type"`
+	Target        string                    `json:"target"`
+	FinalStatus   string                    `json:"final_status"`
+	DurationTotal string                    `json:"duration_total,omitempty"`
+	Timeline      []TimelineEntry           `json:"timeline"`
 }
 
 type TimelineEntry struct {
@@ -58,6 +60,7 @@ func (u *Usecases) Replay(ctx context.Context, requestID uuid.UUID) (ReplayOutpu
 	}
 	out := ReplayOutput{
 		RequestID:   requestID.String(),
+		OrgID:       req.OrgID,
 		Requester:   struct{ Type, ID string }{req.RequesterType, req.RequesterID},
 		ActionType:  req.ActionType,
 		Target:      req.TargetSystem + " / " + req.TargetResource,

@@ -37,6 +37,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusDelegationsAdmin) {
+		return
+	}
 	var body dto.CreateDelegationRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -57,6 +60,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		Purpose:            body.Purpose,
 		MaxRiskClass:       body.MaxRiskClass,
 	}
+	if orgID := principalOrgID(r); orgID != nil {
+		d.OrgID = orgID
+	}
 	if body.ExpiresAt != nil {
 		t, err := time.Parse(time.RFC3339, *body.ExpiresAt)
 		if err == nil {
@@ -73,6 +79,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusDelegationsAdmin) {
+		return
+	}
 	list, err := h.uc.List(r.Context())
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list delegations")
@@ -80,12 +89,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]dto.DelegationResponse, 0, len(list))
 	for _, d := range list {
+		if !canAccessDelegationOrg(r, d) {
+			continue
+		}
 		out = append(out, toResponse(d))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusDelegationsAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -94,12 +109,19 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 	d, err := h.uc.GetByID(r.Context(), id)
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+	if !canAccessDelegationOrg(r, d) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "delegation org is not allowed for this principal")
 		return
 	}
 	httpjson.WriteJSON(w, http.StatusOK, toResponse(d))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusDelegationsAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -108,6 +130,10 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	d, err := h.uc.GetByID(r.Context(), id)
 	if err != nil {
 		writeError(w, err)
+		return
+	}
+	if !canAccessDelegationOrg(r, d) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "delegation org is not allowed for this principal")
 		return
 	}
 	var body dto.UpdateDelegationRequest
@@ -146,9 +172,21 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusDelegationsAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	d, err := h.uc.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !canAccessDelegationOrg(r, d) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "delegation org is not allowed for this principal")
 		return
 	}
 	if err := h.uc.DeleteByID(r.Context(), id); err != nil {

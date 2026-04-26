@@ -2,10 +2,11 @@ package wire
 
 import (
 	"context"
+	"strings"
 
-	"github.com/google/uuid"
 	"github.com/devpablocristo/nexus/v3/review/internal/audit"
 	"github.com/devpablocristo/nexus/v3/review/internal/requests"
+	"github.com/google/uuid"
 )
 
 type replayRequestGetter struct {
@@ -21,7 +22,12 @@ func (g *replayRequestGetter) GetReplayInfo(ctx context.Context, id uuid.UUID) (
 	if err != nil {
 		return audit.ReplayRequestInfo{}, err
 	}
+	orgID := ""
+	if req.OrgID != nil {
+		orgID = strings.TrimSpace(*req.OrgID)
+	}
 	return audit.ReplayRequestInfo{
+		OrgID:          orgID,
 		RequesterType:  string(req.RequesterType),
 		RequesterID:    req.RequesterID,
 		ActionType:     req.ActionType,

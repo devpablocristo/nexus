@@ -49,6 +49,7 @@ const (
 type reviewGateway interface {
 	SubmitRequest(ctx context.Context, idempotencyKey string, body reviewclient.SubmitRequestBody) (reviewclient.SubmitResponse, error)
 	GetRequest(ctx context.Context, id string) (reviewclient.RequestSummary, int, error)
+	ReportResult(ctx context.Context, id string, success bool, result map[string]any, durationMS int64, errorMessage string) (int, error)
 }
 
 type taskExecutor interface {
@@ -118,6 +119,7 @@ func (u *Usecases) SetReviewSyncInterval(interval time.Duration) {
 }
 
 type CreateTaskInput struct {
+	OrgID       string
 	Title       string
 	Goal        string
 	Priority    string
@@ -134,6 +136,7 @@ func (u *Usecases) Create(ctx context.Context, in CreateTaskInput) (domain.Task,
 	}
 	t := domain.Task{
 		Title:       in.Title,
+		OrgID:       in.OrgID,
 		Goal:        in.Goal,
 		Status:      domain.TaskStatusNew,
 		Priority:    in.Priority,
@@ -160,6 +163,10 @@ func (u *Usecases) Create(ctx context.Context, in CreateTaskInput) (domain.Task,
 
 func (u *Usecases) List(ctx context.Context, limit int) ([]domain.Task, error) {
 	return u.repo.ListTasks(ctx, limit)
+}
+
+func (u *Usecases) Get(ctx context.Context, id uuid.UUID) (domain.Task, error) {
+	return u.repo.GetTaskByID(ctx, id)
 }
 
 type LinkedReviewRequest struct {
@@ -310,6 +317,7 @@ func (u *Usecases) Chat(ctx context.Context, in ChatInput) (ChatResult, error) {
 		}
 		t, err = u.repo.CreateTask(ctx, domain.Task{
 			Title:     title,
+			OrgID:     in.OrgID,
 			Status:    domain.TaskStatusNew,
 			Priority:  "normal",
 			CreatedBy: in.UserID,
@@ -1130,16 +1138,20 @@ type ExecuteTaskOutput struct {
 
 func buildConnectorExecutionPayload(result connectordomain.ExecutionResult) json.RawMessage {
 	payload, _ := json.Marshal(map[string]any{
-		"id":            result.ID.String(),
-		"connector_id":  result.ConnectorID.String(),
-		"operation":     result.Operation,
-		"status":        result.Status,
-		"external_ref":  result.ExternalRef,
-		"payload":       json.RawMessage(result.Payload),
-		"result":        json.RawMessage(result.ResultJSON),
-		"error_message": result.ErrorMessage,
-		"retryable":     result.Retryable,
-		"duration_ms":   result.DurationMS,
+		"id":              result.ID.String(),
+		"connector_id":    result.ConnectorID.String(),
+		"org_id":          result.OrgID,
+		"actor_id":        result.ActorID,
+		"operation":       result.Operation,
+		"status":          result.Status,
+		"external_ref":    result.ExternalRef,
+		"payload":         json.RawMessage(result.Payload),
+		"result":          json.RawMessage(result.ResultJSON),
+		"evidence":        json.RawMessage(result.EvidenceJSON),
+		"error_message":   result.ErrorMessage,
+		"retryable":       result.Retryable,
+		"duration_ms":     result.DurationMS,
+		"idempotency_key": result.IdempotencyKey,
 		"review_request_id": func() string {
 			if result.ReviewRequestID != nil {
 				return result.ReviewRequestID.String()
@@ -1265,6 +1277,16 @@ func defaultExecutionIdempotencyKey(taskID uuid.UUID, reviewRequestID *uuid.UUID
 	return fmt.Sprintf("task-execute-%s", taskID.String())
 }
 
+func executionActorID(t domain.Task) string {
+	if actor := strings.TrimSpace(t.AssignedTo); actor != "" {
+		return actor
+	}
+	if actor := strings.TrimSpace(t.CreatedBy); actor != "" {
+		return actor
+	}
+	return CompanionRequesterID
+}
+
 func (u *Usecases) refreshReviewSnapshot(ctx context.Context, taskID uuid.UUID, origin string) (*domain.TaskReviewSyncState, error) {
 	var prevState *domain.TaskReviewSyncState
 	currentState, err := u.repo.GetReviewSyncState(ctx, taskID)
@@ -1343,6 +1365,8 @@ func (u *Usecases) runTaskExecution(ctx context.Context, t domain.Task, plan dom
 
 	result, execErr := u.executor.Execute(ctx, connectordomain.ExecutionSpec{
 		ConnectorID:     plan.ConnectorID,
+		OrgID:           t.OrgID,
+		ActorID:         executionActorID(t),
 		Operation:       plan.Operation,
 		Payload:         plan.Payload,
 		IdempotencyKey:  idempotencyKey,
@@ -1353,12 +1377,15 @@ func (u *Usecases) runTaskExecution(ctx context.Context, t domain.Task, plan dom
 		result = connectordomain.ExecutionResult{
 			ID:              uuid.New(),
 			ConnectorID:     plan.ConnectorID,
+			OrgID:           t.OrgID,
+			ActorID:         executionActorID(t),
 			Operation:       plan.Operation,
 			Status:          connectordomain.ExecFailure,
 			Payload:         plan.Payload,
 			ResultJSON:      json.RawMessage(`{}`),
 			ErrorMessage:    execErr.Error(),
 			Retryable:       true,
+			IdempotencyKey:  idempotencyKey,
 			TaskID:          &t.ID,
 			ReviewRequestID: reviewRequestID,
 			CreatedAt:       time.Now().UTC(),
@@ -1367,6 +1394,7 @@ func (u *Usecases) runTaskExecution(ctx context.Context, t domain.Task, plan dom
 	if result.CreatedAt.IsZero() {
 		result.CreatedAt = time.Now().UTC()
 	}
+	u.reportExecutionToReview(ctx, reviewRequestID, result)
 
 	if _, insertErr := u.repo.InsertAction(ctx, domain.TaskAction{
 		TaskID:          t.ID,
@@ -1453,6 +1481,38 @@ func (u *Usecases) runTaskExecution(ctx context.Context, t domain.Task, plan dom
 	out.ExecutionState = executionState
 	u.syncTaskMemory(ctx, t.ID, "execution")
 	return out, nil
+}
+
+func (u *Usecases) reportExecutionToReview(ctx context.Context, reviewRequestID *uuid.UUID, result connectordomain.ExecutionResult) {
+	if u.review == nil || reviewRequestID == nil || *reviewRequestID == uuid.Nil {
+		return
+	}
+	success := result.Status == connectordomain.ExecSuccess
+	var resultPayload map[string]any
+	if len(result.ResultJSON) > 0 {
+		if err := json.Unmarshal(result.ResultJSON, &resultPayload); err != nil {
+			resultPayload = map[string]any{"raw": string(result.ResultJSON)}
+		}
+	}
+	if resultPayload == nil {
+		resultPayload = map[string]any{}
+	}
+	resultPayload["connector_execution_id"] = result.ID.String()
+	resultPayload["connector_id"] = result.ConnectorID.String()
+	resultPayload["operation"] = result.Operation
+	resultPayload["external_ref"] = result.ExternalRef
+	resultPayload["org_id"] = result.OrgID
+	resultPayload["actor_id"] = result.ActorID
+	if len(result.EvidenceJSON) > 0 {
+		resultPayload["evidence"] = json.RawMessage(result.EvidenceJSON)
+	}
+	status, err := u.review.ReportResult(ctx, reviewRequestID.String(), success, resultPayload, result.DurationMS, result.ErrorMessage)
+	if err != nil || status >= http.StatusBadRequest {
+		slog.Warn("report execution to review failed",
+			"review_request_id", reviewRequestID.String(),
+			"status", status,
+			"error", err)
+	}
 }
 
 func (u *Usecases) ExecuteTask(ctx context.Context, taskID uuid.UUID) (ExecuteTaskOutput, error) {

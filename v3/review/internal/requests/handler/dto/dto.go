@@ -1,6 +1,7 @@
 package dto
 
 type SubmitRequest struct {
+	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 	RequesterType  string         `json:"requester_type"`
 	RequesterID    string         `json:"requester_id"`
 	RequesterName  string         `json:"requester_name,omitempty"`
@@ -33,14 +34,14 @@ type SimulateRequest = SubmitRequest
 
 // SimulateResponse muestra qué habría hecho Nexus sin ejecutar nada
 type SimulateResponse struct {
-	Decision             string      `json:"decision"`
-	RiskLevel            string      `json:"risk_level"`
-	DecisionReason       string      `json:"decision_reason"`
-	Status               string      `json:"status"`
-	PolicyMatched        *string     `json:"policy_matched,omitempty"`
-	RiskAssessment       any         `json:"risk_assessment"`
-	WouldRequireApproval bool        `json:"would_require_approval"`
-	AISummary            string      `json:"ai_summary,omitempty"`
+	Decision             string  `json:"decision"`
+	RiskLevel            string  `json:"risk_level"`
+	DecisionReason       string  `json:"decision_reason"`
+	Status               string  `json:"status"`
+	PolicyMatched        *string `json:"policy_matched,omitempty"`
+	RiskAssessment       any     `json:"risk_assessment"`
+	WouldRequireApproval bool    `json:"would_require_approval"`
+	AISummary            string  `json:"ai_summary,omitempty"`
 }
 
 // ReplaySimulateRequest es el body para replay simulation
@@ -51,6 +52,7 @@ type ReplaySimulateRequest struct {
 }
 
 type ReportResultRequest struct {
+	ResultID     string         `json:"result_id,omitempty"`
 	Success      bool           `json:"success"`
 	Result       map[string]any `json:"result,omitempty"`
 	DurationMs   int64          `json:"duration_ms,omitempty"`
@@ -85,12 +87,12 @@ type BatchSimulateRequest struct {
 
 // BatchSimulateResponse contiene resultados agregados del batch.
 type BatchSimulateResponse struct {
-	Total           int                    `json:"total"`
-	Allowed         int                    `json:"allowed"`
-	Denied          int                    `json:"denied"`
-	RequireApproval int                    `json:"require_approval"`
-	ByRisk          map[string]int         `json:"by_risk"`
-	Results         []BatchSimulateItem    `json:"results"`
+	Total           int                 `json:"total"`
+	Allowed         int                 `json:"allowed"`
+	Denied          int                 `json:"denied"`
+	RequireApproval int                 `json:"require_approval"`
+	ByRisk          map[string]int      `json:"by_risk"`
+	Results         []BatchSimulateItem `json:"results"`
 }
 
 // BatchSimulateItem es un resultado individual del batch.
@@ -126,6 +128,7 @@ type ApprovalSimulateResponse struct {
 
 type RequestResponse struct {
 	ID             string         `json:"id"`
+	OrgID          string         `json:"org_id,omitempty"`
 	RequesterType  string         `json:"requester_type"`
 	RequesterID    string         `json:"requester_id"`
 	RequesterName  string         `json:"requester_name,omitempty"`

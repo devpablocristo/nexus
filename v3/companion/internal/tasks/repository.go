@@ -53,7 +53,7 @@ func NewPostgresRepository(db *sharedpostgres.DB) *PostgresRepository {
 }
 
 const selectTask = `
-	SELECT t.id, t.title, t.goal, t.status, t.priority, t.created_by, t.assigned_to, t.channel, t.summary,
+	SELECT t.id, t.org_id, t.title, t.goal, t.status, t.priority, t.created_by, t.assigned_to, t.channel, t.summary,
 	       t.context_json, rs.last_review_status, rs.last_checked_at, rs.last_error, t.created_at, t.updated_at, t.closed_at
 	FROM companion_tasks t
 	LEFT JOIN companion_task_review_sync_state rs ON rs.task_id = t.id`
@@ -76,10 +76,10 @@ func (r *PostgresRepository) CreateTask(ctx context.Context, t domain.Task) (dom
 	}
 	_, err := r.db.Pool().Exec(ctx, `
 		INSERT INTO companion_tasks (
-			id, title, goal, status, priority, created_by, assigned_to, channel, summary,
+			id, org_id, title, goal, status, priority, created_by, assigned_to, channel, summary,
 			context_json, created_at, updated_at, closed_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-	`, t.ID, t.Title, t.Goal, t.Status, t.Priority, t.CreatedBy, t.AssignedTo, t.Channel, t.Summary,
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+	`, t.ID, t.OrgID, t.Title, t.Goal, t.Status, t.Priority, t.CreatedBy, t.AssignedTo, t.Channel, t.Summary,
 		t.ContextJSON, t.CreatedAt, t.UpdatedAt, t.ClosedAt)
 	if err != nil {
 		return domain.Task{}, fmt.Errorf("insert task: %w", err)
@@ -125,10 +125,10 @@ func (r *PostgresRepository) UpdateTask(ctx context.Context, t domain.Task) (dom
 		UPDATE companion_tasks SET
 			title = $2, goal = $3, status = $4, priority = $5,
 			created_by = $6, assigned_to = $7, channel = $8, summary = $9,
-			context_json = $10, updated_at = $11, closed_at = $12
+			context_json = $10, org_id = $11, updated_at = $12, closed_at = $13
 		WHERE id = $1
 	`, t.ID, t.Title, t.Goal, t.Status, t.Priority, t.CreatedBy, t.AssignedTo, t.Channel, t.Summary,
-		t.ContextJSON, t.UpdatedAt, t.ClosedAt)
+		t.ContextJSON, t.OrgID, t.UpdatedAt, t.ClosedAt)
 	if err != nil {
 		return domain.Task{}, fmt.Errorf("update task: %w", err)
 	}
@@ -495,7 +495,7 @@ func scanTask(row rowScanner) (domain.Task, error) {
 	var reviewErr *string
 	var closed *time.Time
 	err := row.Scan(
-		&t.ID, &t.Title, &t.Goal, &t.Status, &t.Priority, &t.CreatedBy, &t.AssignedTo, &t.Channel, &t.Summary,
+		&t.ID, &t.OrgID, &t.Title, &t.Goal, &t.Status, &t.Priority, &t.CreatedBy, &t.AssignedTo, &t.Channel, &t.Summary,
 		&t.ContextJSON, &reviewStatus, &reviewLastChecked, &reviewErr, &t.CreatedAt, &t.UpdatedAt, &closed,
 	)
 	if err != nil {

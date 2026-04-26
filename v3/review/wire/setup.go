@@ -57,6 +57,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	auditRepo := audit.NewPostgresRepository(db)
 	reqRepo := requests.NewPostgresRepository(db)
 	idemStore := requests.NewPostgresIdempotencyStore(db)
+	resultReportStore := requests.NewPostgresResultReportStore(db)
 	learningRepo := learning.NewPostgresRepository(db)
 	configRepo := nexusconfig.NewPostgresRepository(db.Pool())
 	actionTypeRepo := actiontypes.NewPostgresRepository(db)
@@ -113,6 +114,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		requests.WithAttestationStore(attestationStore),
 		requests.WithApprovalGetter(approvalRepo),
 		requests.WithApprovalCallbacks(callbackPublisher),
+		requests.WithResultReportStore(resultReportStore),
 	)
 	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).
 		WithAuditSink(auditSink).

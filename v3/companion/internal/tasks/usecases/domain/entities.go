@@ -24,6 +24,7 @@ const (
 // Task entidad de dominio.
 type Task struct {
 	ID                  uuid.UUID
+	OrgID               string
 	Title               string
 	Goal                string
 	Status              string

@@ -27,12 +27,74 @@ func (p *PymesConnector) Kind() string { return "pymes" }
 
 func (p *PymesConnector) Capabilities() []domain.Capability {
 	return []domain.Capability{
-		{Operation: "pymes.send_whatsapp_text", SideEffect: true},
-		{Operation: "pymes.send_whatsapp_template", SideEffect: true},
-		{Operation: "pymes.get_work_orders", SideEffect: false, ReadOnly: true},
-		{Operation: "pymes.get_appointments", SideEffect: false, ReadOnly: true},
-		{Operation: "pymes.get_low_stock", SideEffect: false, ReadOnly: true},
-		{Operation: "pymes.get_customers", SideEffect: false, ReadOnly: true},
+		{
+			Operation:      "pymes.send_whatsapp_text",
+			Mode:           domain.CapabilityModeWrite,
+			SideEffect:     true,
+			RiskClass:      "medium",
+			RequiresReview: true,
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"org_id", "party_id", "body"},
+			},
+			EvidenceFields: []string{"sent", "external_ref", "party_id"},
+		},
+		{
+			Operation:      "pymes.send_whatsapp_template",
+			Mode:           domain.CapabilityModeWrite,
+			SideEffect:     true,
+			RiskClass:      "medium",
+			RequiresReview: true,
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"org_id", "party_id", "template_name"},
+			},
+			EvidenceFields: []string{"sent", "external_ref", "party_id", "template_name"},
+		},
+		{
+			Operation: "pymes.get_work_orders",
+			Mode:      domain.CapabilityModeRead,
+			ReadOnly:  true,
+			RiskClass: "low",
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"org_id"},
+			},
+			EvidenceFields: []string{"items"},
+		},
+		{
+			Operation: "pymes.get_appointments",
+			Mode:      domain.CapabilityModeRead,
+			ReadOnly:  true,
+			RiskClass: "low",
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"org_id"},
+			},
+			EvidenceFields: []string{"items"},
+		},
+		{
+			Operation: "pymes.get_low_stock",
+			Mode:      domain.CapabilityModeRead,
+			ReadOnly:  true,
+			RiskClass: "low",
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"org_id"},
+			},
+			EvidenceFields: []string{"items"},
+		},
+		{
+			Operation: "pymes.get_customers",
+			Mode:      domain.CapabilityModeRead,
+			ReadOnly:  true,
+			RiskClass: "low",
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"org_id"},
+			},
+			EvidenceFields: []string{"items"},
+		},
 	}
 }
 
@@ -47,14 +109,14 @@ func (p *PymesConnector) Execute(ctx context.Context, spec domain.ExecutionSpec)
 	start := time.Now()
 
 	var params struct {
-		OrgID        string            `json:"org_id"`
-		PartyID      string            `json:"party_id"`
-		Body         string            `json:"body"`
-		TemplateName string            `json:"template_name"`
-		Params       map[string]string `json:"params"`
-		ThresholdDays   int            `json:"threshold_days"`
-		ThresholdUnits  int            `json:"threshold_units"`
-		ThresholdMonths int            `json:"threshold_months"`
+		OrgID           string            `json:"org_id"`
+		PartyID         string            `json:"party_id"`
+		Body            string            `json:"body"`
+		TemplateName    string            `json:"template_name"`
+		Params          map[string]string `json:"params"`
+		ThresholdDays   int               `json:"threshold_days"`
+		ThresholdUnits  int               `json:"threshold_units"`
+		ThresholdMonths int               `json:"threshold_months"`
 	}
 	if err := json.Unmarshal(spec.Payload, &params); err != nil {
 		return domain.ExecutionResult{}, fmt.Errorf("parse payload: %w", err)
@@ -109,6 +171,8 @@ func (p *PymesConnector) Execute(ctx context.Context, spec domain.ExecutionSpec)
 	return domain.ExecutionResult{
 		ID:              uuid.New(),
 		ConnectorID:     spec.ConnectorID,
+		OrgID:           spec.OrgID,
+		ActorID:         spec.ActorID,
 		Operation:       spec.Operation,
 		Status:          status,
 		ExternalRef:     fmt.Sprintf("pymes-%s", spec.Operation),
@@ -117,6 +181,7 @@ func (p *PymesConnector) Execute(ctx context.Context, spec domain.ExecutionSpec)
 		ErrorMessage:    errMsg,
 		Retryable:       execErr != nil,
 		DurationMS:      duration,
+		IdempotencyKey:  spec.IdempotencyKey,
 		TaskID:          spec.TaskID,
 		ReviewRequestID: spec.ReviewRequestID,
 		CreatedAt:       time.Now().UTC(),

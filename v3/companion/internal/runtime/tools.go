@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
 
 	"github.com/devpablocristo/core/governance/go/reviewclient"
 
@@ -91,73 +93,9 @@ func NewToolKit(rc *reviewclient.Client, memUC *memory.Usecases, watcherUC *watc
 		return string(raw), nil
 	})
 
-	// --- approve_action ---
-	tk.add(ToolSchema{
-		Name:        "approve_action",
-		Description: "Aprueba una solicitud pendiente por su ID.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"approval_id": map[string]any{"type": "string", "description": "ID de la aprobación"},
-				"note":        map[string]any{"type": "string", "description": "Nota opcional"},
-			},
-			"required": []string{"approval_id"},
-		},
-	}, func(ctx context.Context, args json.RawMessage) (string, error) {
-		var input struct {
-			ApprovalID string `json:"approval_id"`
-			Note       string `json:"note"`
-		}
-		if err := json.Unmarshal(args, &input); err != nil {
-			return "", fmt.Errorf("parse args: %w", err)
-		}
-		if rc == nil {
-			return `{"error": "review no configurado"}`, nil
-		}
-		body := map[string]string{"decided_by": "nexus-companion", "note": input.Note}
-		st, raw, err := rc.Approve(ctx, input.ApprovalID, body)
-		if err != nil {
-			return "", fmt.Errorf("approve: %w", err)
-		}
-		if st >= 400 {
-			return fmt.Sprintf(`{"error": "approve falló", "status": %d, "detail": %q}`, st, reviewclient.ParseErrorBody(raw)), nil
-		}
-		return `{"result": "aprobado"}`, nil
-	})
-
-	// --- reject_action ---
-	tk.add(ToolSchema{
-		Name:        "reject_action",
-		Description: "Rechaza una solicitud pendiente por su ID.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"approval_id": map[string]any{"type": "string", "description": "ID de la aprobación"},
-				"note":        map[string]any{"type": "string", "description": "Nota opcional"},
-			},
-			"required": []string{"approval_id"},
-		},
-	}, func(ctx context.Context, args json.RawMessage) (string, error) {
-		var input struct {
-			ApprovalID string `json:"approval_id"`
-			Note       string `json:"note"`
-		}
-		if err := json.Unmarshal(args, &input); err != nil {
-			return "", fmt.Errorf("parse args: %w", err)
-		}
-		if rc == nil {
-			return `{"error": "review no configurado"}`, nil
-		}
-		body := map[string]string{"decided_by": "nexus-companion", "note": input.Note}
-		st, raw, err := rc.Reject(ctx, input.ApprovalID, body)
-		if err != nil {
-			return "", fmt.Errorf("reject: %w", err)
-		}
-		if st >= 400 {
-			return fmt.Sprintf(`{"error": "reject falló", "status": %d, "detail": %q}`, st, reviewclient.ParseErrorBody(raw)), nil
-		}
-		return `{"result": "rechazado"}`, nil
-	})
+	if approvalToolsEnabled() {
+		registerApprovalTools(tk, rc)
+	}
 
 	// --- list_policies ---
 	tk.add(ToolSchema{
@@ -305,6 +243,80 @@ func NewToolKit(rc *reviewclient.Client, memUC *memory.Usecases, watcherUC *watc
 	})
 
 	return tk
+}
+
+func approvalToolsEnabled() bool {
+	return strings.EqualFold(os.Getenv("NEXUS_COMPANION_ENABLE_APPROVAL_TOOLS"), "true")
+}
+
+func registerApprovalTools(tk *ToolKit, rc *reviewclient.Client) {
+	// --- approve_action ---
+	tk.add(ToolSchema{
+		Name:        "approve_action",
+		Description: "Aprueba una solicitud pendiente por su ID.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"approval_id": map[string]any{"type": "string", "description": "ID de la aprobación"},
+				"note":        map[string]any{"type": "string", "description": "Nota opcional"},
+			},
+			"required": []string{"approval_id"},
+		},
+	}, func(ctx context.Context, args json.RawMessage) (string, error) {
+		var input struct {
+			ApprovalID string `json:"approval_id"`
+			Note       string `json:"note"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", fmt.Errorf("parse args: %w", err)
+		}
+		if rc == nil {
+			return `{"error": "review no configurado"}`, nil
+		}
+		body := map[string]string{"decided_by": "nexus-companion", "note": input.Note}
+		st, raw, err := rc.Approve(ctx, input.ApprovalID, body)
+		if err != nil {
+			return "", fmt.Errorf("approve: %w", err)
+		}
+		if st >= 400 {
+			return fmt.Sprintf(`{"error": "approve falló", "status": %d, "detail": %q}`, st, reviewclient.ParseErrorBody(raw)), nil
+		}
+		return `{"result": "aprobado"}`, nil
+	})
+
+	// --- reject_action ---
+	tk.add(ToolSchema{
+		Name:        "reject_action",
+		Description: "Rechaza una solicitud pendiente por su ID.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"approval_id": map[string]any{"type": "string", "description": "ID de la aprobación"},
+				"note":        map[string]any{"type": "string", "description": "Nota opcional"},
+			},
+			"required": []string{"approval_id"},
+		},
+	}, func(ctx context.Context, args json.RawMessage) (string, error) {
+		var input struct {
+			ApprovalID string `json:"approval_id"`
+			Note       string `json:"note"`
+		}
+		if err := json.Unmarshal(args, &input); err != nil {
+			return "", fmt.Errorf("parse args: %w", err)
+		}
+		if rc == nil {
+			return `{"error": "review no configurado"}`, nil
+		}
+		body := map[string]string{"decided_by": "nexus-companion", "note": input.Note}
+		st, raw, err := rc.Reject(ctx, input.ApprovalID, body)
+		if err != nil {
+			return "", fmt.Errorf("reject: %w", err)
+		}
+		if st >= 400 {
+			return fmt.Sprintf(`{"error": "reject falló", "status": %d, "detail": %q}`, st, reviewclient.ParseErrorBody(raw)), nil
+		}
+		return `{"result": "rechazado"}`, nil
+	})
 }
 
 func (tk *ToolKit) add(schema ToolSchema, handler ToolHandler) {

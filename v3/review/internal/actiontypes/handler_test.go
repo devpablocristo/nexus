@@ -52,10 +52,46 @@ func (f *fakeActionTypeRepo) GetByName(_ context.Context, name string) (domain.A
 	return domain.ActionType{}, domainerr.NotFound("not found")
 }
 
+func (f *fakeActionTypeRepo) GetByNameForOrg(_ context.Context, name string, orgID *string) (domain.ActionType, error) {
+	var global *domain.ActionType
+	for _, at := range f.items {
+		if at.Name != name {
+			continue
+		}
+		if orgID != nil && at.OrgID != nil && *at.OrgID == *orgID {
+			return at, nil
+		}
+		if at.OrgID == nil {
+			copy := at
+			global = &copy
+		}
+	}
+	if global != nil {
+		return *global, nil
+	}
+	return domain.ActionType{}, domainerr.NotFound("not found")
+}
+
 func (f *fakeActionTypeRepo) List(_ context.Context) ([]domain.ActionType, error) {
 	out := make([]domain.ActionType, 0, len(f.items))
 	for _, at := range f.items {
 		out = append(out, at)
+	}
+	return out, nil
+}
+
+func (f *fakeActionTypeRepo) ListForOrg(_ context.Context, orgID *string, includeGlobal bool) ([]domain.ActionType, error) {
+	out := make([]domain.ActionType, 0, len(f.items))
+	for _, at := range f.items {
+		if at.OrgID == nil {
+			if includeGlobal {
+				out = append(out, at)
+			}
+			continue
+		}
+		if orgID != nil && *at.OrgID == *orgID {
+			out = append(out, at)
+		}
 	}
 	return out, nil
 }

@@ -43,6 +43,10 @@ jobs:
         working-directory: nexus/v3/review
         run: go vet ./...
 
+      - name: Check migration versions
+        working-directory: nexus/v3
+        run: bash scripts/quality/check-migrations.sh
+
   companion:
     name: companion tests
     runs-on: ubuntu-latest
@@ -114,9 +118,13 @@ jobs:
         working-directory: nexus/v3
         run: test -f .env || cp .env.example .env
 
+      - name: Validate compose model
+        working-directory: nexus/v3
+        run: docker compose config --services
+
       - name: Start review and companion stack
         working-directory: nexus/v3
-        run: docker compose up -d --build postgres review companion
+        run: docker compose up -d --build review-postgres review companion
 
       - name: Run smoke suite
         working-directory: nexus/v3

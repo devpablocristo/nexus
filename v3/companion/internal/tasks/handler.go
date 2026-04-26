@@ -24,6 +24,7 @@ const (
 type taskUsecase interface {
 	Create(ctx context.Context, in CreateTaskInput) (domain.Task, error)
 	List(ctx context.Context, limit int) ([]domain.Task, error)
+	Get(ctx context.Context, id uuid.UUID) (domain.Task, error)
 	GetDetail(ctx context.Context, id uuid.UUID) (TaskDetail, error)
 	AddMessage(ctx context.Context, taskID uuid.UUID, in AddMessageInput) (domain.TaskMessage, error)
 	Investigate(ctx context.Context, taskID uuid.UUID, in InvestigateInput) (domain.Task, error)
@@ -58,6 +59,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
 	var body tasksdto.CreateTaskRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -68,6 +72,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := h.uc.Create(r.Context(), CreateTaskInput{
+		OrgID:       principalOrgID(r),
 		Title:       body.Title,
 		Goal:        body.Goal,
 		Priority:    body.Priority,
@@ -85,6 +90,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksRead) {
+		return
+	}
 	limit := defaultListLimit
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= maxListLimit {
@@ -98,12 +106,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]tasksdto.TaskResponse, 0, len(list))
 	for _, t := range list {
+		if !canAccessTaskOrg(r, t) {
+			continue
+		}
 		out = append(out, tasksdto.TaskToResponse(t))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksRead) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -116,6 +130,10 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httpjson.WriteFlatInternalError(w, err, "get task failed")
+		return
+	}
+	if !canAccessTaskOrg(r, detail.Task) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "task org is not allowed for this principal")
 		return
 	}
 	resp := tasksdto.TaskDetailResponse{
@@ -153,9 +171,15 @@ func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) addMessage(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	if !h.authorizeTaskOrg(w, r, id) {
 		return
 	}
 	var body tasksdto.AddMessageRequest
@@ -180,9 +204,15 @@ func (h *Handler) addMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) investigate(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	if !h.authorizeTaskOrg(w, r, id) {
 		return
 	}
 	raw, _ := io.ReadAll(r.Body)
@@ -210,9 +240,15 @@ func (h *Handler) investigate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) propose(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	if !h.authorizeTaskOrg(w, r, id) {
 		return
 	}
 	var body tasksdto.ProposeRequest
@@ -259,9 +295,15 @@ func (h *Handler) propose(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) syncReview(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	if !h.authorizeTaskOrg(w, r, id) {
 		return
 	}
 	t, err := h.uc.SyncTaskReview(r.Context(), id)
@@ -277,9 +319,15 @@ func (h *Handler) syncReview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) setExecutionPlan(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	if !h.authorizeTaskOrg(w, r, id) {
 		return
 	}
 	var body tasksdto.SetExecutionPlanRequest
@@ -314,9 +362,18 @@ func (h *Handler) setExecutionPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
+	if !requireScope(w, r, scopeCompanionConnectorsExecute) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	if !h.authorizeTaskOrg(w, r, id) {
 		return
 	}
 	out, err := h.uc.ExecuteTask(r.Context(), id)
@@ -341,9 +398,18 @@ func (h *Handler) execute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) retry(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
+	if !requireScope(w, r, scopeCompanionConnectorsExecute) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
+		return
+	}
+	if !h.authorizeTaskOrg(w, r, id) {
 		return
 	}
 	out, err := h.uc.RetryTask(r.Context(), id)
@@ -368,6 +434,9 @@ func (h *Handler) retry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeCompanionTasksWrite) {
+		return
+	}
 	var body tasksdto.ChatRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
@@ -383,6 +452,9 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 		parsed, err := uuid.Parse(body.TaskID)
 		if err != nil {
 			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid task_id")
+			return
+		}
+		if !h.authorizeTaskOrg(w, r, parsed) {
 			return
 		}
 		taskID = &parsed
@@ -419,4 +491,21 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 		Task:     tasksdto.TaskToResponse(result.Task),
 		Messages: msgs,
 	})
+}
+
+func (h *Handler) authorizeTaskOrg(w http.ResponseWriter, r *http.Request, id uuid.UUID) bool {
+	task, err := h.uc.Get(r.Context(), id)
+	if err != nil {
+		if IsNotFound(err) {
+			httpjson.WriteFlatError(w, http.StatusNotFound, "NOT_FOUND", "task not found")
+			return false
+		}
+		httpjson.WriteFlatInternalError(w, err, "get task failed")
+		return false
+	}
+	if !canAccessTaskOrg(r, task) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "task org is not allowed for this principal")
+		return false
+	}
+	return true
 }

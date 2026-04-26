@@ -5,19 +5,24 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
 	"fmt"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
 	requestdomain "github.com/devpablocristo/nexus/v3/review/internal/requests/usecases/domain"
 )
 
 // Sentinel errors
-var ErrNotFound = domainerr.NotFound("not found")
+var (
+	ErrNotFound             = domainerr.NotFound("not found")
+	ErrInvalidState         = domainerr.Conflict("request is not in an executable state")
+	ErrIdempotencyConflict  = domainerr.Conflict("idempotency key conflict")
+)
 
 // Repository define el port de persistencia para requests.
 type Repository interface {
@@ -32,6 +37,25 @@ type Repository interface {
 type IdempotencyStore interface {
 	Get(ctx context.Context, key string) (requestID uuid.UUID, response map[string]any, ok bool)
 	Set(ctx context.Context, key string, requestID uuid.UUID, response map[string]any, expiresAt time.Time) error
+}
+
+type ResultReport struct {
+	ID           uuid.UUID
+	RequestID    uuid.UUID
+	ResultKey    string
+	ActorID      string
+	OrgID        *string
+	Success      bool
+	Result       map[string]any
+	ErrorMessage string
+	DurationMs   int64
+	PayloadHash  string
+	CreatedAt    time.Time
+}
+
+type ResultReportStore interface {
+	Get(ctx context.Context, requestID uuid.UUID, resultKey string) (ResultReport, bool, error)
+	Save(ctx context.Context, report ResultReport) (ResultReport, error)
 }
 
 // --- Implementación PostgreSQL: Repository ---
@@ -72,9 +96,17 @@ func (r *PostgresRepository) Create(ctx context.Context, req requestdomain.Reque
 		req.EvaluatedAt, req.DecidedAt, req.ExecutedAt, req.ExpiresAt, req.CreatedAt, req.UpdatedAt,
 	)
 	if err != nil {
+		if isUniqueViolation(err) && req.IdempotencyKey != nil && *req.IdempotencyKey != "" {
+			return requestdomain.Request{}, ErrIdempotencyConflict
+		}
 		return requestdomain.Request{}, fmt.Errorf("insert request: %w", err)
 	}
 	return req, nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Request, error) {
@@ -206,6 +238,58 @@ func (s *PostgresIdempotencyStore) Set(ctx context.Context, key string, requestI
 	return nil
 }
 
+type PostgresResultReportStore struct {
+	db *sharedpostgres.DB
+}
+
+func NewPostgresResultReportStore(db *sharedpostgres.DB) *PostgresResultReportStore {
+	return &PostgresResultReportStore{db: db}
+}
+
+func (s *PostgresResultReportStore) Get(ctx context.Context, requestID uuid.UUID, resultKey string) (ResultReport, bool, error) {
+	row := s.db.Pool().QueryRow(ctx, `
+		SELECT id, request_id, result_key, actor_id, org_id, success, result_json, error_message, duration_ms, payload_hash, created_at
+		FROM request_result_reports
+		WHERE request_id = $1 AND result_key = $2
+	`, requestID, resultKey)
+	report, err := scanResultReport(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ResultReport{}, false, nil
+		}
+		return ResultReport{}, false, err
+	}
+	return report, true, nil
+}
+
+func (s *PostgresResultReportStore) Save(ctx context.Context, report ResultReport) (ResultReport, error) {
+	if report.ID == uuid.Nil {
+		report.ID = uuid.New()
+	}
+	if report.CreatedAt.IsZero() {
+		report.CreatedAt = time.Now().UTC()
+	}
+	resultJSON, err := json.Marshal(report.Result)
+	if err != nil {
+		return ResultReport{}, fmt.Errorf("marshal result report payload: %w", err)
+	}
+	row := s.db.Pool().QueryRow(ctx, `
+		INSERT INTO request_result_reports
+			(id, request_id, result_key, actor_id, org_id, success, result_json, error_message, duration_ms, payload_hash, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		ON CONFLICT (request_id, result_key) DO NOTHING
+		RETURNING id, request_id, result_key, actor_id, org_id, success, result_json, error_message, duration_ms, payload_hash, created_at
+	`, report.ID, report.RequestID, report.ResultKey, report.ActorID, report.OrgID, report.Success, resultJSON, report.ErrorMessage, report.DurationMs, report.PayloadHash, report.CreatedAt)
+	saved, err := scanResultReport(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ResultReport{}, ErrIdempotencyConflict
+		}
+		return ResultReport{}, fmt.Errorf("insert result report: %w", err)
+	}
+	return saved, nil
+}
+
 // --- Scanner ---
 
 const selectRequestSQL = `
@@ -234,4 +318,25 @@ func scanRequest(row requestScanRow) (requestdomain.Request, error) {
 		return requestdomain.Request{}, fmt.Errorf("scan request: %w", err)
 	}
 	return req, nil
+}
+
+func scanResultReport(row requestScanRow) (ResultReport, error) {
+	var report ResultReport
+	var resultJSON []byte
+	if err := row.Scan(
+		&report.ID, &report.RequestID, &report.ResultKey, &report.ActorID, &report.OrgID,
+		&report.Success, &resultJSON, &report.ErrorMessage, &report.DurationMs,
+		&report.PayloadHash, &report.CreatedAt,
+	); err != nil {
+		return ResultReport{}, err
+	}
+	if len(resultJSON) > 0 {
+		if err := json.Unmarshal(resultJSON, &report.Result); err != nil {
+			return ResultReport{}, fmt.Errorf("decode result report payload: %w", err)
+		}
+	}
+	if report.Result == nil {
+		report.Result = make(map[string]any)
+	}
+	return report, nil
 }

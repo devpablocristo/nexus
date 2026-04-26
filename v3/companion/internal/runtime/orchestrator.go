@@ -89,6 +89,15 @@ func (o *Orchestrator) Run(ctx context.Context, in RunInput) (RunResult, error) 
 		// Ejecutar cada tool y agregar resultado
 		for _, tc := range resp.ToolCalls {
 			slog.Info("tool_call", "tool", tc.Name, "round", round)
+			if err := ValidateToolCallSafety(tc.Name, tc.Args); err != nil {
+				slog.Warn("tool_call_rejected", "tool", tc.Name, "error", err)
+				llmMessages = append(llmMessages, LLMMessage{
+					Role:       "tool",
+					Content:    fmt.Sprintf(`{"error":"tool call rejected: %s"}`, err.Error()),
+					ToolCallID: tc.ID,
+				})
+				continue
+			}
 
 			// Inyectar identidad en context para que remember/recall usen IDs reales
 			toolCtx := WithIdentity(ctx, in.UserID, in.OrgID)

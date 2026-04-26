@@ -2,7 +2,16 @@
 
 ## Visión general
 
-Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independiente, con un frontend único (console) y una base de datos PostgreSQL compartida.
+Nexus v3 es un monorepo de productos separados mientras se estabilizan contratos:
+
+- **Nexus**: governance/control plane. La implementación técnica temporal vive en `review/`.
+- **Companion**: empleado digital generalista. Consume Nexus por API.
+- **Console**: UI operativa.
+- **Connectors**: capacidades operativas internas de Companion.
+
+La regla de frontera es: **Nexus decide, Companion trabaja, Connectors conectan**.
+
+La frontera de confianza se materializa con un principal efectivo (`actor_id`, `org_id`, scopes, método de auth y marca de service principal). Nexus es autoridad de decisión/auditoría; Companion puede operar, pero side effects de connectors solo se ejecutan con request de Nexus `allowed` o `approved`, tenant compatible y resultado reportado.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -14,8 +23,8 @@ Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independien
                      │ /v1/*
                      ▼
 ┌─────────────────────────────────────────────────────┐
-│                    review/                           │
-│              (Go, net/http, :18084)                  │
+│              review/ = Nexus                          │
+│              (Go, net/http, :18084)                   │
 │                                                     │
 │  requests ─── policies ─── approvals                │
 │      │                         │                    │
@@ -23,14 +32,26 @@ Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independien
 │      │                                              │
 │   actiontypes ─── delegations                       │
 │                                                     │
-│  wire/setup.go (DI manual)                          │
+│  wire/setup.go (DI manual)                           │
+└────────────────────┬────────────────────────────────┘
+                     │ HTTP client
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│                  companion/                          │
+│              (Go, net/http, :18085)                  │
+│                                                     │
+│  tasks ─ memory ─ runtime/chat                       │
+│    │        │          │                             │
+│  watchers ─┴──── connectors ─── adapters             │
+│                         │                           │
+│                  mock │ pymes │ futuros             │
 └────────────────────┬────────────────────────────────┘
                      │ pgx
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │                  PostgreSQL                          │
 │           (1 instancia, N databases)                │
-│           nexus_review │ nexus_billing │ ...        │
+│           nexus_review │ nexus_companion │ ...      │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -41,12 +62,14 @@ Nexus v3 es un producto SaaS modular. Cada módulo es un servicio Go independien
 3. **PostgreSQL siempre** — desarrollo, staging, producción. Sin repos in-memory.
 4. **Frontend único** — `console/` sirve a todos los módulos. Un deploy, un login, una experiencia.
 5. **Flat structure** — servicios al mismo nivel en v3/. Sin nesting innecesario.
+6. **Productos separados, repo único temporal** — no se parte Git hasta que Nexus API, Companion API y el contrato de connectors estén estables.
+7. **core/modules son librerías** — no se mueve código allí si no es agnóstico, independiente y versionable para cualquier proyecto del ecosistema Pablo.
 
 ## Estructura de v3
 
 ```
 v3/
-├── review/              # servicio Go (primer módulo)
+├── review/              # implementación técnica temporal de Nexus Governance
 │   ├── cmd/api/main.go
 │   ├── internal/
 │   │   ├── requests/    # módulo principal (CEL, risk, AI, audit, execution_stats)
@@ -63,6 +86,14 @@ v3/
 │   ├── migrations/
 │   ├── Dockerfile
 │   └── go.mod
+├── companion/           # empleado digital generalista
+│   ├── internal/
+│   │   ├── tasks/       # trabajo, lifecycle y sync con Nexus
+│   │   ├── memory/      # memoria operativa
+│   │   ├── runtime/     # chat/orchestration/tools
+│   │   ├── watchers/    # observación proactiva
+│   │   └── connectors/  # contrato v1 + adapters internos
+│   └── migrations/
 ├── console/             # frontend único (React + Tailwind)
 │   ├── src/
 │   │   ├── views/       # Inbox, Requests, Policies, Actions, Agents, Sandbox, Learning, Dashboard, Config
@@ -71,9 +102,8 @@ v3/
 │   │   └── i18n.js      # EN/ES con persistencia
 │   ├── nginx.conf       # proxy /v1/* → review
 │   └── Dockerfile
-├── ../../../core/       # capacidades compartidas externas a nexus
-│   ├── backend/go/      # httpjson, apikey, httpserver, observability
-│   └── databases/postgres/go/ # pgxpool, MigrateUp
+├── ../../../core/       # librerías agnósticas externas a nexus
+├── ../../../modules/    # librerías/capacidades agnósticas sobre core
 ├── scripts/
 │   ├── lib/common.sh
 │   ├── quality/check-api.sh
@@ -127,15 +157,26 @@ Cuando se agregue un nuevo servicio:
 3. Agregar servicio al `docker-compose.yml`
 4. Agregar sección al `console/`
 
+## Connectors
+
+Connectors pertenecen a Companion en esta etapa. Nexus no contiene adapters ni ejecución externa.
+
+Cada capability declara `operation`, `mode`, `side_effect`, `risk_class`, `requires_review`, `input_schema` y `evidence_fields`. Las operaciones `read` pueden ejecutarse sin approval; las operaciones `write` o con side effects requieren Nexus `allowed` o `approved`.
+
+El contrato solo debe moverse a `core` o `modules` si se vuelve agnóstico, estable y reutilizado fuera de Companion.
+
 ## Crecimiento esperado
 
 ```
-v3/
-├── review/         ← actual
-├── billing/        ← futuro
-├── gateway/        ← futuro (API unificada)
-├── workers/        ← futuro (jobs async)
+nexus/
+├── review/         ← implementación actual de Nexus Governance hasta separar repo
+├── companion/      ← producto separado dentro del monorepo
 ├── console/
-├── pkgs/
 └── docker-compose.yml
+
+Futuro, cuando los contratos estén estables:
+
+nexus/              ← repo de governance
+companion/          ← repo de empleado digital + connectors
+console/            ← repo o app operativa, según necesidad
 ```

@@ -808,6 +808,47 @@ func TestUsecasesApproveNotPending(t *testing.T) {
 	}
 }
 
+func TestUsecasesApproveExpired(t *testing.T) {
+	t.Parallel()
+	repo := newFakeApprovalRepo()
+	reqUpdater := newFakeRequestUpdater()
+	uc := NewUsecases(repo, reqUpdater)
+
+	approvalID := seedApproval(t, repo, reqUpdater)
+	a, err := repo.GetByID(context.Background(), approvalID)
+	if err != nil {
+		t.Fatalf("get approval: %v", err)
+	}
+	a.ExpiresAt = time.Now().Add(-time.Minute)
+	if _, err := repo.Update(context.Background(), a); err != nil {
+		t.Fatalf("update approval: %v", err)
+	}
+
+	err = uc.Approve(context.Background(), approvalID, "admin", "ok")
+	if err == nil {
+		t.Fatal("se esperaba error, se obtuvo nil")
+	}
+	if !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("error esperado contener 'expired', obtenido: %v", err)
+	}
+}
+
+func TestUsecasesApproveRequiresActor(t *testing.T) {
+	t.Parallel()
+	repo := newFakeApprovalRepo()
+	reqUpdater := newFakeRequestUpdater()
+	uc := NewUsecases(repo, reqUpdater)
+
+	approvalID := seedApproval(t, repo, reqUpdater)
+	err := uc.Approve(context.Background(), approvalID, "  ", "ok")
+	if err == nil {
+		t.Fatal("se esperaba error, se obtuvo nil")
+	}
+	if !strings.Contains(err.Error(), "actor") {
+		t.Fatalf("error esperado contener 'actor', obtenido: %v", err)
+	}
+}
+
 // TestUsecasesRejectNotPending verifica que Reject retorna ErrNotPending si ya está decidida.
 func TestUsecasesRejectNotPending(t *testing.T) {
 	t.Parallel()

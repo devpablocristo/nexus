@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/devpablocristo/core/http/go/httpclient"
@@ -53,6 +55,18 @@ func (c *Client) doPost(ctx context.Context, path string, payload any) ([]byte, 
 	return raw, nil
 }
 
+func withOrgQuery(path, orgID string) string {
+	orgID = url.QueryEscape(orgID)
+	if orgID == "" {
+		return path
+	}
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + "org_id=" + orgID
+}
+
 func parseItems(data []byte) ([]domain.PymesItem, error) {
 	var wrapper struct {
 		Items []domain.PymesItem `json:"items"`
@@ -65,7 +79,7 @@ func parseItems(data []byte) ([]domain.PymesItem, error) {
 
 // GetStaleWorkOrders consulta OTs que llevan más de thresholdDays sin avanzar.
 func (c *Client) GetStaleWorkOrders(ctx context.Context, orgID string, thresholdDays int) ([]domain.PymesItem, error) {
-	data, err := c.doGet(ctx, fmt.Sprintf("/v1/work-orders?status=in_progress&stale_days=%d", thresholdDays))
+	data, err := c.doGet(ctx, withOrgQuery(fmt.Sprintf("/v1/work-orders?status=in_progress&stale_days=%d", thresholdDays), orgID))
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +88,7 @@ func (c *Client) GetStaleWorkOrders(ctx context.Context, orgID string, threshold
 
 // GetUnconfirmedAppointments consulta turnos no confirmados.
 func (c *Client) GetUnconfirmedAppointments(ctx context.Context, orgID string, hoursBefore int) ([]domain.PymesItem, error) {
-	data, err := c.doGet(ctx, fmt.Sprintf("/v1/appointments?confirmed=false&upcoming_hours=%d", hoursBefore))
+	data, err := c.doGet(ctx, withOrgQuery(fmt.Sprintf("/v1/appointments?confirmed=false&upcoming_hours=%d", hoursBefore), orgID))
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +97,7 @@ func (c *Client) GetUnconfirmedAppointments(ctx context.Context, orgID string, h
 
 // GetLowStockItems consulta productos con stock bajo.
 func (c *Client) GetLowStockItems(ctx context.Context, orgID string, thresholdUnits int) ([]domain.PymesItem, error) {
-	data, err := c.doGet(ctx, fmt.Sprintf("/v1/inventory/low-stock?threshold=%d", thresholdUnits))
+	data, err := c.doGet(ctx, withOrgQuery(fmt.Sprintf("/v1/inventory/low-stock?threshold=%d", thresholdUnits), orgID))
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +106,7 @@ func (c *Client) GetLowStockItems(ctx context.Context, orgID string, thresholdUn
 
 // GetInactiveCustomers consulta clientes inactivos.
 func (c *Client) GetInactiveCustomers(ctx context.Context, orgID string, thresholdMonths int) ([]domain.PymesItem, error) {
-	data, err := c.doGet(ctx, fmt.Sprintf("/v1/customers?inactive_months=%d", thresholdMonths))
+	data, err := c.doGet(ctx, withOrgQuery(fmt.Sprintf("/v1/customers?inactive_months=%d", thresholdMonths), orgID))
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +115,7 @@ func (c *Client) GetInactiveCustomers(ctx context.Context, orgID string, thresho
 
 // GetRevenueComparison consulta comparación de facturación mensual.
 func (c *Client) GetRevenueComparison(ctx context.Context, orgID string) (*domain.RevenueComparison, error) {
-	data, err := c.doGet(ctx, "/v1/dashboard/revenue?compare=previous_month")
+	data, err := c.doGet(ctx, withOrgQuery("/v1/dashboard/revenue?compare=previous_month", orgID))
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +129,7 @@ func (c *Client) GetRevenueComparison(ctx context.Context, orgID string) (*domai
 // SendWhatsAppTemplate envía un template de WhatsApp.
 func (c *Client) SendWhatsAppTemplate(ctx context.Context, orgID, partyID, templateName string, params map[string]string) error {
 	_, err := c.doPost(ctx, "/v1/whatsapp/send/template", map[string]any{
-		"party_id": partyID, "template_name": templateName, "language": "es", "params": params,
+		"org_id": orgID, "party_id": partyID, "template_name": templateName, "language": "es", "params": params,
 	})
 	return err
 }
@@ -123,7 +137,7 @@ func (c *Client) SendWhatsAppTemplate(ctx context.Context, orgID, partyID, templ
 // SendWhatsAppText envía un mensaje de texto por WhatsApp.
 func (c *Client) SendWhatsAppText(ctx context.Context, orgID, partyID, body string) error {
 	_, err := c.doPost(ctx, "/v1/whatsapp/send/text", map[string]any{
-		"party_id": partyID, "body": body,
+		"org_id": orgID, "party_id": partyID, "body": body,
 	})
 	return err
 }
