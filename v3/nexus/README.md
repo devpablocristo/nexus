@@ -12,7 +12,7 @@ Servicio backend de Nexus: nombre comercial `Nexus Governance`, categoría canó
 
 ```bash
 cd v3/
-make up        # levanta nexus + companion + governance-postgres + console
+make up        # levanta nexus + governance-postgres + console
 make smoke     # pruebas smoke
 make e2e       # pruebas end-to-end
 ```

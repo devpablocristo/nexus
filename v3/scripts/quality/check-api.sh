@@ -20,15 +20,6 @@ echo "=== nexus go vet ==="
 echo "=== nexus go test ==="
 "$GO_IN_ENV" nexus test ./... -count=1 -race
 
-echo "=== companion go build ==="
-"$GO_IN_ENV" companion build ./...
-
-echo "=== companion go vet ==="
-"$GO_IN_ENV" companion vet ./...
-
-echo "=== companion go test ==="
-"$GO_IN_ENV" companion test ./... -count=1 -race
-
 if [ -d "$ROOT/console/node_modules" ]; then
   echo "=== console typecheck ==="
   cd "$ROOT/console"

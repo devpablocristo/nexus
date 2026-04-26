@@ -1,12 +1,18 @@
 # Nexus v3
 
-Stack activo: **Nexus Governance** (categoría canónica: `GovernanceService`), **Companion** (categoría canónica: `ProductAgent` transversal), **console** (UI) y Postgres local definido en este directorio.
+Stack activo: **Nexus Governance** (categoría canónica: `GovernanceService`),
+**console** (UI) y Postgres local.
+
+> El servicio **Companion** (`ProductAgent` transversal) y sus capabilities
+> (`connectors`) ahora viven en un proyecto independiente
+> (`/home/pablocristo/Proyectos/pablo/companion/`). Se levantan en stacks
+> separados; en runtime se integran vía HTTP (Companion consume Nexus).
 
 ## Taxonomía IA
 
 - `Nexus Governance` es el nombre comercial del `GovernanceService` soberano.
-- `Companion` es el nombre comercial del `ProductAgent` transversal de Nexus.
-- `Companion` consume y propone acciones, pero no reemplaza a los agentes embebidos de producto como `pymes`.
+- `Companion` (en su propio repo) es el nombre comercial del `ProductAgent`
+  transversal y consume `Nexus Governance` para gating/audit.
 
 ## Arranque rápido
 
@@ -17,40 +23,23 @@ test -f .env || cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-Companion usa `NEXUS_LLM_PROVIDER=echo` por defecto para que el stack local no dependa de Ollama. Para usar Ollama local:
-
-```bash
-NEXUS_LLM_PROVIDER=ollama docker compose --profile ollama -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-```
-
-Si Postgres ya tenía volumen **sin** la base `nexus_companion`:
-
-```bash
-bash scripts/dev/ensure-companion-db.sh
-```
-
-Luego reiniciá **companion** si hacía falta la base (`docker compose -f docker-compose.yml -f docker-compose.dev.yml restart companion`).
-
 ## URLs por defecto (host)
 
-| Servicio  | URL |
-|-----------|-----|
-| Nexus Governance | `http://localhost:18084` |
-| Companion | `http://localhost:18085` |
-| Console   | `http://localhost:13001` |
+| Servicio         | URL                       |
+|------------------|---------------------------|
+| Nexus Governance | `http://localhost:18084`  |
+| Console          | `http://localhost:13001`  |
 
 Variables: ver `.env.example`.
 
 ## Tests
 
 ```bash
-make test          # Go unit (nexus + companion)
+make test          # Go unit (nexus)
 make qa            # migraciones + Go build/vet/test -race + console si node_modules existe
-make smoke         # Requiere APIs levantadas (compose)
+make smoke         # Requiere API levantada (compose): policies + requests
 make e2e           # Flujo de ciclo completo
 ```
-
-Smoke incluye flujo **Companion → Nexus Governance** (`scripts/smoke/run-companion-review-flow.sh`): comprueba el vínculo `review_request_id`, que el **estado de la tarea** coincida con el resultado de governance (`allowed` → `done`, `pending_approval` → `waiting_for_approval`, etc.) y que responda `POST /v1/tasks/{id}/sync`.
 
 ## Console local
 
@@ -64,14 +53,14 @@ npm run typecheck
 npm run build
 ```
 
-En local (`localhost`), `console` usa proxy same-origin para hablar con `nexus` y `companion` sin exponer API keys en el bundle del browser. Para acceso remoto/browser con sesión humana, configurá `NEXUS_AUTH_ISSUER_URL` en backend y `VITE_CLERK_PUBLISHABLE_KEY` en `console`.
+En local (`localhost`), `console` usa proxy same-origin para hablar con `nexus`
+sin exponer API keys en el bundle del browser. Para acceso remoto/browser con
+sesión humana, configurá `NEXUS_AUTH_ISSUER_URL` en backend y
+`VITE_CLERK_PUBLISHABLE_KEY` en `console`.
 
 ## Documentación
 
-- [doc/MONOREPO_BOUNDARIES.md](doc/MONOREPO_BOUNDARIES.md) — fronteras: Nexus decide, Companion trabaja, Connectors conectan
-- [doc/CONNECTORS.md](doc/CONNECTORS.md) — contrato interno v1 de connectors en Companion
-- [doc/NEXUS_COWORKER_VISION.md](doc/NEXUS_COWORKER_VISION.md) — visión: de capa de control a **compañero de trabajo completo**
-- [companion/README.md](companion/README.md)
 - [nexus/README.md](nexus/README.md)
+- [doc/NEXUS_COWORKER_VISION.md](doc/NEXUS_COWORKER_VISION.md) — visión: de capa de control a **compañero de trabajo completo**
 - [doc/NEXUS_COMPLETION_ROADMAP.md](doc/NEXUS_COMPLETION_ROADMAP.md)
 - [doc/NEXUS_ECOSYSTEM_DESIGN.md](doc/NEXUS_ECOSYSTEM_DESIGN.md)

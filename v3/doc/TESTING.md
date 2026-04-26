@@ -72,7 +72,7 @@ make check-migrations
 docker compose config --services
 ```
 
-`make check-migrations` falla si `review/migrations` o `companion/migrations` tienen dos archivos `.up.sql` con el mismo prefijo numérico. En bases persistidas que hayan aplicado migraciones renumeradas, validar primero la versión registrada antes de correr `up`; si ya existe una versión aplicada con número viejo, usar una migración correctiva específica para ese ambiente en lugar de reescribir estado manualmente.
+`make check-migrations` falla si `nexus/migrations` tiene dos archivos `.up.sql` con el mismo prefijo numérico. En bases persistidas que hayan aplicado migraciones renumeradas, validar primero la versión registrada antes de correr `up`; si ya existe una versión aplicada con número viejo, usar una migración correctiva específica para ese ambiente en lugar de reescribir estado manualmente.
 
 ## E2E test
 

@@ -9,7 +9,6 @@ services:
     ports:
       - "${NEXUS_POSTGRES_PORT:-15434}:5432"
     volumes:
-      - ./postgres-init:/docker-entrypoint-initdb.d:ro
       - governance-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d nexus_governance"]
@@ -41,68 +40,14 @@ services:
       timeout: 3s
       retries: 30
 
-  companion:
-    build:
-      context: ./companion
-    restart: unless-stopped
-    environment:
-      PORT: "8080"
-      DATABASE_URL: "postgres://postgres:postgres@governance-postgres:5432/nexus_companion?sslmode=disable"
-      NEXUS_API_KEYS: "admin=${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}|service_principal=true|scopes=companion:tasks:read+companion:tasks:write+companion:connectors:execute+companion:connectors:admin"
-      NEXUS_AUTH_ISSUER_URL: "${NEXUS_AUTH_ISSUER_URL:-}"
-      NEXUS_AUTH_AUDIENCE: "${NEXUS_AUTH_AUDIENCE:-}"
-      NEXUS_BASE_URL: "http://nexus:8080"
-      NEXUS_API_KEY: "${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
-      COMPANION_NEXUS_SYNC_INTERVAL_SEC: "${COMPANION_NEXUS_SYNC_INTERVAL_SEC:-30}"
-      PYMES_BASE_URL: "${PYMES_BASE_URL:-}"
-      PYMES_API_KEY: "${PYMES_API_KEY:-}"
-      COMPANION_WATCHER_INTERVAL_SEC: "${COMPANION_WATCHER_INTERVAL_SEC:-0}"
-      NEXUS_LLM_PROVIDER: "${NEXUS_LLM_PROVIDER:-echo}"
-      NEXUS_LLM_API_KEY: "${NEXUS_LLM_API_KEY:-}"
-      NEXUS_LLM_MODEL: "${NEXUS_LLM_MODEL:-qwen2.5:3b}"
-    ports:
-      - "${NEXUS_COMPANION_PORT:-18085}:8080"
-    depends_on:
-      governance-postgres:
-        condition: service_healthy
-      nexus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/readyz >/dev/null 2>&1 || exit 1"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-
   console:
     build:
       context: ./console
     restart: unless-stopped
     environment:
       NEXUS_PROXY_API_KEY: "${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
-      NEXUS_COMPANION_PROXY_API_KEY: "${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}"
     ports:
       - "${NEXUS_CONSOLE_PORT:-13001}:80"
     depends_on:
       nexus:
         condition: service_healthy
-      companion:
-        condition: service_healthy
-
-  ollama:
-    image: ollama/ollama:0.5.7
-    profiles:
-      - ollama
-    restart: unless-stopped
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-volumes:
-  governance-postgres-data:
-  ollama-data:

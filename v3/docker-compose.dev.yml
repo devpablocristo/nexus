@@ -8,24 +8,13 @@ services:
       - ./nexus:/app
     command: ["air", "-c", ".air.toml"]
 
-  companion:
-    build:
-      context: ./companion
-      dockerfile: Dockerfile.dev
-    working_dir: /app
-    volumes:
-      - ./companion:/app
-    command: ["air", "-c", ".air.toml"]
-
   console:
     build:
       context: ./console
       dockerfile: Dockerfile.dev
     environment:
       NEXUS_PROXY_TARGET: "http://nexus:8080"
-      NEXUS_COMPANION_PROXY_TARGET: "http://companion:8080"
       NEXUS_PROXY_API_KEY: "${NEXUS_ADMIN_API_KEY:-nexus-admin-dev-key}"
-      NEXUS_COMPANION_PROXY_API_KEY: "${NEXUS_COMPANION_ADMIN_API_KEY:-nexus-companion-admin-dev-key}"
     volumes:
       - ./console/src:/app/src
       - ./console/index.html:/app/index.html

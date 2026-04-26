@@ -26,7 +26,7 @@ Servicios:
 make down        # bajar containers
 make build       # rebuild images
 make logs        # ver logs en tiempo real
-make test        # go test ./... en review/
+make test        # go test ./... en nexus/
 make qa          # build + vet + test -race
 make smoke       # smoke tests contra API corriendo
 make e2e         # end-to-end lifecycle test
@@ -44,14 +44,14 @@ Archivo `.env.example` como referencia canónica:
 COMPOSE_PROJECT_NAME=nexus-v3
 
 # Puertos
-NEXUS_REVIEW_PORT=18084
+NEXUS_PORT=18084
 NEXUS_CONSOLE_PORT=13001
 NEXUS_POSTGRES_PORT=15434
 
 # API keys
 NEXUS_ADMIN_API_KEY=nexus-admin-dev-key
 NEXUS_PROMETHEUS_API_KEY=nexus-prometheus-dev-key
-NEXUS_COMPANION_ADMIN_API_KEY=nexus-companion-admin-dev-key
+NEXUS_PONTI_API_KEY=nexus-ponti-dev-key
 
 # Auth humano opcional (OIDC/JWKS, ej. Clerk)
 NEXUS_AUTH_ISSUER_URL=

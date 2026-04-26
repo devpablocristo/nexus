@@ -16,19 +16,12 @@ const dotColors = {
   sent_to_approval: 'bg-yellow-500', expired: 'bg-gray-600', cancelled: 'bg-gray-600',
 }
 
-function linkedTaskId(request: any) {
-  const taskId = request?.params?.nexus?.task_id
-  return typeof taskId === 'string' && taskId ? taskId : null
-}
-
 export default function Replay({
   lang,
   requestId,
-  onViewTask = (_taskId: string) => {},
 }: {
   lang: any
   requestId?: string | null
-  onViewTask?: (taskId: string) => void
 }) {
   const [replay, setReplay] = useState<any>(null)
   const [requests, setRequests] = useState<any[]>([])
@@ -62,8 +55,6 @@ export default function Replay({
       .catch(() => setRequestDetail(null))
   }, [selectedId])
 
-  const taskId = linkedTaskId(requestDetail)
-
   if (!selectedId) {
     return (
       <div>
@@ -95,14 +86,6 @@ export default function Replay({
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => { setSelectedId(null); setReplay(null); setRequestDetail(null) }} className="text-gray-400 hover:text-white text-sm">&larr; {t(lang, 'back')}</button>
         <h2 className="text-xl font-bold">{t(lang, 'replayTitle')}</h2>
-        {taskId && (
-          <button
-            onClick={() => onViewTask(taskId)}
-            className="ml-auto px-3 py-1.5 rounded bg-indigo-900 text-indigo-200 text-sm hover:bg-indigo-800"
-          >
-            {t(lang, 'openTask')}
-          </button>
-        )}
       </div>
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-6">
         <div className="grid grid-cols-2 gap-2 text-sm">
@@ -111,7 +94,6 @@ export default function Replay({
           <div><span className="text-gray-500">{t(lang, 'action')}:</span> {replay.action_type}</div>
           <div><span className="text-gray-500">{t(lang, 'target')}:</span> {replay.target}</div>
           <div><span className="text-gray-500">{t(lang, 'status')}:</span> <StatusBadge status={replay.final_status} /></div>
-          {taskId && <div><span className="text-gray-500">{t(lang, 'linkedTask')}:</span> <span className="font-mono text-xs">{taskId}</span></div>}
           {replay.duration_total && <div><span className="text-gray-500">{t(lang, 'duration')}:</span> {replay.duration_total}</div>}
         </div>
       </div>

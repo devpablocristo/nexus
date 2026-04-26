@@ -11,7 +11,6 @@ check-migrations:
 
 test:
 	bash scripts/quality/go-in-env.sh nexus test ./... -count=1
-	bash scripts/quality/go-in-env.sh companion test ./... -count=1
 
 qa: check-migrations
 	bash scripts/quality/check-api.sh
@@ -34,8 +33,6 @@ logs:
 smoke:
 	bash scripts/smoke/run-policies-crud.sh
 	bash scripts/smoke/run-requests-flow.sh
-	bash scripts/smoke/run-companion-review-flow.sh
-	bash scripts/smoke/run-companion-execution-flow.sh
 
 e2e:
 	bash scripts/e2e/run-full-lifecycle.sh

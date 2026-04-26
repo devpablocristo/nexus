@@ -11,16 +11,6 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: gomod
-    directory: /v3/companion
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 1
-    groups:
-      go-mod-companion:
-        patterns:
-          - "*"
-
   - package-ecosystem: npm
     directory: /v3/console
     schedule:
@@ -38,16 +28,6 @@ updates:
     open-pull-requests-limit: 1
     groups:
       docker-nexus:
-        patterns:
-          - "*"
-
-  - package-ecosystem: docker
-    directory: /v3/companion
-    schedule:
-      interval: monthly
-    open-pull-requests-limit: 1
-    groups:
-      docker-companion:
         patterns:
           - "*"
 

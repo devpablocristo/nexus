@@ -2,14 +2,9 @@
 
 ## Visión general
 
-Nexus v3 es un monorepo de productos separados mientras se estabilizan contratos:
+Este repo contiene el servicio **Nexus** (governance/control plane) y su `console` (UI operativa). El servicio **Companion** (empleado digital, agente IA) y sus **Connectors** (capacidades operativas) viven en un proyecto independiente y se integran a Nexus vía HTTP en runtime.
 
-- **Nexus**: governance/control plane. La implementación técnica temporal vive en `review/`.
-- **Companion**: empleado digital generalista. Consume Nexus por API.
-- **Console**: UI operativa.
-- **Connectors**: capacidades operativas internas de Companion.
-
-La regla de frontera es: **Nexus decide, Companion trabaja, Connectors conectan**.
+La regla de frontera entre los dos repos es: **Nexus decide, Companion trabaja, Connectors conectan**.
 
 La frontera de confianza se materializa con un principal efectivo (`actor_id`, `org_id`, scopes, método de auth y marca de service principal). Nexus es autoridad de decisión/auditoría; Companion puede operar, pero side effects de connectors solo se ejecutan con request de Nexus `allowed` o `approved`, tenant compatible y resultado reportado.
 
@@ -17,42 +12,32 @@ La frontera de confianza se materializa con un principal efectivo (`actor_id`, `
 ┌─────────────────────────────────────────────────────┐
 │                    console/                          │
 │              (React + Tailwind, :13001)              │
-│  Inbox │ Requests │ Policies │ Actions │ Agents      │
-│  │ Sandbox │ Learning │ Dashboard │ Config            │
+│  Inbox │ Requests │ Policies │ Actions │ Replay      │
+│  Learning │ Dashboard │ Config                       │
 └────────────────────┬────────────────────────────────┘
                      │ /v1/*
                      ▼
 ┌─────────────────────────────────────────────────────┐
-│              review/ = Nexus                          │
-│              (Go, net/http, :18084)                   │
+│              nexus/ = Nexus Governance               │
+│              (Go, net/http, :18084)                  │
 │                                                     │
 │  requests ─── policies ─── approvals                │
 │      │                         │                    │
 │   audit ──── learning ──── dashboard ─── config     │
 │      │                                              │
-│   actiontypes ─── delegations                       │
+│   actiontypes ─── delegations ─── evidence          │
 │                                                     │
 │  wire/setup.go (DI manual)                           │
-└────────────────────┬────────────────────────────────┘
-                     │ HTTP client
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│                  companion/                          │
-│              (Go, net/http, :18085)                  │
-│                                                     │
-│  tasks ─ memory ─ runtime/chat                       │
-│    │        │          │                             │
-│  watchers ─┴──── connectors ─── adapters             │
-│                         │                           │
-│                  mock │ pymes │ futuros             │
 └────────────────────┬────────────────────────────────┘
                      │ pgx
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │                  PostgreSQL                          │
-│           (1 instancia, N databases)                │
-│       nexus_governance │ nexus_companion │ ...      │
+│              database: nexus_governance              │
 └─────────────────────────────────────────────────────┘
+
+Companion (en repo aparte) habla a Nexus vía HTTP usando NEXUS_BASE_URL
+y NEXUS_API_KEY. No comparte BD con Nexus.
 ```
 
 ## Principios

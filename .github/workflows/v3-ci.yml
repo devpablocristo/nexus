@@ -47,30 +47,6 @@ jobs:
         working-directory: nexus/v3
         run: bash scripts/quality/check-migrations.sh
 
-  companion:
-    name: companion tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout nexus
-        uses: actions/checkout@v4
-        with:
-          path: nexus
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: nexus/v3/companion/go.mod
-          cache-dependency-path: nexus/v3/companion/go.sum
-
-      - name: Run go test
-        working-directory: nexus/v3/companion
-        run: go test ./...
-
-      - name: Run go vet
-        working-directory: nexus/v3/companion
-        run: go vet ./...
-
   console:
     name: console checks
     runs-on: ubuntu-latest
@@ -105,7 +81,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - nexus
-      - companion
       - console
     timeout-minutes: 25
     steps:
@@ -122,9 +97,9 @@ jobs:
         working-directory: nexus/v3
         run: docker compose config --services
 
-      - name: Start nexus and companion stack
+      - name: Start nexus stack
         working-directory: nexus/v3
-        run: docker compose up -d --build governance-postgres nexus companion
+        run: docker compose up -d --build governance-postgres nexus
 
       - name: Run smoke suite
         working-directory: nexus/v3

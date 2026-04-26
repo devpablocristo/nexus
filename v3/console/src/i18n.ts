@@ -107,7 +107,10 @@ const translations = {
     // Home (Workspace)
     homeEyebrow: 'Operational workspace',
     homeTitle: 'Home',
-    homeSubtitle: 'Human approvals, governed tasks, and the next actionable step in one operational surface.',
+    homeSubtitle: 'Human approvals and governed requests in one operational surface.',
+    pendingApprovals: 'Pending approvals',
+    goToInbox: 'Open inbox',
+    viewReplay: 'Replay',
     homePendingApprovals: 'Pending approvals',
     homePendingApprovalsSubtitle: 'Requests that still need a human decision before Review can finish.',
     homeReadyToExecute: 'Ready to execute',
@@ -494,8 +497,11 @@ const translations = {
 
     // Home (Workspace)
     homeEyebrow: 'Workspace operativo',
-    homeTitle: 'Home',
-    homeSubtitle: 'Aprobaciones humanas, tareas gobernadas y próximo paso accionable en una sola superficie operativa.',
+    homeTitle: 'Inicio',
+    homeSubtitle: 'Aprobaciones humanas y requests gobernadas en una sola superficie operativa.',
+    pendingApprovals: 'Aprobaciones pendientes',
+    goToInbox: 'Abrir bandeja',
+    viewReplay: 'Replay',
     homePendingApprovals: 'Aprobaciones pendientes',
     homePendingApprovalsSubtitle: 'Requests que todavía necesitan una decisión humana para que Review termine.',
     homeReadyToExecute: 'Listas para ejecutar',

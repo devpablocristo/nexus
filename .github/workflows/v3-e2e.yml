@@ -31,9 +31,9 @@ jobs:
         working-directory: nexus/v3
         run: docker compose config --services
 
-      - name: Start nexus and companion stack
+      - name: Start nexus stack
         working-directory: nexus/v3
-        run: docker compose up -d --build governance-postgres nexus companion
+        run: docker compose up -d --build governance-postgres nexus
 
       - name: Run e2e suite
         working-directory: nexus/v3

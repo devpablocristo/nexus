@@ -2,15 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const nexusTarget = process.env.NEXUS_PROXY_TARGET || 'http://nexus:8080'
-const companionTarget = process.env.NEXUS_COMPANION_PROXY_TARGET || 'http://companion:8080'
 const nexusAPIKey =
   process.env.NEXUS_PROXY_API_KEY ||
   process.env.NEXUS_ADMIN_API_KEY ||
   'nexus-admin-dev-key'
-const companionAPIKey =
-  process.env.NEXUS_COMPANION_PROXY_API_KEY ||
-  process.env.NEXUS_COMPANION_ADMIN_API_KEY ||
-  'nexus-companion-admin-dev-key'
 
 export default defineConfig({
   plugins: [react()],
@@ -22,14 +17,6 @@ export default defineConfig({
         headers: {
           'X-API-Key': nexusAPIKey,
         },
-      },
-      '/companion': {
-        target: companionTarget,
-        changeOrigin: true,
-        headers: {
-          'X-API-Key': companionAPIKey,
-        },
-        rewrite: (p) => p.replace(/^\/companion/, '') || '/',
       },
     },
   },

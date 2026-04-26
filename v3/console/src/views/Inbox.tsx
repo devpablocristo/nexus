@@ -17,12 +17,7 @@ const riskBorder = {
   low: 'border-gray-800',
 }
 
-function linkedTaskId(request) {
-  const taskId = request?.params?.nexus?.task_id
-  return typeof taskId === 'string' && taskId ? taskId : null
-}
-
-function ApprovalCard({ approval, request, lang, onDone, onViewReplay, onViewTask }) {
+function ApprovalCard({ approval, request, lang, onDone, onViewReplay }) {
   const [expanded, setExpanded] = useState(false)
   const [note, setNote] = useState('')
   const [confirmation, setConfirmation] = useState('')
@@ -48,8 +43,6 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay, onViewTas
     setConfirmation('')
     setCardError(null)
   }
-
-  const taskId = linkedTaskId(request)
 
   const submit = async () => {
     if (!isValid) return
@@ -118,12 +111,6 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay, onViewTas
               {t(lang, 'details')}
             </button>
           )}
-          {taskId && (
-            <button onClick={() => onViewTask(taskId)}
-              className="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 text-indigo-200 text-sm rounded font-medium transition-colors">
-              {t(lang, 'openTask')}
-            </button>
-          )}
         </div>
       )}
 
@@ -178,11 +165,9 @@ function ApprovalCard({ approval, request, lang, onDone, onViewReplay, onViewTas
 export default function Inbox({
   lang,
   onViewReplay = (_requestId: string) => {},
-  onViewTask = (_taskId: string) => {},
 }: {
   lang: any
   onViewReplay?: (requestId: string) => void
-  onViewTask?: (taskId: string) => void
 }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -239,7 +224,6 @@ export default function Inbox({
             lang={lang}
             onDone={handleDone}
             onViewReplay={onViewReplay}
-            onViewTask={onViewTask}
           />
         ))}
       </div>

@@ -6,35 +6,27 @@ import Learning from './views/Learning'
 import Dashboard from './views/Dashboard'
 import Policies from './views/Policies'
 import Config from './views/Config'
-import Sandbox from './views/Sandbox'
 import ActionTypes from './views/ActionTypes'
-import Agents from './views/Agents'
 import Replay from './views/Replay'
-import Tasks from './views/Tasks'
-import Memory from './views/Memory'
-import Connectors from './views/Connectors'
-import Chat from './views/Chat'
 import { getSavedLang, saveLang, t } from './i18n'
 import { getSavedView, saveView } from './storage'
 import { AuthTokenBridge, ProtectedRoute } from './AuthTokenBridge'
 
-// Navegación agrupada por áreas de trabajo (Workspace)
+// Navegación agrupada por áreas de trabajo (Workspace).
+// Tabs companion-specific (chat, tasks, memory, agents, connectors, sandbox)
+// se mudaron al proyecto independiente Companion.
 const areas = [
   {
-    key: 'areaWork',
-    tabs: ['home', 'chat', 'inbox', 'tasks', 'memory'],
-  },
-  {
     key: 'areaGovernance',
-    tabs: ['requests', 'replay'],
+    tabs: ['home', 'inbox', 'requests', 'replay'],
   },
   {
     key: 'areaOperations',
-    tabs: ['policies', 'actionTypes', 'agents', 'connectors'],
+    tabs: ['policies', 'actionTypes'],
   },
   {
     key: 'areaTools',
-    tabs: ['sandbox', 'learning', 'dashboard'],
+    tabs: ['learning', 'dashboard'],
   },
   {
     key: 'areaSettings',
@@ -46,16 +38,12 @@ export default function App() {
   const [view, setView] = useState(getSavedView)
   const [lang, setLang] = useState(getSavedLang)
   const [replayRequestId, setReplayRequestId] = useState<string | null>(null)
-  const [taskFocusId, setTaskFocusId] = useState<string | null>(null)
 
   const changeView = (v: string) => {
     setView(v)
     saveView(v)
     if (v !== 'replay') {
       setReplayRequestId(null)
-    }
-    if (v !== 'tasks') {
-      setTaskFocusId(null)
     }
   }
 
@@ -70,17 +58,11 @@ export default function App() {
     saveView('replay')
   }
 
-  const viewTask = (taskId: string) => {
-    setTaskFocusId(taskId)
-    setView('tasks')
-    saveView('tasks')
-  }
-
   return (
     <div className="min-h-screen">
       <nav className="bg-gray-900 border-b border-gray-800 px-6 py-3">
         <div className="flex items-center gap-8 mb-2">
-          <h1 className="text-lg font-bold text-white tracking-tight">Nexus Workspace</h1>
+          <h1 className="text-lg font-bold text-white tracking-tight">Nexus Governance</h1>
           <div className="ml-auto flex items-center gap-3">
             <AuthTokenBridge />
             {['en', 'es'].map((l) => (
@@ -124,21 +106,15 @@ export default function App() {
       </nav>
       <ProtectedRoute>
         <main className="max-w-7xl mx-auto px-6 py-6">
-          {view === 'home' && <Home lang={lang} onViewTask={viewTask} onViewReplay={viewReplay} onViewInbox={() => changeView('inbox')} />}
-          {view === 'chat' && <Chat lang={lang} />}
-          {view === 'inbox' && <Inbox lang={lang} onViewReplay={viewReplay} onViewTask={viewTask} />}
+          {view === 'home' && <Home lang={lang} onViewReplay={viewReplay} onViewInbox={() => changeView('inbox')} />}
+          {view === 'inbox' && <Inbox lang={lang} onViewReplay={viewReplay} />}
           {view === 'requests' && <Requests lang={lang} />}
-          {view === 'tasks' && <Tasks lang={lang} focusTaskId={taskFocusId} onViewReplay={viewReplay} />}
-          {view === 'replay' && <Replay lang={lang} requestId={replayRequestId} onViewTask={viewTask} />}
+          {view === 'replay' && <Replay lang={lang} requestId={replayRequestId} />}
           {view === 'policies' && <Policies lang={lang} />}
           {view === 'actionTypes' && <ActionTypes lang={lang} />}
-          {view === 'agents' && <Agents lang={lang} />}
-          {view === 'sandbox' && <Sandbox lang={lang} />}
           {view === 'learning' && <Learning lang={lang} />}
           {view === 'dashboard' && <Dashboard lang={lang} />}
           {view === 'config' && <Config lang={lang} />}
-          {view === 'memory' && <Memory lang={lang} />}
-          {view === 'connectors' && <Connectors lang={lang} />}
         </main>
       </ProtectedRoute>
     </div>

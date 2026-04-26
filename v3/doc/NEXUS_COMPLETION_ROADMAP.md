@@ -1,6 +1,6 @@
 # Plan para completar Nexus (visión ecosistema)
 
-Objetivo: llevar el repo desde el **estado actual** (`v3/review` + `v3/companion` slice + `console`) hasta cubrir las piezas de la visión: **Companion runtime**, **Memory**, **Connectors**, **Workspace** cohesionado y **plataforma** mínima de producción.
+Objetivo: llevar el repo desde el **estado actual** (`v3/nexus` + `console`) hasta cubrir las piezas de la visión. **Companion runtime**, **Memory** y **Connectors** ahora viven en un proyecto independiente; este roadmap se enfoca en el plano de governance del repo Nexus.
 
 Principios: no reescribir Review; conservador; trazabilidad; cada fase con **criterios de salida** verificables.
 

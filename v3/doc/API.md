@@ -287,34 +287,6 @@ GET /v1/metrics/summary?period=7d
 
 `risk_class`, `schema` y `requires_break_glass` impactan el runtime de Submit/Simulate: el riesgo base sale del action type, `params` se valida contra `schema.required` cuando existe y `requires_break_glass` activa approvals múltiples.
 
-## Companion Connectors
-
-Base URL Companion: `http://localhost:18085`
-
-| Endpoint | Método | Descripción |
-|----------|--------|-------------|
-| `/v1/connectors` | GET | Lista connectors configurados, con secretos enmascarados |
-| `/v1/connectors/capabilities` | GET | Lista capabilities declaradas por adapter |
-| `/v1/connectors/execute` | POST | Ejecuta una operación de connector |
-| `/v1/connectors/{id}/executions` | GET | Lista ejecuciones persistidas |
-
-Capability contract v1:
-
-```json
-{
-  "operation": "pymes.send_whatsapp_text",
-  "mode": "write",
-  "side_effect": true,
-  "read_only": false,
-  "risk_class": "medium",
-  "requires_review": true,
-  "input_schema": {"type": "object", "required": ["org_id", "party_id", "body"]},
-  "evidence_fields": ["sent", "external_ref", "party_id"]
-}
-```
-
-Las operaciones `read` pueden ejecutarse sin approval. Las operaciones `write` o con `side_effect` requieren `review_request_id` y Nexus debe devolver estado `allowed` o `approved`.
-
 ### Create action type
 
 ```json
