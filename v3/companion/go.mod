@@ -7,14 +7,14 @@ require (
 	github.com/devpablocristo/core/authn/go v0.2.1
 	github.com/devpablocristo/core/concurrency/go v0.2.0
 	github.com/devpablocristo/core/config/go v0.1.0
-	github.com/devpablocristo/core/databases/postgres/go v0.1.0
+	github.com/devpablocristo/core/databases/postgres/go v0.1.1
 	github.com/devpablocristo/core/errors/go v0.1.0
 	github.com/devpablocristo/core/governance/go v0.1.0
 	github.com/devpablocristo/core/http/go v0.1.1
 	github.com/devpablocristo/core/observability/go v0.1.0
 	github.com/devpablocristo/core/security/go v0.1.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.2
 )
 
 require (
