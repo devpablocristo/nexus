@@ -39,6 +39,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusLearningRead, scopeNexusLearningAdmin) {
+		return
+	}
 	list, err := h.uc.ListPendingProposals(r.Context(), defaultListLimit)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list proposals failed")
@@ -52,6 +55,9 @@ func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getProposal(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusLearningRead, scopeNexusLearningAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -66,6 +72,9 @@ func (h *Handler) getProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusLearningAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -89,6 +98,9 @@ func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) dismiss(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusLearningAdmin) {
+		return
+	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid id")
@@ -107,6 +119,9 @@ func (h *Handler) dismiss(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) analyze(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusLearningAdmin) {
+		return
+	}
 	count, err := h.uc.AnalyzeAndPropose(r.Context())
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "analyze failed")

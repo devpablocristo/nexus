@@ -50,11 +50,15 @@ type TimelineEntry struct {
 }
 
 func (u *Usecases) Replay(ctx context.Context, requestID uuid.UUID) (ReplayOutput, error) {
-	events, err := u.repo.ListByRequestID(ctx, requestID)
+	// Pedir primero la info de la request: el OrgID se necesita para que el
+	// handler pueda autorizar antes de exponer la timeline. Si la request no
+	// existe (o pertenece a otra org y el repo lo filtra), salimos sin tocar
+	// audit events.
+	req, err := u.requestRepo.GetReplayInfo(ctx, requestID)
 	if err != nil {
 		return ReplayOutput{}, err
 	}
-	req, err := u.requestRepo.GetReplayInfo(ctx, requestID)
+	events, err := u.repo.ListByRequestID(ctx, requestID)
 	if err != nil {
 		return ReplayOutput{}, err
 	}
