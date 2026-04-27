@@ -3,6 +3,7 @@ package approvals_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -958,5 +959,95 @@ func TestNoAuditSinkSafe(t *testing.T) {
 		`{"decided_by":"admin","note":"safe"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("approve sin audit sink: código esperado 200, obtenido %d", rec.Code)
+	}
+}
+
+// fakeDecisionTx graba qué pares (approval, request) se aplicaron de forma
+// atómica y opcionalmente falla para verificar rollback semántico.
+type fakeDecisionTx struct {
+	mu          sync.Mutex
+	calls       int
+	failNext    bool
+	lastApprID  uuid.UUID
+	lastReqID   uuid.UUID
+	lastApprSt  approvaldomain.ApprovalStatus
+	lastReqStat requestdomain.RequestStatus
+}
+
+func (f *fakeDecisionTx) ApplyDecision(_ context.Context, a approvaldomain.Approval, r requestdomain.Request) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.failNext {
+		// Simula commit fail: ningún side-effect persistido. El usecase debe
+		// propagar el error sin haber tocado nada en memoria propia.
+		return errors.New("simulated tx commit failure")
+	}
+	f.lastApprID = a.ID
+	f.lastReqID = r.ID
+	f.lastApprSt = a.Status
+	f.lastReqStat = r.Status
+	return nil
+}
+
+// TestApprove_UsesDecisionTx_HappyPath verifica que el camino atómico se
+// dispara cuando hay un DecisionTx inyectado.
+func TestApprove_UsesDecisionTx_HappyPath(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	reqUpdater := newFakeRequestUpdater()
+	tx := &fakeDecisionTx{}
+	uc := approvals.NewUsecases(repo, reqUpdater).WithDecisionTx(tx)
+	mux := http.NewServeMux()
+	approvals.NewHandler(uc).Register(mux)
+
+	env := testEnv{mux: mux, repo: repo, reqUpdater: reqUpdater, uc: uc}
+	approvalID := seedPendingApproval(t, env)
+
+	rec := doRequest(t, env.mux, http.MethodPost,
+		"/v1/approvals/"+approvalID.String()+"/approve",
+		`{"decided_by":"admin","note":"ok"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if tx.calls != 1 {
+		t.Fatalf("expected DecisionTx llamado 1 vez, got %d", tx.calls)
+	}
+	if tx.lastApprSt != approvaldomain.ApprovalStatusApproved {
+		t.Fatalf("approval no llegó approved al tx: %s", tx.lastApprSt)
+	}
+	if tx.lastReqStat != requestdomain.StatusApproved {
+		t.Fatalf("request no llegó approved al tx: %s", tx.lastReqStat)
+	}
+}
+
+// TestApprove_DecisionTxFails_PropagatesError verifica que si la tx falla,
+// el usecase devuelve error sin emitir audit ni callbacks de "resolved".
+func TestApprove_DecisionTxFails_PropagatesError(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	reqUpdater := newFakeRequestUpdater()
+	tx := &fakeDecisionTx{failNext: true}
+	sink := newFakeAuditSink()
+	uc := approvals.NewUsecases(repo, reqUpdater).
+		WithAuditSink(sink).
+		WithDecisionTx(tx)
+	mux := http.NewServeMux()
+	approvals.NewHandler(uc).Register(mux)
+
+	env := testEnv{mux: mux, repo: repo, reqUpdater: reqUpdater, uc: uc, audit: sink}
+	approvalID := seedPendingApproval(t, env)
+
+	rec := doRequest(t, env.mux, http.MethodPost,
+		"/v1/approvals/"+approvalID.String()+"/approve",
+		`{"decided_by":"admin","note":"x"}`)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("esperado error, llegó 200: %s", rec.Body.String())
+	}
+	// No debería haber emitido audit "Approved" porque el tx falló antes.
+	for _, e := range sink.getEvents() {
+		if e.EventType == "request.approved" {
+			t.Fatalf("audit emitido a pesar de tx fallido: %+v", e)
+		}
 	}
 }

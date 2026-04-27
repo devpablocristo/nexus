@@ -24,15 +24,30 @@ type AuditSink interface {
 	AppendEvent(ctx context.Context, requestID uuid.UUID, eventType, actorType, actorID, summary string, data map[string]any) error
 }
 
+// DecisionTx persiste approval + request en una sola transacción. Si está
+// nil, el usecase cae al camino legacy de dos updates secuenciales (mantener
+// solo para tests con fakes).
+type DecisionTx interface {
+	ApplyDecision(ctx context.Context, a approvaldomain.Approval, r requestdomain.Request) error
+}
+
 type Usecases struct {
 	repo        Repository
 	requestRepo RequestUpdater
 	audit       AuditSink
 	callbacks   callbacks.ApprovalPublisher
+	decisionTx  DecisionTx
 }
 
 func NewUsecases(repo Repository, requestRepo RequestUpdater) *Usecases {
 	return &Usecases{repo: repo, requestRepo: requestRepo}
+}
+
+// WithDecisionTx inyecta el applier transaccional. Si no se inyecta, los
+// updates se hacen en dos pasos secuenciales (no-atómico, solo para tests).
+func (u *Usecases) WithDecisionTx(tx DecisionTx) *Usecases {
+	u.decisionTx = tx
+	return u
 }
 
 // WithAuditSink inyecta el audit sink (patrón builder de v2).
@@ -118,9 +133,6 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 		}
 	}
 
-	if _, err := u.repo.Update(ctx, a); err != nil {
-		return fmt.Errorf("update approval: %w", err)
-	}
 	req, err := u.requestRepo.GetByID(ctx, a.RequestID)
 	if err != nil {
 		return fmt.Errorf("get request for approval: %w", err)
@@ -128,8 +140,9 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 	req.Status = requestdomain.StatusApproved
 	req.DecidedAt = &now
 	req.UpdatedAt = now
-	if _, err := u.requestRepo.Update(ctx, req); err != nil {
-		return fmt.Errorf("update request status: %w", err)
+
+	if err := u.applyDecision(ctx, a, req); err != nil {
+		return err
 	}
 
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
@@ -175,9 +188,6 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 	a.DecisionNote = note
 	a.DecidedAt = &now
 
-	if _, err := u.repo.Update(ctx, a); err != nil {
-		return fmt.Errorf("update approval: %w", err)
-	}
 	req, err := u.requestRepo.GetByID(ctx, a.RequestID)
 	if err != nil {
 		return fmt.Errorf("get request for rejection: %w", err)
@@ -185,14 +195,35 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 	req.Status = requestdomain.StatusRejected
 	req.DecidedAt = &now
 	req.UpdatedAt = now
-	if _, err := u.requestRepo.Update(ctx, req); err != nil {
-		return fmt.Errorf("update request status: %w", err)
+
+	if err := u.applyDecision(ctx, a, req); err != nil {
+		return err
 	}
 
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventRejected, decidedBy,
 		"Rejected: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
 	u.emitApprovalResolved(ctx, req, a)
 
+	return nil
+}
+
+// applyDecision persiste approval + request. Si hay decisionTx inyectado,
+// usa el path atómico (una transacción). Sin él, cae al legacy de dos
+// updates secuenciales — solo aceptable en tests con fakes; en prod wire
+// debe inyectar siempre el DecisionApplier.
+func (u *Usecases) applyDecision(ctx context.Context, a approvaldomain.Approval, req requestdomain.Request) error {
+	if u.decisionTx != nil {
+		if err := u.decisionTx.ApplyDecision(ctx, a, req); err != nil {
+			return fmt.Errorf("apply decision: %w", err)
+		}
+		return nil
+	}
+	if _, err := u.repo.Update(ctx, a); err != nil {
+		return fmt.Errorf("update approval: %w", err)
+	}
+	if _, err := u.requestRepo.Update(ctx, req); err != nil {
+		return fmt.Errorf("update request status: %w", err)
+	}
 	return nil
 }
 

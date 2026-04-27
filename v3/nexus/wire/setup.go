@@ -118,7 +118,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	)
 	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).
 		WithAuditSink(auditSink).
-		WithApprovalCallbacks(callbackPublisher)
+		WithApprovalCallbacks(callbackPublisher).
+		WithDecisionTx(approvals.NewDecisionApplier(db))
 	replayGetter := newReplayRequestGetter(reqRepo)
 	auditUC := audit.NewUsecases(auditRepo, replayGetter)
 
