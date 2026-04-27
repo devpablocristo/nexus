@@ -17,14 +17,15 @@ type EvidencePack struct {
 
 // RequestEvidence contiene la información del request original.
 type RequestEvidence struct {
-	ID            string         `json:"id"`
-	Requester     Requester      `json:"requester"`
-	Action        Action         `json:"action"`
-	Params        map[string]any `json:"params,omitempty"`
-	Reason        string         `json:"reason,omitempty"`
-	Context       string         `json:"context,omitempty"`
-	AISummary     string         `json:"ai_summary,omitempty"`
-	CreatedAt     string         `json:"created_at"`
+	ID        string         `json:"id"`
+	OrgID     string         `json:"org_id,omitempty"`
+	Requester Requester      `json:"requester"`
+	Action    Action         `json:"action"`
+	Params    map[string]any `json:"params,omitempty"`
+	Reason    string         `json:"reason,omitempty"`
+	Context   string         `json:"context,omitempty"`
+	AISummary string         `json:"ai_summary,omitempty"`
+	CreatedAt string         `json:"created_at"`
 }
 
 // Requester identifica al solicitante.

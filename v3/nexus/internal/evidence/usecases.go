@@ -3,6 +3,7 @@ package evidence
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -128,8 +129,13 @@ func (u *Usecases) Generate(ctx context.Context, requestID uuid.UUID) (evidenced
 // --- builders ---
 
 func buildRequestEvidence(req requestdomain.Request) evidencedomain.RequestEvidence {
+	orgID := ""
+	if req.OrgID != nil {
+		orgID = strings.TrimSpace(*req.OrgID)
+	}
 	return evidencedomain.RequestEvidence{
-		ID: req.ID.String(),
+		ID:    req.ID.String(),
+		OrgID: orgID,
 		Requester: evidencedomain.Requester{
 			Type: string(req.RequesterType),
 			ID:   req.RequesterID,

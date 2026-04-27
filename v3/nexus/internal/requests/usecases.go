@@ -100,9 +100,18 @@ type Usecases struct {
 	actionTypes    ActionTypeChecker
 	delegations    DelegationChecker
 	attestations   AttestationStore
+	attestVerifier AttestationVerifier
 	approvalGetter ApprovalGetter
 	approvalEvents callbacks.ApprovalPublisher
 	resultReports  ResultReportStore
+}
+
+// AttestationVerifier valida criptográficamente la firma + atester antes de
+// persistir una attestation. Si no se inyecta, Attest exige al menos
+// signature y attester no vacíos pero no verifica criptografía — el caller
+// debe decidir si eso es aceptable para su modelo de amenaza.
+type AttestationVerifier interface {
+	Verify(ctx context.Context, a requestdomain.Attestation) error
 }
 
 // Option configura el constructor de Usecases (functional options pattern — Uber).
@@ -150,6 +159,10 @@ func WithDelegationChecker(c DelegationChecker) Option {
 
 func WithAttestationStore(s AttestationStore) Option {
 	return func(u *Usecases) { u.attestations = s }
+}
+
+func WithAttestationVerifier(v AttestationVerifier) Option {
+	return func(u *Usecases) { u.attestVerifier = v }
 }
 
 func WithApprovalGetter(g ApprovalGetter) Option {
@@ -1335,6 +1348,23 @@ func (u *Usecases) Attest(ctx context.Context, requestID uuid.UUID, in AttestInp
 		return requestdomain.Attestation{}, fmt.Errorf("attestation store not configured")
 	}
 
+	// Validación estricta de inputs: una attestation sin attester o signature
+	// no es una prueba — antes se aceptaba y quedaba persistida igual.
+	in.Status = strings.TrimSpace(in.Status)
+	in.Attester = strings.TrimSpace(in.Attester)
+	in.Signature = strings.TrimSpace(in.Signature)
+	switch in.Status {
+	case "success", "failure", "partial":
+	default:
+		return requestdomain.Attestation{}, fmt.Errorf("attestation status must be success, failure or partial, got: %q", in.Status)
+	}
+	if in.Attester == "" {
+		return requestdomain.Attestation{}, fmt.Errorf("attestation attester is required")
+	}
+	if in.Signature == "" {
+		return requestdomain.Attestation{}, fmt.Errorf("attestation signature is required")
+	}
+
 	// Verificar que la request existe
 	req, err := u.reqRepo.GetByID(ctx, requestID)
 	if err != nil {
@@ -1354,6 +1384,15 @@ func (u *Usecases) Attest(ctx context.Context, requestID uuid.UUID, in AttestInp
 		Signature:    in.Signature,
 		Attester:     in.Attester,
 		Metadata:     in.Metadata,
+	}
+
+	// Verificación criptográfica si hay verifier inyectado. Sin verifier la
+	// attestation queda como "claim" del attester sin garantía de integridad
+	// — wire debería siempre inyectar uno en prod.
+	if u.attestVerifier != nil {
+		if err := u.attestVerifier.Verify(ctx, attestation); err != nil {
+			return requestdomain.Attestation{}, fmt.Errorf("verify attestation: %w", err)
+		}
 	}
 
 	created, err := u.attestations.Create(ctx, attestation)

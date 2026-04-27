@@ -64,7 +64,8 @@ func toEvidenceResponse(pack evidencedomain.EvidencePack) evidencedto.EvidencePa
 		Version:     pack.Version,
 		GeneratedAt: pack.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Request: evidencedto.RequestSection{
-			ID: pack.Request.ID,
+			ID:    pack.Request.ID,
+			OrgID: pack.Request.OrgID,
 			Requester: evidencedto.RequesterInfo{
 				Type: pack.Request.Requester.Type,
 				ID:   pack.Request.Requester.ID,

@@ -1,7 +1,6 @@
 package evidence
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -27,7 +26,11 @@ func canAccessEvidenceOrg(r *http.Request, pack evidencedomain.EvidencePack) boo
 		return true
 	}
 	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
-	packOrg := strings.TrimSpace(rawToString(pack.Request.Params["org_id"]))
+	// Antes esto sacaba el org del bag user-controlled `Params["org_id"]`,
+	// permitiendo bypass cross-org si el caller original no incluía la
+	// clave. Ahora usamos pack.Request.OrgID que viene de la columna
+	// requests.org_id (autoritativa).
+	packOrg := strings.TrimSpace(pack.Request.OrgID)
 	if orgID == "" {
 		return packOrg == ""
 	}
@@ -61,13 +64,3 @@ func parseHeaderScopes(raw string) map[string]struct{} {
 	return out
 }
 
-func rawToString(value any) string {
-	switch v := value.(type) {
-	case nil:
-		return ""
-	case string:
-		return v
-	default:
-		return fmt.Sprint(v)
-	}
-}

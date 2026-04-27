@@ -16,6 +16,7 @@ type EvidencePackResponse struct {
 // RequestSection identifica la request original.
 type RequestSection struct {
 	ID        string         `json:"id"`
+	OrgID     string         `json:"org_id,omitempty"`
 	Requester RequesterInfo  `json:"requester"`
 	Action    ActionInfo     `json:"action"`
 	Params    map[string]any `json:"params,omitempty"`
