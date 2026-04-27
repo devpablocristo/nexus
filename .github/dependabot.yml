@@ -1,8 +1,7 @@
-# `v3` es la unica linea activa en este repo.
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: /v3/nexus
+    directory: /governance
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
@@ -12,7 +11,7 @@ updates:
           - "*"
 
   - package-ecosystem: npm
-    directory: /v3/console
+    directory: /console
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
@@ -22,17 +21,17 @@ updates:
           - "*"
 
   - package-ecosystem: docker
-    directory: /v3/nexus
+    directory: /governance
     schedule:
       interval: monthly
     open-pull-requests-limit: 1
     groups:
-      docker-nexus:
+      docker-governance:
         patterns:
           - "*"
 
   - package-ecosystem: docker
-    directory: /v3/console
+    directory: /console
     schedule:
       interval: monthly
     open-pull-requests-limit: 1

@@ -2,8 +2,9 @@
 
 ## 1. Contexto
 
-Repositorio activo de Nexus: `v3/` (`nexus/` governance + `console/` UI).
-Companion (agente IA) y sus connectors viven en otro proyecto, se integran vía HTTP en runtime.
+Nexus es el producto: incluye `governance/` (BE Go) + `console/` (FE React).
+El layout está en el root del repo. Companion (agente IA) y sus connectors
+viven en otro proyecto, se integran vía HTTP en runtime.
 
 Las capacidades reutilizables ya viven en el repo externo `core/`.
 
@@ -45,7 +46,7 @@ Las capacidades reutilizables ya viven en el repo externo `core/`.
 
 ```
 {proyecto}/                          # raíz
-├── {servicio}/                      # nombre = lo que hace (review, billing, gateway)
+├── {servicio}/                      # nombre = lo que hace (governance, billing, gateway)
 │   ├── cmd/api/main.go
 │   ├── internal/
 │   │   ├── {modulo}/                # un dir por dominio de negocio
@@ -220,17 +221,17 @@ Los nombres de servicio NO llevan prefijo `nexus-`. El `COMPOSE_PROJECT_NAME` ya
 
 | Tipo | Servicio compose | Container resultante |
 |------|-----------------|---------------------|
-| Servicio Go (governance) | `nexus` | `nexus-v3-nexus-1` |
-| DB governance | `governance-postgres` | `nexus-v3-governance-postgres-1` |
+| Servicio Go (governance) | `governance` | `nexus-governance-1` |
+| DB governance | `governance-postgres` | `nexus-governance-postgres-1` |
 | Volumen | `governance-postgres-data` | — |
-| Frontend | `console` | `nexus-v3-console-1` |
+| Frontend | `console` | `nexus-console-1` |
 
 ### Variables de entorno
 
-- `COMPOSE_PROJECT_NAME=nexus-v3`
-- Puertos: `NEXUS_{SERVICE}_PORT`, `NEXUS_CONSOLE_PORT`
-- API keys: `NEXUS_API_KEYS` dentro del container
-- DB: `DATABASE_URL` dentro del container, nombre `nexus_{servicio}`
+- `COMPOSE_PROJECT_NAME=nexus`
+- Puertos: `GOVERNANCE_PORT`, `GOVERNANCE_POSTGRES_PORT`, `NEXUS_CONSOLE_PORT`
+- API keys del BE: `GOVERNANCE_API_KEYS` dentro del container
+- DB: `DATABASE_URL` dentro del container, nombre `nexus_governance`
 
 ### Reglas Docker
 
@@ -239,7 +240,7 @@ Los nombres de servicio NO llevan prefijo `nexus-`. El `COMPOSE_PROJECT_NAME` ya
 ### Nombres prohibidos
 
 - NUNCA `web/`, `frontend/`, `ui/`, `tower/` → siempre `console/`
-- NUNCA `api/`, `backend/`, `server/` → usar nombre del producto (`review/`, `billing/`)
+- NUNCA `api/`, `backend/`, `server/` → usar nombre del servicio (`governance/`, `connectors/`)
 - NUNCA `postgres:16` sin `-alpine`
 
 ---
