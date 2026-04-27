@@ -24,11 +24,12 @@ type AuditSink interface {
 	AppendEvent(ctx context.Context, requestID uuid.UUID, eventType, actorType, actorID, summary string, data map[string]any) error
 }
 
-// DecisionTx persiste approval + request en una sola transacción. Si está
-// nil, el usecase cae al camino legacy de dos updates secuenciales (mantener
-// solo para tests con fakes).
+// DecisionTx abre una transacción con row lock sobre el approval. Resuelve
+// dos cosas a la vez: serializa decisiones concurrentes (C11) y persiste
+// approval+request atómicamente (C10). Si está nil, el usecase cae al
+// camino legacy sin lock ni atomicidad — solo aceptable para tests con fakes.
 type DecisionTx interface {
-	ApplyDecision(ctx context.Context, a approvaldomain.Approval, r requestdomain.Request) error
+	BeginDecision(ctx context.Context, approvalID uuid.UUID) (DecisionLock, approvaldomain.Approval, error)
 }
 
 type Usecases struct {
@@ -74,64 +75,63 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 	if decidedBy == "" {
 		return ErrActorRequired
 	}
-	a, err := u.repo.GetByID(ctx, approvalID)
-	if err != nil {
-		return fmt.Errorf("get approval: %w", err)
+
+	// Camino atómico con row lock (resuelve C10 + C11). Sin decisionTx
+	// caemos al legacy: solo válido para tests con fakes.
+	if u.decisionTx == nil {
+		return u.approveLegacy(ctx, approvalID, decidedBy, note)
 	}
+
+	lock, a, err := u.decisionTx.BeginDecision(ctx, approvalID)
+	if err != nil {
+		return fmt.Errorf("lock approval: %w", err)
+	}
+	defer func() { _ = lock.Rollback(ctx) }()
+
 	if a.Status != approvaldomain.ApprovalStatusPending {
 		return ErrNotPending
 	}
-
 	now := time.Now().UTC()
 	if !a.ExpiresAt.IsZero() && !now.Before(a.ExpiresAt) {
 		return ErrExpired
 	}
 
-	// Break-glass: verificar que el aprobador no haya decidido antes
 	if a.BreakGlass {
+		// Acá ya tenemos lock: el snapshot a.Decisions refleja el último
+		// commit, así que el chequeo de "ya decidió" es definitivo.
 		for _, d := range a.Decisions {
 			if d.ApproverID == decidedBy {
 				return ErrAlreadyDecided
 			}
 		}
-
-		// Registrar decisión parcial
 		a.Decisions = append(a.Decisions, approvaldomain.ApprovalDecision{
 			ApproverID: decidedBy, Action: "approve", Note: note, DecidedAt: now,
 		})
-
 		approveCount := 0
 		for _, d := range a.Decisions {
 			if d.Action == "approve" {
 				approveCount++
 			}
 		}
-
-		// ¿Suficientes aprobaciones?
 		if approveCount < a.RequiredApprovals {
-			// Guardar decisión parcial, no finalizar
-			if _, err := u.repo.Update(ctx, a); err != nil {
-				return fmt.Errorf("update approval (partial): %w", err)
+			if err := lock.PersistPartial(ctx, a); err != nil {
+				return fmt.Errorf("persist partial approval: %w", err)
 			}
 			u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
 				fmt.Sprintf("Partial approval (%d/%d): %s", approveCount, a.RequiredApprovals, note),
 				map[string]any{"decided_by": decidedBy, "note": note, "approvals": approveCount, "required": a.RequiredApprovals})
 			return nil
 		}
-		// Suficientes — finalizar
+	} else {
+		a.Decisions = []approvaldomain.ApprovalDecision{
+			{ApproverID: decidedBy, Action: "approve", Note: note, DecidedAt: now},
+		}
 	}
 
 	a.Status = approvaldomain.ApprovalStatusApproved
 	a.DecidedBy = decidedBy
 	a.DecisionNote = note
 	a.DecidedAt = &now
-
-	// Si no es break-glass, registrar decisión única
-	if !a.BreakGlass {
-		a.Decisions = []approvaldomain.ApprovalDecision{
-			{ApproverID: decidedBy, Action: "approve", Note: note, DecidedAt: now},
-		}
-	}
 
 	req, err := u.requestRepo.GetByID(ctx, a.RequestID)
 	if err != nil {
@@ -141,14 +141,12 @@ func (u *Usecases) Approve(ctx context.Context, approvalID uuid.UUID, decidedBy,
 	req.DecidedAt = &now
 	req.UpdatedAt = now
 
-	if err := u.applyDecision(ctx, a, req); err != nil {
-		return err
+	if err := lock.PersistFinal(ctx, a, req); err != nil {
+		return fmt.Errorf("persist final approval: %w", err)
 	}
-
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
 		"Approved: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
 	u.emitApprovalResolved(ctx, req, a)
-
 	return nil
 }
 
@@ -157,20 +155,25 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 	if decidedBy == "" {
 		return ErrActorRequired
 	}
-	a, err := u.repo.GetByID(ctx, approvalID)
-	if err != nil {
-		return fmt.Errorf("get approval: %w", err)
+
+	if u.decisionTx == nil {
+		return u.rejectLegacy(ctx, approvalID, decidedBy, note)
 	}
+
+	lock, a, err := u.decisionTx.BeginDecision(ctx, approvalID)
+	if err != nil {
+		return fmt.Errorf("lock approval: %w", err)
+	}
+	defer func() { _ = lock.Rollback(ctx) }()
+
 	if a.Status != approvaldomain.ApprovalStatusPending {
 		return ErrNotPending
 	}
-
 	now := time.Now().UTC()
 	if !a.ExpiresAt.IsZero() && !now.Before(a.ExpiresAt) {
 		return ErrExpired
 	}
 
-	// Break-glass: verificar que no haya decidido antes
 	if a.BreakGlass {
 		for _, d := range a.Decisions {
 			if d.ApproverID == decidedBy {
@@ -179,7 +182,7 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 		}
 	}
 
-	// Un rechazo siempre finaliza (en break-glass o no)
+	// Un rechazo siempre finaliza (en break-glass o no).
 	a.Decisions = append(a.Decisions, approvaldomain.ApprovalDecision{
 		ApproverID: decidedBy, Action: "reject", Note: note, DecidedAt: now,
 	})
@@ -196,34 +199,124 @@ func (u *Usecases) Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, 
 	req.DecidedAt = &now
 	req.UpdatedAt = now
 
-	if err := u.applyDecision(ctx, a, req); err != nil {
-		return err
+	if err := lock.PersistFinal(ctx, a, req); err != nil {
+		return fmt.Errorf("persist final rejection: %w", err)
 	}
-
 	u.emitAudit(ctx, a.RequestID, auditdomain.EventRejected, decidedBy,
 		"Rejected: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
 	u.emitApprovalResolved(ctx, req, a)
-
 	return nil
 }
 
-// applyDecision persiste approval + request. Si hay decisionTx inyectado,
-// usa el path atómico (una transacción). Sin él, cae al legacy de dos
-// updates secuenciales — solo aceptable en tests con fakes; en prod wire
-// debe inyectar siempre el DecisionApplier.
-func (u *Usecases) applyDecision(ctx context.Context, a approvaldomain.Approval, req requestdomain.Request) error {
-	if u.decisionTx != nil {
-		if err := u.decisionTx.ApplyDecision(ctx, a, req); err != nil {
-			return fmt.Errorf("apply decision: %w", err)
-		}
-		return nil
+// approveLegacy / rejectLegacy: paths sin row-lock ni atomicidad. Solo
+// aceptables para tests con fakes (in-memory). En prod wire siempre inyecta
+// DecisionTx, así que estos no se llaman.
+func (u *Usecases) approveLegacy(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error {
+	a, err := u.repo.GetByID(ctx, approvalID)
+	if err != nil {
+		return fmt.Errorf("get approval: %w", err)
 	}
+	if a.Status != approvaldomain.ApprovalStatusPending {
+		return ErrNotPending
+	}
+	now := time.Now().UTC()
+	if !a.ExpiresAt.IsZero() && !now.Before(a.ExpiresAt) {
+		return ErrExpired
+	}
+	if a.BreakGlass {
+		for _, d := range a.Decisions {
+			if d.ApproverID == decidedBy {
+				return ErrAlreadyDecided
+			}
+		}
+		a.Decisions = append(a.Decisions, approvaldomain.ApprovalDecision{
+			ApproverID: decidedBy, Action: "approve", Note: note, DecidedAt: now,
+		})
+		approveCount := 0
+		for _, d := range a.Decisions {
+			if d.Action == "approve" {
+				approveCount++
+			}
+		}
+		if approveCount < a.RequiredApprovals {
+			if _, err := u.repo.Update(ctx, a); err != nil {
+				return fmt.Errorf("update approval (partial): %w", err)
+			}
+			u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
+				fmt.Sprintf("Partial approval (%d/%d): %s", approveCount, a.RequiredApprovals, note),
+				map[string]any{"decided_by": decidedBy, "note": note, "approvals": approveCount, "required": a.RequiredApprovals})
+			return nil
+		}
+	} else {
+		a.Decisions = []approvaldomain.ApprovalDecision{
+			{ApproverID: decidedBy, Action: "approve", Note: note, DecidedAt: now},
+		}
+	}
+	a.Status = approvaldomain.ApprovalStatusApproved
+	a.DecidedBy = decidedBy
+	a.DecisionNote = note
+	a.DecidedAt = &now
 	if _, err := u.repo.Update(ctx, a); err != nil {
 		return fmt.Errorf("update approval: %w", err)
 	}
+	req, err := u.requestRepo.GetByID(ctx, a.RequestID)
+	if err != nil {
+		return fmt.Errorf("get request for approval: %w", err)
+	}
+	req.Status = requestdomain.StatusApproved
+	req.DecidedAt = &now
+	req.UpdatedAt = now
 	if _, err := u.requestRepo.Update(ctx, req); err != nil {
 		return fmt.Errorf("update request status: %w", err)
 	}
+	u.emitAudit(ctx, a.RequestID, auditdomain.EventApproved, decidedBy,
+		"Approved: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
+	u.emitApprovalResolved(ctx, req, a)
+	return nil
+}
+
+func (u *Usecases) rejectLegacy(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error {
+	a, err := u.repo.GetByID(ctx, approvalID)
+	if err != nil {
+		return fmt.Errorf("get approval: %w", err)
+	}
+	if a.Status != approvaldomain.ApprovalStatusPending {
+		return ErrNotPending
+	}
+	now := time.Now().UTC()
+	if !a.ExpiresAt.IsZero() && !now.Before(a.ExpiresAt) {
+		return ErrExpired
+	}
+	if a.BreakGlass {
+		for _, d := range a.Decisions {
+			if d.ApproverID == decidedBy {
+				return ErrAlreadyDecided
+			}
+		}
+	}
+	a.Decisions = append(a.Decisions, approvaldomain.ApprovalDecision{
+		ApproverID: decidedBy, Action: "reject", Note: note, DecidedAt: now,
+	})
+	a.Status = approvaldomain.ApprovalStatusRejected
+	a.DecidedBy = decidedBy
+	a.DecisionNote = note
+	a.DecidedAt = &now
+	if _, err := u.repo.Update(ctx, a); err != nil {
+		return fmt.Errorf("update approval: %w", err)
+	}
+	req, err := u.requestRepo.GetByID(ctx, a.RequestID)
+	if err != nil {
+		return fmt.Errorf("get request for rejection: %w", err)
+	}
+	req.Status = requestdomain.StatusRejected
+	req.DecidedAt = &now
+	req.UpdatedAt = now
+	if _, err := u.requestRepo.Update(ctx, req); err != nil {
+		return fmt.Errorf("update request status: %w", err)
+	}
+	u.emitAudit(ctx, a.RequestID, auditdomain.EventRejected, decidedBy,
+		"Rejected: "+note, map[string]any{"decided_by": decidedBy, "note": note, "break_glass": a.BreakGlass})
+	u.emitApprovalResolved(ctx, req, a)
 	return nil
 }
 

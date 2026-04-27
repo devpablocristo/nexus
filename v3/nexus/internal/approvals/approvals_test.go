@@ -962,31 +962,92 @@ func TestNoAuditSinkSafe(t *testing.T) {
 	}
 }
 
-// fakeDecisionTx graba qué pares (approval, request) se aplicaron de forma
-// atómica y opcionalmente falla para verificar rollback semántico.
+// fakeDecisionTx emula el contrato de approvals.DecisionTx en memoria.
+// El "lock" no serializa concurrencia real (los tests son single-goroutine
+// con t.Parallel a nivel test, no a nivel approval), pero permite verificar
+// el control flow de Persist*/Rollback y los datos que llegan al persist.
 type fakeDecisionTx struct {
+	repo        *fakeRepo
 	mu          sync.Mutex
-	calls       int
-	failNext    bool
+	beginCalls  int
+	failBegin   bool
+	failPersist bool
+
 	lastApprID  uuid.UUID
 	lastReqID   uuid.UUID
 	lastApprSt  approvaldomain.ApprovalStatus
 	lastReqStat requestdomain.RequestStatus
+	wasFinal    bool
 }
 
-func (f *fakeDecisionTx) ApplyDecision(_ context.Context, a approvaldomain.Approval, r requestdomain.Request) error {
+func newFakeDecisionTx(repo *fakeRepo) *fakeDecisionTx {
+	return &fakeDecisionTx{repo: repo}
+}
+
+func (f *fakeDecisionTx) BeginDecision(ctx context.Context, id uuid.UUID) (approvals.DecisionLock, approvaldomain.Approval, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls++
-	if f.failNext {
-		// Simula commit fail: ningún side-effect persistido. El usecase debe
-		// propagar el error sin haber tocado nada en memoria propia.
-		return errors.New("simulated tx commit failure")
+	f.beginCalls++
+	fail := f.failBegin
+	f.mu.Unlock()
+	if fail {
+		return nil, approvaldomain.Approval{}, errors.New("simulated begin failure")
 	}
-	f.lastApprID = a.ID
-	f.lastReqID = r.ID
-	f.lastApprSt = a.Status
-	f.lastReqStat = r.Status
+	a, err := f.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, approvaldomain.Approval{}, err
+	}
+	return &fakeDecisionLock{tx: f, repo: f.repo, approvalID: id}, a, nil
+}
+
+type fakeDecisionLock struct {
+	tx         *fakeDecisionTx
+	repo       *fakeRepo
+	approvalID uuid.UUID
+	finished   bool
+}
+
+func (l *fakeDecisionLock) PersistPartial(ctx context.Context, a approvaldomain.Approval) error {
+	if l.finished {
+		return errors.New("already finished")
+	}
+	if l.tx.failPersist {
+		return errors.New("simulated persist failure")
+	}
+	if _, err := l.repo.Update(ctx, a); err != nil {
+		return err
+	}
+	l.tx.mu.Lock()
+	l.tx.lastApprID = a.ID
+	l.tx.lastApprSt = a.Status
+	l.tx.wasFinal = false
+	l.tx.mu.Unlock()
+	l.finished = true
+	return nil
+}
+
+func (l *fakeDecisionLock) PersistFinal(ctx context.Context, a approvaldomain.Approval, r requestdomain.Request) error {
+	if l.finished {
+		return errors.New("already finished")
+	}
+	if l.tx.failPersist {
+		return errors.New("simulated persist failure")
+	}
+	if _, err := l.repo.Update(ctx, a); err != nil {
+		return err
+	}
+	l.tx.mu.Lock()
+	l.tx.lastApprID = a.ID
+	l.tx.lastApprSt = a.Status
+	l.tx.lastReqID = r.ID
+	l.tx.lastReqStat = r.Status
+	l.tx.wasFinal = true
+	l.tx.mu.Unlock()
+	l.finished = true
+	return nil
+}
+
+func (l *fakeDecisionLock) Rollback(_ context.Context) error {
+	l.finished = true
 	return nil
 }
 
@@ -996,7 +1057,7 @@ func TestApprove_UsesDecisionTx_HappyPath(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepo()
 	reqUpdater := newFakeRequestUpdater()
-	tx := &fakeDecisionTx{}
+	tx := newFakeDecisionTx(repo)
 	uc := approvals.NewUsecases(repo, reqUpdater).WithDecisionTx(tx)
 	mux := http.NewServeMux()
 	approvals.NewHandler(uc).Register(mux)
@@ -1010,8 +1071,11 @@ func TestApprove_UsesDecisionTx_HappyPath(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if tx.calls != 1 {
-		t.Fatalf("expected DecisionTx llamado 1 vez, got %d", tx.calls)
+	if tx.beginCalls != 1 {
+		t.Fatalf("expected BeginDecision llamado 1 vez, got %d", tx.beginCalls)
+	}
+	if !tx.wasFinal {
+		t.Fatalf("expected PersistFinal, got Partial")
 	}
 	if tx.lastApprSt != approvaldomain.ApprovalStatusApproved {
 		t.Fatalf("approval no llegó approved al tx: %s", tx.lastApprSt)
@@ -1027,7 +1091,8 @@ func TestApprove_DecisionTxFails_PropagatesError(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepo()
 	reqUpdater := newFakeRequestUpdater()
-	tx := &fakeDecisionTx{failNext: true}
+	tx := newFakeDecisionTx(repo)
+	tx.failPersist = true
 	sink := newFakeAuditSink()
 	uc := approvals.NewUsecases(repo, reqUpdater).
 		WithAuditSink(sink).
@@ -1044,10 +1109,52 @@ func TestApprove_DecisionTxFails_PropagatesError(t *testing.T) {
 	if rec.Code == http.StatusOK {
 		t.Fatalf("esperado error, llegó 200: %s", rec.Body.String())
 	}
-	// No debería haber emitido audit "Approved" porque el tx falló antes.
 	for _, e := range sink.getEvents() {
 		if e.EventType == "request.approved" {
 			t.Fatalf("audit emitido a pesar de tx fallido: %+v", e)
 		}
+	}
+}
+
+// TestApprove_BreakGlass_LockedSnapshotPreventsDoubleSign verifica C11:
+// con lock, dos approves del mismo approver son detectados como duplicado
+// usando el snapshot bloqueado (no el snapshot pre-lock obsoleto).
+func TestApprove_BreakGlass_LockedSnapshotPreventsDoubleSign(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	reqUpdater := newFakeRequestUpdater()
+	tx := newFakeDecisionTx(repo)
+	uc := approvals.NewUsecases(repo, reqUpdater).WithDecisionTx(tx)
+	mux := http.NewServeMux()
+	approvals.NewHandler(uc).Register(mux)
+
+	env := testEnv{mux: mux, repo: repo, reqUpdater: reqUpdater, uc: uc}
+	approvalID := seedBreakGlassApproval(t, env, 2)
+
+	// Primer approve de "alice": parcial 1/2
+	rec := doRequest(t, env.mux, http.MethodPost,
+		"/v1/approvals/"+approvalID.String()+"/approve",
+		`{"decided_by":"alice","note":"first"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("primer approve esperado 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Segundo approve de "alice" (replay): debe rechazarse por ErrAlreadyDecided
+	rec = doRequest(t, env.mux, http.MethodPost,
+		"/v1/approvals/"+approvalID.String()+"/approve",
+		`{"decided_by":"alice","note":"replay"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("replay del mismo aprobador esperado 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Approve de "bob": completa 2/2 → final
+	rec = doRequest(t, env.mux, http.MethodPost,
+		"/v1/approvals/"+approvalID.String()+"/approve",
+		`{"decided_by":"bob","note":"second"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve de bob esperado 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !tx.wasFinal {
+		t.Fatalf("threshold alcanzado debería haber sido final, got partial")
 	}
 }
