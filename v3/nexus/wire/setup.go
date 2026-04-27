@@ -144,12 +144,15 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	actionTypeHandler := actiontypes.NewHandler(actionTypeUC)
 	delegationHandler := delegations.NewHandler(delegationUC)
 
-	// Evidence packs
-	signingKey := cfg.SigningKey
-	if signingKey == "" {
-		signingKey = "nexus-dev-signing-key-change-in-production"
+	// Evidence packs.
+	// Sin default fallback: si la clave no está, falla startup. Un default
+	// hardcodeado terminaría firmando evidence packs en prod con una clave
+	// pública.
+	if cfg.SigningKey == "" {
+		db.Close()
+		return nil, nil, fmt.Errorf("NEXUS_SIGNING_KEY is required")
 	}
-	signer, err := evidence.NewSigner(signingKey, "default")
+	signer, err := evidence.NewSigner(cfg.SigningKey, "default")
 	if err != nil {
 		db.Close()
 		return nil, nil, fmt.Errorf("create evidence signer: %w", err)

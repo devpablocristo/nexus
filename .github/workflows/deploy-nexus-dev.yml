@@ -88,6 +88,10 @@ jobs:
 
       - name: Deploy a Cloud Run
         run: |
+          # Sin --allow-unauthenticated: el servicio requiere IAM (roles/run.invoker).
+          # --ingress=internal-and-cloud-load-balancing: el endpoint solo acepta tráfico
+          # desde dentro del proyecto/VPC o desde un Load Balancer GCP, no internet abierto.
+          # Para acceso humano browser, configurar IAP o un LB externo con auth delante.
           gcloud run deploy "$SERVICE_NAME" \
             --project="$GCP_PROJECT_ID" \
             --region="$GCP_REGION" \
@@ -96,7 +100,8 @@ jobs:
             --add-cloudsql-instances="$CLOUDSQL_INSTANCE" \
             --set-env-vars="APPROVAL_DEFAULT_TTL=3600,DATABASE_URL=${DATABASE_URL}" \
             --set-secrets="NEXUS_API_KEYS=${SECRET_API_KEYS_NAME}:latest,NEXUS_SIGNING_KEY=${SECRET_SIGNING_KEY_NAME}:latest,NEXUS_CALLBACK_TOKEN=${SECRET_CALLBACK_TOKEN_NAME}:latest" \
-            --allow-unauthenticated \
+            --no-allow-unauthenticated \
+            --ingress=internal-and-cloud-load-balancing \
             --port=8080 \
             --min-instances=0 \
             --max-instances=3
@@ -117,8 +122,13 @@ jobs:
       - name: Smoke check
         run: |
           # /healthz queda interceptado por el frontend de Cloud Run; usamos /readyz.
+          # El servicio requiere IAM auth: enviamos un identity token del WIF service account.
+          # Para que esto funcione, el WIF SA debe tener roles/run.invoker sobre el servicio.
+          token="$(gcloud auth print-identity-token)"
           for i in {1..20}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}/readyz" || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer ${token}" \
+              "${SERVICE_URL}/readyz" || true)
             if [[ "$code" == "200" ]]; then
               echo "readyz OK"
               exit 0
