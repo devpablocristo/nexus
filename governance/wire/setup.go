@@ -19,6 +19,7 @@ import (
 	"github.com/devpablocristo/nexus/governance/internal/evidence"
 	"github.com/devpablocristo/nexus/governance/internal/learning"
 	"github.com/devpablocristo/nexus/governance/internal/policies"
+	"github.com/devpablocristo/nexus/governance/internal/rbac"
 	"github.com/devpablocristo/nexus/governance/internal/requests"
 )
 
@@ -98,6 +99,8 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	actionTypeUC := actiontypes.NewUsecases(actionTypeRepo)
 	delegationRepo := delegations.NewPostgresRepository(db)
 	delegationUC := delegations.NewUsecases(delegationRepo)
+	rbacRepo := rbac.NewPostgresRepository(db)
+	rbacUC := rbac.NewUsecases(rbacRepo)
 
 	attestationStore := requests.NewPostgresAttestationStore(db.Pool())
 
@@ -145,6 +148,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	configHandler := nexusconfig.NewHandler(configUC)
 	actionTypeHandler := actiontypes.NewHandler(actionTypeUC)
 	delegationHandler := delegations.NewHandler(delegationUC)
+	rbacHandler := rbac.NewHandler(rbacUC)
 
 	// Evidence packs.
 	// Sin default fallback: si la clave no está, falla startup. Un default
@@ -177,6 +181,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	configHandler.Register(mux)
 	actionTypeHandler.Register(mux)
 	delegationHandler.Register(mux)
+	rbacHandler.Register(mux)
 	evidenceHandler.Register(mux)
 
 	authMW, err := newAuthMiddleware(cfg.APIKeys, cfg.AuthIssuerURL, cfg.AuthAudience)

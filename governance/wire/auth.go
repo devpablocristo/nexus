@@ -346,6 +346,7 @@ func defaultAPIKeyScopes(name string) []string {
 			"nexus:requests:result",
 			"nexus:approvals:decide",
 			"nexus:policies:admin",
+			"nexus:rbac:admin",
 			"nexus:evidence:write",
 			"nexus:cross_org",
 		}
