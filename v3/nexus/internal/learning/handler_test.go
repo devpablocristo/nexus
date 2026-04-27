@@ -351,11 +351,14 @@ func TestHandler_AcceptProposal(t *testing.T) {
 			wantField:  "policy_id",
 		},
 		{
-			name:       "conflicto: aceptar proposal ya aceptado",
+			// Idempotente: aceptar dos veces devuelve el mismo policy_id sin
+			// crear policies duplicadas (clave para safe-retry tras update fail).
+			name:       "idempotente: aceptar proposal ya aceptado devuelve mismo policy_id",
 			seed:       true,
 			preAccept:  true,
 			body:       `{"decided_by":"admin"}`,
-			wantStatus: http.StatusConflict,
+			wantStatus: http.StatusOK,
+			wantField:  "policy_id",
 		},
 		{
 			name:       "not found: proposal inexistente",
@@ -583,7 +586,7 @@ func TestUsecases_AcceptProposal(t *testing.T) {
 		}
 	})
 
-	t.Run("fallo en update no retorna error (solo loguea)", func(t *testing.T) {
+	t.Run("fallo en update propaga error y devuelve la policy creada", func(t *testing.T) {
 		t.Parallel()
 		repo := newFakeProposalRepo()
 		creator := &fakePolicyCreator{}
@@ -594,12 +597,16 @@ func TestUsecases_AcceptProposal(t *testing.T) {
 		repo.updateErr = errors.New("db connection lost")
 
 		result, err := uc.AcceptProposal(context.Background(), id, "admin")
-		// No debería retornar error - solo loguea el fallo de update
-		if err != nil {
-			t.Fatalf("no esperaba error, obtuve: %v", err)
+		// Ahora propagamos el error: la policy se creó pero el proposal quedó
+		// inconsistente. El caller debe enterarse para retry/reconciliación.
+		if err == nil {
+			t.Fatal("esperado error de update, obtuve nil")
+		}
+		if !strings.Contains(err.Error(), "update proposal") {
+			t.Fatalf("error no contiene contexto esperado: %v", err)
 		}
 		if result == nil {
-			t.Fatal("esperado policyID, obtuve nil")
+			t.Fatal("esperado policyID huérfano para reconciliación, obtuve nil")
 		}
 	})
 }

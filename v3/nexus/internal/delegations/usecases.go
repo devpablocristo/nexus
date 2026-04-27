@@ -3,6 +3,7 @@ package delegations
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	domain "github.com/devpablocristo/nexus/v3/nexus/internal/delegations/usecases/domain"
@@ -69,8 +70,14 @@ func (u *Usecases) CheckDelegation(ctx context.Context, agentID, actionType stri
 		return true, domain.Delegation{}, nil
 	}
 
+	now := time.Now().UTC()
 	for _, d := range delegations {
 		if !d.Enabled {
+			continue
+		}
+		// Defense-in-depth: el repo SQL ya filtra por expires_at, pero si el
+		// repo cambia o un fake en tests devuelve expiradas, acá las cortamos.
+		if d.ExpiresAt != nil && !d.ExpiresAt.After(now) {
 			continue
 		}
 		// Si no tiene restricción de action_types, matchea todo

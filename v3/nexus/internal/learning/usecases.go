@@ -45,6 +45,13 @@ func (u *Usecases) AcceptProposal(ctx context.Context, id uuid.UUID, decidedBy s
 	if err != nil {
 		return nil, fmt.Errorf("get proposal: %w", err)
 	}
+	// Idempotencia: si una corrida previa creó la policy pero el UpdateProposal
+	// falló, PolicyID quedó seteado. Devolvemos el id existente sin recrear
+	// la policy, evitando duplicados (el status puede seguir siendo pending
+	// hasta que un nuevo accept logre persistir).
+	if p.PolicyID != nil {
+		return p.PolicyID, nil
+	}
 	if p.Status != learningdomain.ProposalStatusPending {
 		return nil, ErrNotPending
 	}
@@ -58,7 +65,13 @@ func (u *Usecases) AcceptProposal(ctx context.Context, id uuid.UUID, decidedBy s
 	p.DecidedAt = &now
 	p.PolicyID = &createdID
 	if _, err := u.repo.UpdateProposal(ctx, p); err != nil {
-		slog.Error("update proposal after accept failed", "error", err, "proposal_id", id)
+		// La policy ya existe en DB pero el proposal quedó inconsistente.
+		// Devolvemos el error para que el caller reaccione (no se traga) y
+		// además logueamos el id de la policy huérfana para que ops pueda
+		// hacer reconciliación manual si la siguiente retry no llega.
+		slog.Error("update proposal after accept failed: policy created but proposal not marked accepted",
+			"error", err, "proposal_id", id, "orphan_policy_id", createdID)
+		return &createdID, fmt.Errorf("update proposal: %w", err)
 	}
 	return &createdID, nil
 }
