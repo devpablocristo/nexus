@@ -227,7 +227,7 @@ func TestDelegations_CheckDelegation(t *testing.T) {
 	uc := NewUsecases(repo)
 
 	// Sin delegaciones = sin restricciones
-	ok, _, err := uc.CheckDelegation(context.Background(), "any-agent", "any.action")
+	ok, _, err := uc.CheckDelegation(context.Background(), "any-agent", "any.action", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestDelegations_CheckDelegation(t *testing.T) {
 		Enabled:            true,
 	})
 
-	ok, _, err = uc.CheckDelegation(context.Background(), "bot", "treasury.transfer")
+	ok, _, err = uc.CheckDelegation(context.Background(), "bot", "treasury.transfer", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestDelegations_CheckDelegation(t *testing.T) {
 		t.Fatal("expected true for allowed action")
 	}
 
-	ok, _, err = uc.CheckDelegation(context.Background(), "bot", "infra.delete")
+	ok, _, err = uc.CheckDelegation(context.Background(), "bot", "infra.delete", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestDelegations_CheckDelegation_DisabledSkipped(t *testing.T) {
 		Enabled:            false,
 	})
 
-	ok, _, err := uc.CheckDelegation(context.Background(), "bot", "treasury.transfer")
+	ok, _, err := uc.CheckDelegation(context.Background(), "bot", "treasury.transfer", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,11 +292,65 @@ func TestDelegations_CheckDelegation_EmptyActionTypes(t *testing.T) {
 		Enabled: true,
 	})
 
-	ok, _, err := uc.CheckDelegation(context.Background(), "bot", "anything.at.all")
+	ok, _, err := uc.CheckDelegation(context.Background(), "bot", "anything.at.all", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
 		t.Fatal("expected true when delegation has no action type restrictions")
+	}
+}
+
+func TestDelegations_CheckDelegation_RespectsOrgID(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	uc := NewUsecases(repo)
+
+	orgA := "org-a"
+	orgB := "org-b"
+	repo.Create(context.Background(), domain.Delegation{
+		OrgID:              &orgA,
+		OwnerID:            "team",
+		AgentID:            "bot",
+		AllowedActionTypes: []string{"treasury.transfer"},
+		Enabled:            true,
+	})
+
+	ok, _, err := uc.CheckDelegation(context.Background(), "bot", "treasury.transfer", &orgA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected true for matching org delegation")
+	}
+
+	ok, _, err = uc.CheckDelegation(context.Background(), "bot", "treasury.transfer", &orgB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("expected false when delegation belongs to another org")
+	}
+}
+
+func TestDelegations_CheckDelegation_GlobalDelegationAppliesToOrg(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	uc := NewUsecases(repo)
+
+	orgID := "org-a"
+	repo.Create(context.Background(), domain.Delegation{
+		OwnerID:            "team",
+		AgentID:            "bot",
+		AllowedActionTypes: []string{"treasury.transfer"},
+		Enabled:            true,
+	})
+
+	ok, _, err := uc.CheckDelegation(context.Background(), "bot", "treasury.transfer", &orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected global delegation to apply to org request")
 	}
 }

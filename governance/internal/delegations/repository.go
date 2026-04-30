@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-
-	"github.com/devpablocristo/core/errors/go/domainerr"
 	"fmt"
 	"time"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -73,7 +72,7 @@ func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.
 }
 
 func (r *PostgresRepository) ListByAgentID(ctx context.Context, agentID string) ([]domain.Delegation, error) {
-	rows, err := r.db.Pool().Query(ctx, selectSQL+` WHERE agent_id = $1 AND enabled = true AND (expires_at IS NULL OR expires_at > now()) ORDER BY created_at DESC`, agentID)
+	rows, err := r.db.Pool().Query(ctx, selectSQL+` WHERE agent_id = $1 ORDER BY created_at DESC`, agentID)
 	if err != nil {
 		return nil, fmt.Errorf("list delegations by agent: %w", err)
 	}

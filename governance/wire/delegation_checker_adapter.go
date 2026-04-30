@@ -16,7 +16,7 @@ func newDelegationCheckerAdapter(uc *delegations.Usecases) requests.DelegationCh
 	return &delegationCheckerAdapter{uc: uc}
 }
 
-func (a *delegationCheckerAdapter) CheckDelegation(ctx context.Context, agentID, actionType string) (bool, error) {
-	allowed, _, err := a.uc.CheckDelegation(ctx, agentID, actionType)
+func (a *delegationCheckerAdapter) CheckDelegation(ctx context.Context, agentID, actionType string, orgID *string) (bool, error) {
+	allowed, _, err := a.uc.CheckDelegation(ctx, agentID, actionType, orgID)
 	return allowed, err
 }

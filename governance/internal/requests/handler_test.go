@@ -198,6 +198,39 @@ func (p *fakeApprovalCallbackPublisher) snapshot() []callbacks.ApprovalEvent {
 	return out
 }
 
+type fakeDelegationChecker struct {
+	mu         sync.Mutex
+	allowed    bool
+	agentID    string
+	actionType string
+	orgID      *string
+}
+
+func (c *fakeDelegationChecker) CheckDelegation(_ context.Context, agentID, actionType string, orgID *string) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.agentID = agentID
+	c.actionType = actionType
+	if orgID != nil {
+		v := *orgID
+		c.orgID = &v
+	} else {
+		c.orgID = nil
+	}
+	return c.allowed, nil
+}
+
+func (c *fakeDelegationChecker) snapshot() (string, string, *string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var orgID *string
+	if c.orgID != nil {
+		v := *c.orgID
+		orgID = &v
+	}
+	return c.agentID, c.actionType, orgID
+}
+
 // --- Helpers ---
 
 // setupRequestMux crea un mux con fakes y sin políticas activas (default risk → allow para low).
@@ -386,6 +419,38 @@ func TestSubmitPublishesApprovalPendingCallbackWithOrgIDFromParams(t *testing.T)
 	}
 	if storedApproval.OrgID == nil || *storedApproval.OrgID != "00000000-0000-0000-0000-000000000001" {
 		t.Fatalf("expected approval org_id stored, got %#v", storedApproval.OrgID)
+	}
+}
+
+func TestSubmitPassesOrgIDToDelegationChecker(t *testing.T) {
+	t.Parallel()
+
+	checker := &fakeDelegationChecker{allowed: true}
+	uc := requests.NewUsecases(newFakeRequestRepo(), &fakePolicyLister{}, newFakeApprovalRepo(), requests.NewPolicyEvaluator(),
+		requests.WithAuditSink(requests.NewAuditSinkAdapter(&fakeAuditRepo{})),
+		requests.WithDelegationChecker(checker),
+		requests.WithAI(requests.NewStubContextualizer()),
+	)
+
+	_, err := uc.Submit(context.Background(), requests.SubmitInput{
+		RequesterType: "agent",
+		RequesterID:   "ops-bot",
+		ActionType:    "alert.escalate",
+		Params:        map[string]any{"org_id": "org-a"},
+	})
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	agentID, actionType, orgID := checker.snapshot()
+	if agentID != "ops-bot" {
+		t.Fatalf("expected agent id ops-bot, got %q", agentID)
+	}
+	if actionType != "alert.escalate" {
+		t.Fatalf("expected action type alert.escalate, got %q", actionType)
+	}
+	if orgID == nil || *orgID != "org-a" {
+		t.Fatalf("expected org_id org-a passed to delegation checker, got %#v", orgID)
 	}
 }
 

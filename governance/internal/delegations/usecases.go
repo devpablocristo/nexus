@@ -3,10 +3,11 @@ package delegations
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	domain "github.com/devpablocristo/nexus/governance/internal/delegations/usecases/domain"
+	"github.com/google/uuid"
 )
 
 type delegationRepository interface {
@@ -59,7 +60,7 @@ func (u *Usecases) DeleteByID(ctx context.Context, id uuid.UUID) error {
 
 // CheckDelegation verifica si un agente tiene delegación para una acción.
 // Retorna (true, delegation) si tiene, (false, empty) si no.
-func (u *Usecases) CheckDelegation(ctx context.Context, agentID, actionType string) (bool, domain.Delegation, error) {
+func (u *Usecases) CheckDelegation(ctx context.Context, agentID, actionType string, orgID *string) (bool, domain.Delegation, error) {
 	delegations, err := u.repo.ListByAgentID(ctx, agentID)
 	if err != nil {
 		return false, domain.Delegation{}, fmt.Errorf("list delegations: %w", err)
@@ -73,6 +74,9 @@ func (u *Usecases) CheckDelegation(ctx context.Context, agentID, actionType stri
 	now := time.Now().UTC()
 	for _, d := range delegations {
 		if !d.Enabled {
+			continue
+		}
+		if !delegationAppliesToOrg(d, orgID) {
 			continue
 		}
 		// Defense-in-depth: el repo SQL ya filtra por expires_at, pero si el
@@ -92,4 +96,14 @@ func (u *Usecases) CheckDelegation(ctx context.Context, agentID, actionType stri
 	}
 
 	return false, domain.Delegation{}, nil
+}
+
+func delegationAppliesToOrg(d domain.Delegation, orgID *string) bool {
+	if d.OrgID == nil {
+		return true
+	}
+	if orgID == nil {
+		return false
+	}
+	return strings.TrimSpace(*d.OrgID) == strings.TrimSpace(*orgID)
 }

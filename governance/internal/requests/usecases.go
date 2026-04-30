@@ -51,7 +51,7 @@ type ActionTypeInfo struct {
 
 // DelegationChecker verifica si un agente tiene delegación para una acción
 type DelegationChecker interface {
-	CheckDelegation(ctx context.Context, agentID, actionType string) (bool, error)
+	CheckDelegation(ctx context.Context, agentID, actionType string, orgID *string) (bool, error)
 }
 
 // ApprovalGetter obtiene una approval por ID (para simular decisiones).
@@ -280,7 +280,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 
 	// Validar delegación si el checker está configurado
 	if u.delegations != nil {
-		allowed, delErr := u.delegations.CheckDelegation(ctx, req.RequesterID, req.ActionType)
+		allowed, delErr := u.delegations.CheckDelegation(ctx, req.RequesterID, req.ActionType, req.OrgID)
 		if delErr != nil {
 			slog.Error("delegation check failed", "error", delErr, "requester_id", req.RequesterID)
 		} else if !allowed {
