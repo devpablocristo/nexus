@@ -34,7 +34,7 @@ jobs:
       SERVICE_NAME: governance-dev
       CLOUDSQL_INSTANCE: ${{ vars.CLOUDSQL_INSTANCE_DEV }}
       CLOUD_RUN_SERVICE_ACCOUNT: ${{ vars.CLOUD_RUN_SERVICE_ACCOUNT_DEV }}
-      DB_USER: soalenadmin25
+      DB_USER: governance_app
       DB_NAME: nexus_governance
       SECRET_DB_PASSWORD_NAME: governance-db-password
       SECRET_API_KEYS_NAME: governance-api-keys
