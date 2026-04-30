@@ -46,8 +46,7 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
 
-	// Migraciones. Scope renombrado de "nexus-review" → "governance".
-	// DBs con estado legacy: UPDATE schema_migrations SET scope='governance' WHERE scope='nexus-review';
+	// Migraciones del servicio governance.
 	if err := sharedpostgres.MigrateUp(ctx, db, "governance", cfg.MigrationFiles, "."); err != nil {
 		db.Close()
 		return nil, nil, fmt.Errorf("run migrations: %w", err)
