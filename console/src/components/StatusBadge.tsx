@@ -14,7 +14,7 @@ const colors = {
 
 export default function StatusBadge({ status }) {
   return (
-    <span className={`text-xs font-medium ${colors[status] || 'text-gray-400'}`}>
+    <span className={`inline-flex min-w-24 items-center text-xs font-medium ${colors[status] || 'text-gray-400'}`}>
       {status}
     </span>
   )

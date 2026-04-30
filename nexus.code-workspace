@@ -10,7 +10,7 @@
         "explorer.compactFolders": false,
         "explorer.confirmDragAndDrop": false,
         "explorer.enableDragAndDrop": false,
-        "explorer.confirmDelete": true,
+        "explorer.confirmDelete": false,
   
         // Editor
         "editor.tabSize": 4,

@@ -1,4 +1,5 @@
 .env
+.codex
 .DS_Store
 **/tmp/
 **/coverage.out

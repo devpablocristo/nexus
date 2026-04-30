@@ -5,6 +5,8 @@ import StatusBadge from '../components/StatusBadge'
 import RiskBadge from '../components/RiskBadge'
 
 const STATUS_OPTIONS = ['', 'allowed', 'denied', 'pending_approval', 'approved', 'rejected', 'executed', 'failed']
+const REQUEST_ROW_GRID = 'grid grid-cols-[8.5rem_minmax(8rem,1fr)_minmax(9rem,1fr)_minmax(7rem,.8fr)_5.5rem_7.5rem_1.5rem] items-center gap-4'
+const REQUEST_ROW_MIN_WIDTH = 'min-w-[860px]'
 
 const eventColors = {
   received: 'border-gray-500', evaluated: 'border-gray-500',
@@ -107,25 +109,35 @@ export default function Requests({ lang }) {
       )}
 
       {!loading && requests.length > 0 && (
-        <div className="space-y-2">
+        <div className="overflow-x-auto rounded-lg border border-gray-800">
+          <div className={`${REQUEST_ROW_GRID} ${REQUEST_ROW_MIN_WIDTH} border-b border-gray-800 bg-gray-900/70 px-4 py-2 text-xs font-medium uppercase text-gray-500`}>
+            <span>{t(lang, 'requestDate')}</span>
+            <span>{t(lang, 'requester')}</span>
+            <span>{t(lang, 'actionType')}</span>
+            <span>{t(lang, 'targetSystem')}</span>
+            <span>{t(lang, 'riskLevel')}</span>
+            <span>{t(lang, 'status')}</span>
+            <span aria-hidden="true" />
+          </div>
+
           {requests.map((r) => (
-            <div key={r.id} className="border border-gray-800 rounded-lg overflow-hidden">
+            <div key={r.id} className="border-b border-gray-800 last:border-b-0">
               {/* Fila principal */}
               <div
-                className={`flex items-center gap-4 px-4 py-3 cursor-pointer transition-colors ${
+                className={`${REQUEST_ROW_GRID} ${REQUEST_ROW_MIN_WIDTH} px-4 py-3 cursor-pointer transition-colors ${
                   expanded === r.id ? 'bg-gray-800/60' : 'hover:bg-gray-800/30'
                 }`}
                 onClick={() => toggleExpand(r.id)}
               >
-                <span className="text-gray-500 text-xs w-32 shrink-0">{formatDate(r.created_at)}</span>
-                <span className="text-gray-300 text-sm w-28 shrink-0">
-                  <span className="text-gray-600 text-xs">{r.requester_type}/</span>{r.requester_id}
+                <span className="truncate text-xs text-gray-500">{formatDate(r.created_at)}</span>
+                <span className="min-w-0 truncate text-sm text-gray-300">
+                  <span className="text-xs text-gray-600">{r.requester_type}/</span>{r.requester_id}
                 </span>
-                <span className="text-white font-mono text-xs w-36 shrink-0">{r.action_type}</span>
-                <span className="text-gray-400 text-xs w-24 shrink-0">{r.target_system || '—'}</span>
-                <span className="w-16 shrink-0"><RiskBadge level={r.risk_level} /></span>
-                <span className="w-20 shrink-0"><StatusBadge status={r.status} /></span>
-                <span className="ml-auto text-gray-600 text-xs">
+                <span className="min-w-0 truncate font-mono text-xs text-white">{r.action_type}</span>
+                <span className="min-w-0 truncate text-xs text-gray-400">{r.target_system || '—'}</span>
+                <span className="flex justify-start"><RiskBadge level={r.risk_level} /></span>
+                <span className="flex justify-start"><StatusBadge status={r.status} /></span>
+                <span className="text-right text-xs text-gray-600">
                   {expanded === r.id ? '▲' : '▼'}
                 </span>
               </div>

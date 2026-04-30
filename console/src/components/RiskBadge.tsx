@@ -7,7 +7,7 @@ const colors = {
 export default function RiskBadge({ level }) {
   const cls = colors[level] || colors.low
   return (
-    <span className={`px-2 py-0.5 rounded text-xs font-semibold uppercase border ${cls}`}>
+    <span className={`inline-flex min-w-16 items-center justify-center rounded border px-2 py-0.5 text-xs font-semibold uppercase ${cls}`}>
       {level}
     </span>
   )
