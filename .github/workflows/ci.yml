@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout nexus
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nexus
 
@@ -63,7 +63,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout nexus
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nexus
 
@@ -95,7 +95,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout nexus
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: nexus
 
