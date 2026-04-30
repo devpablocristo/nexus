@@ -58,6 +58,21 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
+      - name: Validate Secret Manager inputs
+        run: |
+          missing=0
+          for secret_name in \
+            "$SECRET_DB_PASSWORD_NAME" \
+            "$SECRET_API_KEYS_NAME" \
+            "$SECRET_SIGNING_KEY_NAME" \
+            "$SECRET_CALLBACK_TOKEN_NAME"; do
+            if ! gcloud secrets versions access latest --project="$GCP_PROJECT_ID" --secret="$secret_name" >/dev/null 2>&1; then
+              echo "::error::Secret Manager secret '$secret_name' no existe o no tiene versiones en project '$GCP_PROJECT_ID'"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
       - name: Configure Docker auth
         run: gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
 
