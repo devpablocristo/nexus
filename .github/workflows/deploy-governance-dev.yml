@@ -136,20 +136,17 @@ jobs:
 
       - name: Smoke check
         run: |
-          # /healthz queda interceptado por el frontend de Cloud Run; usamos /readyz.
-          # El servicio requiere IAM auth: enviamos un identity token del WIF service account.
-          # Para que esto funcione, el WIF SA debe tener roles/run.invoker sobre el servicio.
-          token="$(gcloud auth print-identity-token)"
           for i in {1..20}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "Authorization: Bearer ${token}" \
-              "${SERVICE_URL}/readyz" || true)
-            if [[ "$code" == "200" ]]; then
-              echo "readyz OK"
+            read -r latest_ready latest_created < <(gcloud run services describe "$SERVICE_NAME" \
+              --project="$GCP_PROJECT_ID" \
+              --region="$GCP_REGION" \
+              --format='value(status.latestReadyRevisionName,status.latestCreatedRevisionName)')
+            if [[ -n "$latest_created" && "$latest_ready" == "$latest_created" ]]; then
+              echo "Cloud Run ready: $latest_ready"
               exit 0
             fi
-            echo "attempt $i: readyz code=$code, retrying in 3s..."
+            echo "attempt $i: latestReady=$latest_ready latestCreated=$latest_created, retrying in 3s..."
             sleep 3
           done
-          echo "::error::readyz no respondió 200 tras reintentos"
+          echo "::error::Cloud Run no marcó ready la última revisión tras reintentos"
           exit 1
