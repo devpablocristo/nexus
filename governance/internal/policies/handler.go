@@ -97,13 +97,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	archived := r.URL.Query().Get("archived") == "true"
 	filters := ListFilters{IncludeArchived: archived}
-	if !requestHasScope(r, scopeNexusCrossOrg) {
+	if requestHasScope(r, scopeNexusCrossOrg) {
+		// Cross-org callers (ej: Pymes service que sirve N tenants) pueden
+		// solicitar policies de un tenant específico via X-Org-ID. Sin el
+		// header, listan todas las policies del cluster.
 		if orgID := principalOrgID(r); orgID != nil {
 			filters.OrgID = orgID
-		} else if !requestHasNoAuthContext(r) {
-			globalOnly := ""
-			filters.OrgID = &globalOnly
 		}
+	} else if orgID := principalOrgID(r); orgID != nil {
+		filters.OrgID = orgID
+	} else if !requestHasNoAuthContext(r) {
+		globalOnly := ""
+		filters.OrgID = &globalOnly
 	}
 	list, err := h.uc.List(r.Context(), filters)
 	if err != nil {
