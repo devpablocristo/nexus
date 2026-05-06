@@ -51,7 +51,7 @@ func NewPostgresRepository(db *sharedpostgres.DB) *PostgresRepository {
 }
 
 const selectPolicySQL = `
-	SELECT id, org_id, name, description, action_type, target_system,
+	SELECT id, org_id, name, COALESCE(description, ''), action_type, target_system,
 	       expression, effect, risk_override, priority, origin, mode, proposal_id,
 	       enabled, shadow_hits, archived_at, created_at, updated_at
 	FROM policies`
