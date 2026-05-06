@@ -20,6 +20,7 @@ type learningUsecase interface {
 	AcceptProposal(ctx context.Context, id uuid.UUID, decidedBy string) (*uuid.UUID, error)
 	DismissProposal(ctx context.Context, id uuid.UUID, decidedBy string) error
 	AnalyzeAndPropose(ctx context.Context) (int, error)
+	IngestProposal(ctx context.Context, candidate learningdomain.PolicyProposal) (learningdomain.PolicyProposal, error)
 }
 
 type Handler struct {
@@ -32,6 +33,7 @@ func NewHandler(uc learningUsecase) *Handler {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/learning/proposals", h.listProposals)
+	mux.HandleFunc("POST /v1/learning/proposals", h.createProposal)
 	mux.HandleFunc("GET /v1/learning/proposals/{id}", h.getProposal)
 	mux.HandleFunc("POST /v1/learning/proposals/{id}/accept", h.accept)
 	mux.HandleFunc("POST /v1/learning/proposals/{id}/dismiss", h.dismiss)
@@ -128,6 +130,45 @@ func (h *Handler) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"proposals_created": count})
+}
+
+func (h *Handler) createProposal(w http.ResponseWriter, r *http.Request) {
+	if !requireScope(w, r, scopeNexusLearningPropose, scopeNexusLearningAdmin) {
+		return
+	}
+	var body learningdto.ProposalCreateRequest
+	if err := httpjson.DecodeJSON(r, &body); err != nil {
+		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	candidate := learningdomain.PolicyProposal{
+		ProposedName:        strings.TrimSpace(body.ProposedName),
+		ProposedDescription: strings.TrimSpace(body.ProposedDescription),
+		ProposedExpression:  strings.TrimSpace(body.ProposedExpression),
+		ProposedEffect:      strings.TrimSpace(body.ProposedEffect),
+		ProposedActionType:  body.ProposedActionType,
+		ProposedPriority:    body.ProposedPriority,
+		PatternSummary:      body.PatternSummary,
+		Confidence:          body.Confidence,
+		SampleSize:          body.SampleSize,
+		TimeWindow:          body.TimeWindow,
+	}
+	saved, err := h.uc.IngestProposal(r.Context(), candidate)
+	if err != nil {
+		if domainerr.IsConflict(err) {
+			httpjson.WriteFlatError(w, http.StatusConflict, "CONFLICT", err.Error())
+			return
+		}
+		// Validaciones del usecase devuelven errores planos: tratar como 400.
+		msg := err.Error()
+		if strings.Contains(msg, "is required") {
+			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", msg)
+			return
+		}
+		httpjson.WriteFlatInternalError(w, err, "create proposal failed")
+		return
+	}
+	httpjson.WriteJSON(w, http.StatusCreated, toProposalResponse(saved))
 }
 
 // toProposalResponse convierte entidad de dominio a DTO HTTP.

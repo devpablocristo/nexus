@@ -256,13 +256,11 @@ func setupRequestMuxWithPolicies(policies []requests.PolicyForEval) *http.ServeM
 	auditSink := requests.NewAuditSinkAdapter(&fakeAuditRepo{})
 	evaluator := requests.NewPolicyEvaluator()
 	riskConfig := requests.DefaultRiskConfig()
-	ai := requests.NewStubContextualizer()
 
 	uc := requests.NewUsecases(reqRepo, &fakePolicyLister{policies: policies}, newFakeApprovalRepo(), evaluator,
 		requests.WithIdempotencyStore(newFakeIdemStore()),
 		requests.WithAuditSink(auditSink),
 		requests.WithRiskConfig(riskConfig),
-		requests.WithAI(ai),
 		requests.WithApprovalTTL(time.Hour),
 	)
 	mux := http.NewServeMux()
@@ -339,12 +337,14 @@ func TestSubmitRequestRequireApproval(t *testing.T) {
 	if resp.Status != "pending_approval" {
 		t.Fatalf("esperaba status pending_approval, obtuvo %s", resp.Status)
 	}
-	// AI degraded deberia ser true porque usamos stub
-	if !resp.AIDegraded {
-		t.Fatal("esperaba ai_degraded=true con stub contextualizer")
+	// Nexus es AI-independent: ai_summary debe llegar vacío y ai_degraded en
+	// false. Quien necesite el summary lo pide a Companion vía
+	// /companion/v1/governance-assist/explain/{request_id}.
+	if resp.AIDegraded {
+		t.Fatal("esperaba ai_degraded=false (Nexus AI-free)")
 	}
-	if resp.AISummary == "" {
-		t.Fatal("esperaba ai_summary no vacio con stub contextualizer")
+	if resp.AISummary != "" {
+		t.Fatalf("esperaba ai_summary vacio (Nexus AI-free), obtuvo %q", resp.AISummary)
 	}
 }
 
@@ -390,7 +390,6 @@ func TestSubmitPublishesApprovalPendingCallbackWithOrgIDFromParams(t *testing.T)
 	uc := requests.NewUsecases(reqRepo, &fakePolicyLister{}, approvalRepo, requests.NewPolicyEvaluator(),
 		requests.WithIdempotencyStore(newFakeIdemStore()),
 		requests.WithAuditSink(requests.NewAuditSinkAdapter(&fakeAuditRepo{})),
-		requests.WithAI(requests.NewStubContextualizer()),
 		requests.WithApprovalTTL(time.Hour),
 		requests.WithApprovalCallbacks(publisher),
 	)
@@ -441,7 +440,6 @@ func TestSubmitPassesOrgIDToDelegationChecker(t *testing.T) {
 	uc := requests.NewUsecases(newFakeRequestRepo(), &fakePolicyLister{}, newFakeApprovalRepo(), requests.NewPolicyEvaluator(),
 		requests.WithAuditSink(requests.NewAuditSinkAdapter(&fakeAuditRepo{})),
 		requests.WithDelegationChecker(checker),
-		requests.WithAI(requests.NewStubContextualizer()),
 	)
 
 	_, err := uc.Submit(context.Background(), requests.SubmitInput{
@@ -1198,14 +1196,12 @@ func setupFullMuxWithPolicies(policies []requests.PolicyForEval) *http.ServeMux 
 	auditSink := requests.NewAuditSinkAdapter(&fakeAuditRepo{})
 	evaluator := requests.NewPolicyEvaluator()
 	riskConfig := requests.DefaultRiskConfig()
-	ai := requests.NewStubContextualizer()
 	attestStore := newFakeAttestationStore()
 
 	uc := requests.NewUsecases(reqRepo, &fakePolicyLister{policies: policies}, approvalRepo, evaluator,
 		requests.WithIdempotencyStore(newFakeIdemStore()),
 		requests.WithAuditSink(auditSink),
 		requests.WithRiskConfig(riskConfig),
-		requests.WithAI(ai),
 		requests.WithApprovalTTL(time.Hour),
 		requests.WithAttestationStore(attestStore),
 		requests.WithApprovalGetter(approvalRepo),

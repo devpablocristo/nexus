@@ -31,7 +31,6 @@ type Config struct {
 	AuthIssuerURL        string
 	AuthAudience         string
 	ApprovalTTL          time.Duration
-	AnthropicKey         string
 	SigningKey           string
 	CallbackToken        string
 	PendingCallbackURLs  []string
@@ -70,12 +69,6 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	evaluator := requests.NewPolicyEvaluator()
 	riskConfig := requests.DefaultRiskConfig()
 	callbackPublisher := callbacks.NewHTTPApprovalPublisher(cfg.CallbackToken, cfg.PendingCallbackURLs, cfg.ResolvedCallbackURLs)
-
-	// AI contextualizer
-	var ai requests.AIContextualizer = requests.NewStubContextualizer()
-	if cfg.AnthropicKey != "" {
-		ai = requests.NewClaudeContextualizer(cfg.AnthropicKey, "claude-sonnet-4-20250514")
-	}
 
 	ttl := cfg.ApprovalTTL
 	if ttl <= 0 {
@@ -120,7 +113,6 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		requests.WithIdempotencyStore(idemStore),
 		requests.WithAuditSink(auditSink),
 		requests.WithRiskConfig(riskConfig),
-		requests.WithAI(ai),
 		requests.WithApprovalTTL(ttl),
 		requests.WithShadowHitRecorder(policyRepo),
 		requests.WithExecutionStats(execStats),
@@ -142,16 +134,14 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	replayGetter := newReplayRequestGetter(reqRepo)
 	auditUC := audit.NewUsecases(auditRepo, replayGetter)
 
-	// Learning con analyzer y proposer
+	// Learning con analyzer + proposer determinístico.
+	// Nexus es AI-independent: sólo arma propuestas a partir de templates.
+	// La generación AI-assisted vive en Companion y POSTea a /v1/learning/proposals.
 	learningPolicyCreator := newLearningPolicyCreator(policyRepo)
 	analyzer := learning.NewInMemoryPatternAnalyzer(reqRepo)
-	var proposer learning.PolicyProposer = learning.NewStubProposer()
-	if cfg.AnthropicKey != "" {
-		proposer = learning.NewAIProposer(cfg.AnthropicKey, "claude-sonnet-4-20250514")
-	}
 	learningUC := learning.NewUsecases(learningRepo, learningPolicyCreator).
 		WithAnalyzer(analyzer).
-		WithProposer(proposer)
+		WithProposer(learning.NewStubProposer())
 
 	// Handlers
 	reqHandler := requests.NewHandler(reqUC)

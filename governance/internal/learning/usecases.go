@@ -94,6 +94,40 @@ func (u *Usecases) DismissProposal(ctx context.Context, id uuid.UUID, decidedBy 
 	return nil
 }
 
+// IngestProposal persiste un candidate proposal generado externamente (típicamente
+// por Companion governance-assist con asistencia LLM). El candidato llega con
+// los campos ya armados; Nexus solo valida shape mínima y guarda con status=pending.
+// La decisión final sigue siendo humana via accept/dismiss.
+func (u *Usecases) IngestProposal(ctx context.Context, candidate learningdomain.PolicyProposal) (learningdomain.PolicyProposal, error) {
+	if candidate.ProposedExpression == "" {
+		return learningdomain.PolicyProposal{}, fmt.Errorf("proposed_expression is required")
+	}
+	if candidate.ProposedEffect == "" {
+		return learningdomain.PolicyProposal{}, fmt.Errorf("proposed_effect is required")
+	}
+	if candidate.ProposedName == "" {
+		return learningdomain.PolicyProposal{}, fmt.Errorf("proposed_name is required")
+	}
+	if candidate.ID == uuid.Nil {
+		candidate.ID = uuid.New()
+	}
+	if candidate.CreatedAt.IsZero() {
+		candidate.CreatedAt = time.Now().UTC()
+	}
+	candidate.Status = learningdomain.ProposalStatusPending
+	candidate.DecidedBy = nil
+	candidate.DecidedAt = nil
+	candidate.PolicyID = nil
+	if candidate.ProposedPriority <= 0 {
+		candidate.ProposedPriority = 100
+	}
+	saved, err := u.repo.CreateProposal(ctx, candidate)
+	if err != nil {
+		return learningdomain.PolicyProposal{}, fmt.Errorf("create proposal: %w", err)
+	}
+	return saved, nil
+}
+
 // AnalyzeAndPropose detecta patrones y genera propuestas.
 // Thresholds del RFC: minSamples=50, minApprovalRate=0.90
 func (u *Usecases) AnalyzeAndPropose(ctx context.Context) (int, error) {

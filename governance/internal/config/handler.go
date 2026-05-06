@@ -110,7 +110,6 @@ func toResponse(cfg *configdomain.SystemConfig) configdto.SystemConfigResponse {
 		},
 		Approvals: configdto.ApprovalsConfigDTO{DefaultTTLSeconds: cfg.Approvals.DefaultTTLSeconds},
 		Learning: configdto.LearningConfigDTO{MinSamples: cfg.Learning.MinSamples, MinApprovalRate: cfg.Learning.MinApprovalRate, MaxRequests: cfg.Learning.MaxRequests},
-		AI: configdto.AIConfigDTO{Enabled: cfg.AI.Enabled, Model: cfg.AI.Model, TimeoutSeconds: cfg.AI.TimeoutSeconds},
 		General: configdto.GeneralConfigDTO{
 			DefaultListLimit: cfg.General.DefaultListLimit, MaxListLimit: cfg.General.MaxListLimit,
 			MaxExpressionLength: cfg.General.MaxExpressionLength, MaxIdempotencyKeyLength: cfg.General.MaxIdempotencyKeyLength,
@@ -137,7 +136,6 @@ func toDomain(dto configdto.SystemConfigResponse) configdomain.SystemConfig {
 		},
 		Approvals: configdomain.ApprovalsConfig{DefaultTTLSeconds: dto.Approvals.DefaultTTLSeconds},
 		Learning: configdomain.LearningConfig{MinSamples: dto.Learning.MinSamples, MinApprovalRate: dto.Learning.MinApprovalRate, MaxRequests: dto.Learning.MaxRequests},
-		AI: configdomain.AIConfig{Enabled: dto.AI.Enabled, Model: dto.AI.Model, TimeoutSeconds: dto.AI.TimeoutSeconds},
 		General: configdomain.GeneralConfig{
 			DefaultListLimit: dto.General.DefaultListLimit, MaxListLimit: dto.General.MaxListLimit,
 			MaxExpressionLength: dto.General.MaxExpressionLength, MaxIdempotencyKeyLength: dto.General.MaxIdempotencyKeyLength,

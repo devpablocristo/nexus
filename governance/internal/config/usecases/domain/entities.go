@@ -1,11 +1,12 @@
 package domain
 
-// SystemConfig contiene TODA la configuración del sistema
+// SystemConfig contiene TODA la configuración del sistema.
+// Nexus es AI-independent: no hay sección AI. La asistencia con LLM vive en
+// Companion y se configura allá.
 type SystemConfig struct {
 	Risk      RiskConfig      `json:"risk"`
 	Approvals ApprovalsConfig `json:"approvals"`
 	Learning  LearningConfig  `json:"learning"`
-	AI        AIConfig        `json:"ai"`
 	General   GeneralConfig   `json:"general"`
 }
 
@@ -85,14 +86,6 @@ type LearningConfig struct {
 	MaxRequests     int     `json:"max_requests"`      // máximo de requests a analizar (default 10000)
 }
 
-// --- AI ---
-
-type AIConfig struct {
-	Enabled        bool   `json:"enabled"`
-	Model          string `json:"model"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
-}
-
 // --- General ---
 
 type GeneralConfig struct {
@@ -144,11 +137,6 @@ func DefaultSystemConfig() SystemConfig {
 			MinSamples:      50,
 			MinApprovalRate: 0.90,
 			MaxRequests:     10000,
-		},
-		AI: AIConfig{
-			Enabled:        true,
-			Model:          "claude-sonnet-4-20250514",
-			TimeoutSeconds: 5,
 		},
 		General: GeneralConfig{
 			DefaultListLimit:           50,

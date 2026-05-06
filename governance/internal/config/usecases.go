@@ -105,10 +105,6 @@ func (u *Usecases) UpdateSection(ctx context.Context, section string, data json.
 		if err := json.Unmarshal(data, &current.Learning); err != nil {
 			return nil, fmt.Errorf("unmarshal learning config: %w", err)
 		}
-	case "ai":
-		if err := json.Unmarshal(data, &current.AI); err != nil {
-			return nil, fmt.Errorf("unmarshal ai config: %w", err)
-		}
 	case "general":
 		if err := json.Unmarshal(data, &current.General); err != nil {
 			return nil, fmt.Errorf("unmarshal general config: %w", err)

@@ -45,7 +45,6 @@ func main() {
 		AuthIssuerURL:        os.Getenv("GOVERNANCE_AUTH_ISSUER_URL"),
 		AuthAudience:         os.Getenv("GOVERNANCE_AUTH_AUDIENCE"),
 		ApprovalTTL:          approvalTTL,
-		AnthropicKey:         os.Getenv("ANTHROPIC_API_KEY"),
 		SigningKey:           os.Getenv("GOVERNANCE_SIGNING_KEY"),
 		CallbackToken:        strings.TrimSpace(os.Getenv("GOVERNANCE_CALLBACK_TOKEN")),
 		PendingCallbackURLs:  splitCSV(os.Getenv("GOVERNANCE_APPROVAL_PENDING_CALLBACK_URLS")),

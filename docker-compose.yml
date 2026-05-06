@@ -28,7 +28,6 @@ services:
       GOVERNANCE_API_KEYS: "admin=${GOVERNANCE_ADMIN_API_KEY:-governance-admin-dev-key}|service_principal=true|scopes=nexus:requests:read+nexus:requests:write+nexus:requests:result+nexus:approvals:decide+nexus:policies:admin+nexus:rbac:admin+nexus:evidence:write+nexus:cross_org,prometheus=${GOVERNANCE_PROMETHEUS_API_KEY:-governance-prometheus-dev-key}|scopes=nexus:requests:read,ponti=${GOVERNANCE_PONTI_API_KEY:-governance-ponti-dev-key}|service_principal=true|scopes=nexus:requests:read+nexus:requests:write+nexus:requests:result+nexus:evidence:write"
       GOVERNANCE_AUTH_ISSUER_URL: "${GOVERNANCE_AUTH_ISSUER_URL:-}"
       GOVERNANCE_AUTH_AUDIENCE: "${GOVERNANCE_AUTH_AUDIENCE:-}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       APPROVAL_DEFAULT_TTL: "${GOVERNANCE_APPROVAL_TTL:-3600}"
       GOVERNANCE_SIGNING_KEY: "${GOVERNANCE_SIGNING_KEY:-governance-dev-signing-key-change-in-production}"
       GOVERNANCE_CALLBACK_TOKEN: "${GOVERNANCE_CALLBACK_TOKEN:-local-governance-callback-token}"

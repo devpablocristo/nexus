@@ -2,22 +2,22 @@ package learning
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log/slog"
 	"time"
 
-	coreai "github.com/devpablocristo/core/ai/go"
 	"github.com/google/uuid"
 	learningdomain "github.com/devpablocristo/nexus/governance/internal/learning/usecases/domain"
 )
 
 // PolicyProposer genera propuestas de políticas a partir de patrones detectados.
+//
+// Nexus es AI-independent por contrato arquitectónico: sólo dispone de un
+// proposer determinístico (StubProposer) que arma propuestas a partir de
+// templates. La asistencia con LLM vive en Companion, que detecta patrones,
+// genera la propuesta enriquecida y la POSTea a /v1/learning/proposals.
 type PolicyProposer interface {
 	GenerateProposal(ctx context.Context, pattern Pattern) (*learningdomain.PolicyProposal, error)
 }
-
-// --- Stub (desarrollo local sin API key) ---
 
 // StubProposer genera propuestas sin usar IA (basado en templates).
 type StubProposer struct{}
@@ -30,100 +30,17 @@ func (s *StubProposer) GenerateProposal(_ context.Context, pattern Pattern) (*le
 	return buildProposal(pattern, stubGenerate(pattern)), nil
 }
 
-// --- Implementación con core/ai/go ---
-
-// AIProposer genera propuestas usando un LLM via core/ai/go.
-type AIProposer struct {
-	provider coreai.Provider
-}
-
-// NewAIProposer crea un proposer con IA. Usa el provider de core/ai/go.
-func NewAIProposer(apiKey, model string) *AIProposer {
-	return &AIProposer{
-		provider: coreai.NewProvider("anthropic", apiKey, model),
-	}
-}
-
-func (a *AIProposer) GenerateProposal(ctx context.Context, pattern Pattern) (*learningdomain.PolicyProposal, error) {
-	generated := a.askLLM(ctx, pattern)
-	return buildProposal(pattern, generated), nil
-}
-
-// generatedFields contiene los campos que el LLM genera.
+// generatedFields contiene los campos de una propuesta antes de envolverla en
+// PolicyProposal. Lo deja como struct por si en el futuro se agregan más
+// generators determinísticos (ej. policy-pack import).
 type generatedFields struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Expression  string `json:"expression"`
-	Effect      string `json:"effect"`
-	Summary     string `json:"summary"`
-	Priority    int    `json:"priority"`
+	Name        string
+	Description string
+	Expression  string
+	Effect      string
+	Summary     string
+	Priority    int
 }
-
-func (a *AIProposer) askLLM(ctx context.Context, pattern Pattern) generatedFields {
-	userMsg := fmt.Sprintf(
-		"Patrón detectado:\n- action_type: %s\n- aprobadas: %d de %d (%.1f%%)\n- ventana: %s\n\nGenerá una propuesta de política CEL.",
-		pattern.ActionType, pattern.Approved, pattern.Total, pattern.ApprovalRate*100, pattern.TimeWindow,
-	)
-
-	resp, err := a.provider.Chat(ctx, coreai.ChatRequest{
-		SystemPrompt: proposerSystemPrompt,
-		Messages:     []coreai.Message{{Role: "user", Content: userMsg}},
-		MaxTokens:    500,
-	})
-	if err != nil {
-		return generatedFields{}
-	}
-	if resp.Text == "" {
-		return generatedFields{}
-	}
-
-	var fields generatedFields
-	if err := json.Unmarshal([]byte(resp.Text), &fields); err != nil {
-		slog.Warn("ai proposer response not valid json, extracting text", "response", resp.Text)
-		// Si no es JSON válido, usar la respuesta como summary y generar el resto con template
-		fallback := stubGenerate(pattern)
-		fallback.Summary = resp.Text
-		return fallback
-	}
-
-	// Validar campos obligatorios
-	if fields.Expression == "" {
-		fields.Expression = fmt.Sprintf("request.action_type == '%s'", pattern.ActionType)
-	}
-	if fields.Effect == "" {
-		fields.Effect = "allow"
-	}
-	if fields.Name == "" {
-		fields.Name = fmt.Sprintf("auto-approve-%s", pattern.ActionType)
-	}
-	if fields.Priority <= 0 {
-		fields.Priority = 100
-	}
-
-	return fields
-}
-
-const proposerSystemPrompt = `Sos un experto en gobernanza de Nexus. Analizás patrones de aprobación y generás propuestas de políticas CEL.
-
-Respondé SOLO con un JSON válido con esta estructura:
-{
-  "name": "nombre-kebab-case de la política",
-  "description": "descripción concisa en inglés de qué hace la política",
-  "expression": "expresión CEL válida (ej: request.action_type == 'deploy')",
-  "effect": "allow | deny | require_approval",
-  "summary": "resumen en español del análisis del patrón y por qué se recomienda esta política",
-  "priority": 100
-}
-
-Reglas:
-- La expresión CEL debe usar variables del namespace request (action_type, target_system, requester_type, etc.) o time (hour, day_of_week).
-- Si la tasa de aprobación es ≥ 95%, recomendar effect "allow".
-- Si es entre 80-95%, recomendar "allow" con una expresión más restrictiva (ej: agregar horario o target_system).
-- Si es < 80%, recomendar "require_approval".
-- priority: 100 por defecto, menor para políticas más específicas.
-- El summary debe explicar el razonamiento.`
-
-// --- Helpers compartidos ---
 
 func stubGenerate(pattern Pattern) generatedFields {
 	return generatedFields{

@@ -76,11 +76,14 @@ func TestGetConfigReturnsDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verificar que tiene las 5 secciones
-	for _, section := range []string{"risk", "approvals", "learning", "ai", "general"} {
+	// Verificar que tiene las 4 secciones (Nexus es AI-independent: sin sección "ai")
+	for _, section := range []string{"risk", "approvals", "learning", "general"} {
 		if _, ok := resp[section]; !ok {
 			t.Errorf("falta sección %s en respuesta", section)
 		}
+	}
+	if _, ok := resp["ai"]; ok {
+		t.Errorf("Nexus es AI-independent: la sección 'ai' no debe estar en la respuesta")
 	}
 }
 
@@ -284,16 +287,6 @@ func TestUpdateSectionLearning(t *testing.T) {
 	mux := setupMux()
 
 	rec := doReq(t, mux, http.MethodPatch, "/v1/config/learning", `{"min_samples":25,"min_approval_rate":0.85,"max_requests":5000}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("esperaba 200, obtuvo %d: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestUpdateSectionAI(t *testing.T) {
-	t.Parallel()
-	mux := setupMux()
-
-	rec := doReq(t, mux, http.MethodPatch, "/v1/config/ai", `{"enabled":false,"model":"claude-haiku","timeout_seconds":3}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("esperaba 200, obtuvo %d: %s", rec.Code, rec.Body.String())
 	}

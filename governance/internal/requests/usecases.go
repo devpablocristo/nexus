@@ -92,7 +92,6 @@ type Usecases struct {
 	audit          AuditSink
 	evaluator      *PolicyEvaluator
 	riskConfig     RiskConfig
-	ai             AIContextualizer
 	approvalTTL    time.Duration
 	shadowHits     ShadowHitRecorder
 	execStats      ExecutionStatsStore
@@ -123,10 +122,6 @@ func WithIdempotencyStore(s IdempotencyStore) Option {
 
 func WithAuditSink(s AuditSink) Option {
 	return func(u *Usecases) { u.audit = s }
-}
-
-func WithAI(ai AIContextualizer) Option {
-	return func(u *Usecases) { u.ai = ai }
 }
 
 func WithApprovalTTL(d time.Duration) Option {
@@ -191,7 +186,6 @@ func NewUsecases(
 		approvalRepo: approvalRepo,
 		evaluator:    evaluator,
 		riskConfig:   DefaultRiskConfig(),
-		ai:           NewStubContextualizer(),
 		approvalTTL:  DefaultApprovalTTL,
 	}
 	for _, opt := range opts {
@@ -399,18 +393,9 @@ func (u *Usecases) finalizeDecision(ctx context.Context, req requestdomain.Reque
 func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.Request, in SubmitInput, now time.Time, forceBreakGlass bool) (SubmitOutput, error) {
 	expiresAt := now.Add(u.approvalTTL)
 
-	// AI: best-effort con fallback (antes de persistir para incluir en la request)
-	summary, degraded, aiErr := u.ai.Summarize(ctx, SummarizeInput{
-		RequesterType: in.RequesterType, RequesterID: in.RequesterID, ActionType: in.ActionType,
-		TargetSystem: in.TargetSystem, TargetResource: in.TargetResource, Params: in.Params,
-		Reason: in.Reason, Context: in.Context,
-		Decision: string(req.Decision), DecisionReason: req.DecisionReason, RiskLevel: string(req.RiskLevel),
-	})
-	if aiErr != nil {
-		slog.Error("ai contextualizer failed", "error", aiErr, "request_id", req.ID)
-	}
-	req.AISummary = summary
-	req.AIDegraded = degraded
+	// AISummary / AIDegraded quedan vacíos: Nexus es AI-independent. Quien necesite
+	// el resumen para humanos llama a Companion (governance-assist/explain) como
+	// secondary call al renderizar la card en la console.
 	req.Status = requestdomain.StatusPendingApproval
 	req.ExpiresAt = &expiresAt
 	req.UpdatedAt = now
@@ -485,8 +470,8 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 			ID        uuid.UUID
 			ExpiresAt time.Time
 		}{ID: approval.ID, ExpiresAt: approval.ExpiresAt},
-		AISummary:  summary,
-		AIDegraded: degraded,
+		AISummary:  req.AISummary,
+		AIDegraded: req.AIDegraded,
 	}
 	u.cacheIdempotency(ctx, in.IdempotencyKey, req.ID, out, expiresAt)
 	return out, nil

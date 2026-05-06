@@ -2,12 +2,12 @@ package dto
 
 // --- DTOs para config (nunca exponer domain directamente) ---
 
-// SystemConfigResponse es la respuesta completa de configuración
+// SystemConfigResponse es la respuesta completa de configuración.
+// Nexus es AI-independent: no hay sección AI en la API.
 type SystemConfigResponse struct {
 	Risk      RiskConfigDTO      `json:"risk"`
 	Approvals ApprovalsConfigDTO `json:"approvals"`
 	Learning  LearningConfigDTO  `json:"learning"`
-	AI        AIConfigDTO        `json:"ai"`
 	General   GeneralConfigDTO   `json:"general"`
 }
 
@@ -79,14 +79,6 @@ type LearningConfigDTO struct {
 	MinSamples      int     `json:"min_samples"`
 	MinApprovalRate float64 `json:"min_approval_rate"`
 	MaxRequests     int     `json:"max_requests"`
-}
-
-// --- AI ---
-
-type AIConfigDTO struct {
-	Enabled        bool   `json:"enabled"`
-	Model          string `json:"model"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
 }
 
 // --- General ---

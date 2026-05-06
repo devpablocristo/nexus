@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	scopeNexusLearningAdmin = "nexus:policies:admin"
-	scopeNexusLearningRead  = "nexus:requests:read"
+	scopeNexusLearningAdmin   = "nexus:policies:admin"
+	scopeNexusLearningRead    = "nexus:requests:read"
+	scopeNexusLearningPropose = "nexus:learning:propose"
 )
 
 func requireScope(w http.ResponseWriter, r *http.Request, scopes ...string) bool {
