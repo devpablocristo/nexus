@@ -30,7 +30,9 @@ type Repository interface {
 	Create(ctx context.Context, a approvaldomain.Approval) (approvaldomain.Approval, error)
 	GetByID(ctx context.Context, id uuid.UUID) (approvaldomain.Approval, error)
 	GetByRequestID(ctx context.Context, requestID uuid.UUID) (*approvaldomain.Approval, error)
-	ListPending(ctx context.Context, limit int) ([]approvaldomain.Approval, error)
+	// ListPending devuelve approvals pendientes con filtro de tenancy aplicado
+	// en SQL (ver semántica de orgID/allowAll en requests.Repository.List).
+	ListPending(ctx context.Context, limit int, orgID *string, allowAll bool) ([]approvaldomain.Approval, error)
 	Update(ctx context.Context, a approvaldomain.Approval) (approvaldomain.Approval, error)
 }
 
@@ -92,13 +94,27 @@ func (r *PostgresRepository) GetByRequestID(ctx context.Context, requestID uuid.
 	return &a, nil
 }
 
-func (r *PostgresRepository) ListPending(ctx context.Context, limit int) ([]approvaldomain.Approval, error) {
-	// Expira en query time: excluir approvals vencidos
-	query := selectApprovalSQL + ` WHERE status = 'pending' AND expires_at > now() ORDER BY created_at ASC`
-	if limit > 0 {
-		query += fmt.Sprintf(` LIMIT %d`, limit)
+func (r *PostgresRepository) ListPending(ctx context.Context, limit int, orgID *string, allowAll bool) ([]approvaldomain.Approval, error) {
+	// Expira en query time: excluir approvals vencidos. Tenancy filter en SQL
+	// para evitar el bug "post-filter después del LIMIT".
+	query := selectApprovalSQL + ` WHERE status = 'pending' AND expires_at > now()`
+	args := []any{}
+	argN := 1
+	if !allowAll {
+		if orgID != nil {
+			query += fmt.Sprintf(` AND org_id = $%d`, argN)
+			args = append(args, *orgID)
+			argN++
+		} else {
+			query += ` AND org_id IS NULL`
+		}
 	}
-	rows, err := r.db.Pool().Query(ctx, query)
+	query += ` ORDER BY created_at ASC`
+	if limit > 0 {
+		query += fmt.Sprintf(` LIMIT $%d`, argN)
+		args = append(args, limit)
+	}
+	rows, err := r.db.Pool().Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list pending approvals: %w", err)
 	}

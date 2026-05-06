@@ -1120,7 +1120,8 @@ func (u *Usecases) ReplaySimulate(ctx context.Context, in ReplaySimulateInput) (
 		limit = 100
 	}
 
-	reqs, err := u.reqRepo.List(ctx, "", "", limit)
+	// ReplaySimulate es operación admin (cross-org): no aplicar filtro de tenancy.
+	reqs, err := u.reqRepo.List(ctx, "", "", limit, nil, true)
 	if err != nil {
 		return ReplaySimulateOutput{}, fmt.Errorf("list requests for replay: %w", err)
 	}
@@ -1178,8 +1179,10 @@ func (u *Usecases) GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Req
 	return u.reqRepo.GetByID(ctx, id)
 }
 
-func (u *Usecases) List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error) {
-	return u.reqRepo.List(ctx, status, actionType, limit)
+// List lista requests con filtro de tenancy. Ver Repository.List para semántica
+// de orgID/allowAll.
+func (u *Usecases) List(ctx context.Context, status, actionType string, limit int, orgID *string, allowAll bool) ([]requestdomain.Request, error) {
+	return u.reqRepo.List(ctx, status, actionType, limit, orgID, allowAll)
 }
 
 type ReportResultInput struct {
@@ -1386,13 +1389,19 @@ func (u *Usecases) Attest(ctx context.Context, requestID uuid.UUID, in AttestInp
 		Metadata:     in.Metadata,
 	}
 
-	// Verificación criptográfica si hay verifier inyectado. Sin verifier la
-	// attestation queda como "claim" del attester sin garantía de integridad
-	// — wire debería siempre inyectar uno en prod.
-	if u.attestVerifier != nil {
-		if err := u.attestVerifier.Verify(ctx, attestation); err != nil {
-			return requestdomain.Attestation{}, fmt.Errorf("verify attestation: %w", err)
-		}
+	// Verificación criptográfica condicional. La regla nueva es persistir
+	// SIEMPRE, marcando explícitamente verified=false cuando no se pudo
+	// verificar (en lugar de dejar el campo silencioso, que era el bug B.3).
+	// Así el caller puede distinguir attestations confiables de claims.
+	if u.attestVerifier == nil {
+		attestation.Verified = false
+		attestation.VerificationError = "verifier_not_configured"
+	} else if err := u.attestVerifier.Verify(ctx, attestation); err != nil {
+		attestation.Verified = false
+		attestation.VerificationError = err.Error()
+	} else {
+		attestation.Verified = true
+		attestation.VerificationError = ""
 	}
 
 	created, err := u.attestations.Create(ctx, attestation)

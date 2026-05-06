@@ -150,7 +150,7 @@ type fakeRequestLister struct {
 	err      error
 }
 
-func (l *fakeRequestLister) List(_ context.Context, _, _ string, _ int) ([]requestdomain.Request, error) {
+func (l *fakeRequestLister) List(_ context.Context, _, _ string, _ int, _ *string, _ bool) ([]requestdomain.Request, error) {
 	return l.requests, l.err
 }
 

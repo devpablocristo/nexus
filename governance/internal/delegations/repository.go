@@ -22,7 +22,18 @@ var (
 type Repository interface {
 	Create(ctx context.Context, d domain.Delegation) (domain.Delegation, error)
 	GetByID(ctx context.Context, id uuid.UUID) (domain.Delegation, error)
-	ListByAgentID(ctx context.Context, agentID string) ([]domain.Delegation, error)
+	// ListByAgentID devuelve delegaciones aplicables al agente para el org dado.
+	// Defense-in-depth: aplica filtro de tenancy en SQL para evitar leakage si
+	// algún caller olvida filtrar después en memoria. Las delegaciones globales
+	// (org_id IS NULL) siempre se incluyen. Si orgID es nil, sólo se devuelven
+	// las globales.
+	ListByAgentID(ctx context.Context, agentID string, orgID *string) ([]domain.Delegation, error)
+	// ExistsByAgent indica si el agente tiene alguna delegación registrada en
+	// cualquier org. Se usa para distinguir "agente sin restricciones" (no hay
+	// delegación en ningún lado) de "agente restringido en otro org" (existe
+	// pero no aplica al org del caller). Sin esta distinción, el filtro SQL de
+	// ListByAgentID convierte la segunda en la primera y abriría el privilegio.
+	ExistsByAgent(ctx context.Context, agentID string) (bool, error)
 	List(ctx context.Context) ([]domain.Delegation, error)
 	Update(ctx context.Context, d domain.Delegation) (domain.Delegation, error)
 	DeleteByID(ctx context.Context, id uuid.UUID) error
@@ -71,13 +82,39 @@ func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.
 	return d, nil
 }
 
-func (r *PostgresRepository) ListByAgentID(ctx context.Context, agentID string) ([]domain.Delegation, error) {
-	rows, err := r.db.Pool().Query(ctx, selectSQL+` WHERE agent_id = $1 ORDER BY created_at DESC`, agentID)
+func (r *PostgresRepository) ListByAgentID(ctx context.Context, agentID string, orgID *string) ([]domain.Delegation, error) {
+	// Defense-in-depth: filtra cross-org en SQL. Las delegaciones globales
+	// (org_id IS NULL) son visibles para todos los orgs. Si orgID es nil
+	// (caller sin contexto de tenant), sólo devolvemos las globales.
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if orgID == nil {
+		rows, err = r.db.Pool().Query(ctx,
+			selectSQL+` WHERE agent_id = $1 AND org_id IS NULL ORDER BY created_at DESC`,
+			agentID)
+	} else {
+		rows, err = r.db.Pool().Query(ctx,
+			selectSQL+` WHERE agent_id = $1 AND (org_id IS NULL OR org_id = $2) ORDER BY created_at DESC`,
+			agentID, *orgID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list delegations by agent: %w", err)
 	}
 	defer rows.Close()
 	return scanDelegations(rows)
+}
+
+func (r *PostgresRepository) ExistsByAgent(ctx context.Context, agentID string) (bool, error) {
+	var exists bool
+	err := r.db.Pool().QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM delegations WHERE agent_id = $1)`,
+		agentID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("delegations exists by agent: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *PostgresRepository) List(ctx context.Context) ([]domain.Delegation, error) {

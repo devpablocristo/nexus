@@ -29,7 +29,14 @@ type Repository interface {
 	Create(ctx context.Context, r requestdomain.Request) (requestdomain.Request, error)
 	GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Request, error)
 	GetByIdempotencyKey(ctx context.Context, key string) (*requestdomain.Request, error)
-	List(ctx context.Context, status string, actionType string, limit int) ([]requestdomain.Request, error)
+	// List devuelve requests con filtro de tenancy aplicado en SQL para evitar
+	// el bug de "post-filter después del LIMIT" (donde un usuario veía menos
+	// resultados de los que le correspondían porque el LIMIT se llenaba con
+	// rows de otros orgs antes del filtro).
+	//   - allowAll=true: sin filtro (cross-org admin scope).
+	//   - allowAll=false, orgID != nil: incluye sólo rows con org_id = *orgID.
+	//   - allowAll=false, orgID == nil: incluye sólo rows con org_id IS NULL.
+	List(ctx context.Context, status string, actionType string, limit int, orgID *string, allowAll bool) ([]requestdomain.Request, error)
 	Update(ctx context.Context, r requestdomain.Request) (requestdomain.Request, error)
 }
 
@@ -133,7 +140,7 @@ func (r *PostgresRepository) GetByIdempotencyKey(ctx context.Context, key string
 	return &req, nil
 }
 
-func (r *PostgresRepository) List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error) {
+func (r *PostgresRepository) List(ctx context.Context, status, actionType string, limit int, orgID *string, allowAll bool) ([]requestdomain.Request, error) {
 	query := selectRequestSQL + ` WHERE 1=1`
 	args := []any{}
 	argN := 1
@@ -146,6 +153,15 @@ func (r *PostgresRepository) List(ctx context.Context, status, actionType string
 		query += fmt.Sprintf(` AND action_type = $%d`, argN)
 		args = append(args, actionType)
 		argN++
+	}
+	if !allowAll {
+		if orgID != nil {
+			query += fmt.Sprintf(` AND org_id = $%d`, argN)
+			args = append(args, *orgID)
+			argN++
+		} else {
+			query += ` AND org_id IS NULL`
+		}
 	}
 	query += ` ORDER BY created_at DESC`
 	if limit > 0 {

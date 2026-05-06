@@ -70,14 +70,20 @@ type AttestRequest struct {
 
 // AttestResponse es la respuesta al registrar una attestation.
 type AttestResponse struct {
-	ID           string         `json:"id"`
-	RequestID    string         `json:"request_id"`
-	Status       string         `json:"status"`
-	ProviderRefs map[string]any `json:"provider_refs,omitempty"`
-	Signature    string         `json:"signature"`
-	Attester     string         `json:"attester"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
-	CreatedAt    string         `json:"created_at"`
+	ID                string         `json:"id"`
+	RequestID         string         `json:"request_id"`
+	Status            string         `json:"status"`
+	ProviderRefs      map[string]any `json:"provider_refs,omitempty"`
+	Signature         string         `json:"signature"`
+	Attester          string         `json:"attester"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
+	CreatedAt         string         `json:"created_at"`
+	// Verified indica si la firma fue criptográficamente verificada.
+	// Cuando es false, VerificationError explica por qué (e.g.
+	// "verifier_not_configured"). Los callers (Companion u otros) deben
+	// inspeccionar este flag antes de tratar la attestation como prueba.
+	Verified          bool   `json:"verified"`
+	VerificationError string `json:"verification_error,omitempty"`
 }
 
 // BatchSimulateRequest es el body para simulación batch.

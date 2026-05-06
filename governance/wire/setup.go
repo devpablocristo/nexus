@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
@@ -103,6 +105,17 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 
 	attestationStore := requests.NewPostgresAttestationStore(db.Pool())
 
+	// B.3: Attestation verifier opt-in. En esta fase sólo aceptamos "none" (o
+	// vacío). Cualquier otro valor causa fail-fast en boot — evita el caso
+	// donde alguien setea "hmac" esperando verificación criptográfica y
+	// obtiene falsos positivos porque el verifier real no está implementado.
+	attestVerifierMode := strings.TrimSpace(os.Getenv("GOVERNANCE_ATTESTATION_VERIFIER"))
+	if attestVerifierMode != "" && attestVerifierMode != "none" {
+		return nil, nil, fmt.Errorf(
+			"GOVERNANCE_ATTESTATION_VERIFIER=%q not implemented in this version (only 'none' is supported)",
+			attestVerifierMode)
+	}
+
 	reqUC := requests.NewUsecases(reqRepo, policyLister, approvalRepo, evaluator,
 		requests.WithIdempotencyStore(idemStore),
 		requests.WithAuditSink(auditSink),
@@ -115,6 +128,9 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		requests.WithActionTypeChecker(newActionTypeCheckerAdapter(actionTypeUC)),
 		requests.WithDelegationChecker(newDelegationCheckerAdapter(delegationUC)),
 		requests.WithAttestationStore(attestationStore),
+		// AttestationVerifier intencionalmente NO inyectado en esta fase: las
+		// attestations se persistirán con verified=false y verification_error=
+		// "verifier_not_configured" para que el caller pueda decidir.
 		requests.WithApprovalGetter(approvalRepo),
 		requests.WithApprovalCallbacks(callbackPublisher),
 		requests.WithResultReportStore(resultReportStore),

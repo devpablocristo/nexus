@@ -60,9 +60,9 @@ func (s *PostgresAttestationStore) Create(ctx context.Context, a requestdomain.A
 	}
 
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO attestations (id, request_id, status, provider_refs, signature, attester, metadata, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, a.ID, a.RequestID, a.Status, providerRefsJSON, a.Signature, a.Attester, metadataJSON, a.CreatedAt)
+		INSERT INTO attestations (id, request_id, status, provider_refs, signature, attester, metadata, created_at, verified, verification_error)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, a.ID, a.RequestID, a.Status, providerRefsJSON, a.Signature, a.Attester, metadataJSON, a.CreatedAt, a.Verified, a.VerificationError)
 	if err != nil {
 		return requestdomain.Attestation{}, fmt.Errorf("insert attestation: %w", err)
 	}
@@ -75,10 +75,11 @@ func (s *PostgresAttestationStore) GetByRequestID(ctx context.Context, requestID
 	var providerRefsJSON, metadataJSON []byte
 
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, request_id, status, provider_refs, signature, attester, metadata, created_at
+		SELECT id, request_id, status, provider_refs, signature, attester, metadata, created_at, verified, verification_error
 		FROM attestations WHERE request_id = $1
 	`, requestID).Scan(
 		&a.ID, &a.RequestID, &a.Status, &providerRefsJSON, &a.Signature, &a.Attester, &metadataJSON, &a.CreatedAt,
+		&a.Verified, &a.VerificationError,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

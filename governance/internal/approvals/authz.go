@@ -21,6 +21,21 @@ func requireScope(w http.ResponseWriter, r *http.Request, scopes ...string) bool
 	return false
 }
 
+// requestOrgScope traduce el contexto de auth del request HTTP a parámetros
+// que el repo pueda aplicar como WHERE en SQL. Espeja la semántica de
+// canAccessApprovalOrg para mantener consistencia entre filtro SQL y
+// post-check por item.
+func requestOrgScope(r *http.Request) (*string, bool) {
+	if requestHasNoAuthContext(r) || requestHasScope(r, scopeNexusCrossOrg) {
+		return nil, true
+	}
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if orgID != "" {
+		return &orgID, false
+	}
+	return nil, false
+}
+
 func canAccessApprovalOrg(r *http.Request, approval approvaldomain.Approval) bool {
 	if requestHasNoAuthContext(r) || requestHasScope(r, scopeNexusCrossOrg) {
 		return true
