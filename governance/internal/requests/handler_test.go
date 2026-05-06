@@ -58,7 +58,7 @@ func (r *fakeRequestRepo) GetByIdempotencyKey(_ context.Context, _ string) (*req
 	return nil, nil
 }
 
-func (r *fakeRequestRepo) List(_ context.Context, status, actionType string, limit int) ([]requestdomain.Request, error) {
+func (r *fakeRequestRepo) List(_ context.Context, status, actionType string, limit int, orgID *string, allowAll bool) ([]requestdomain.Request, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []requestdomain.Request
@@ -68,6 +68,18 @@ func (r *fakeRequestRepo) List(_ context.Context, status, actionType string, lim
 		}
 		if actionType != "" && req.ActionType != actionType {
 			continue
+		}
+		// Espejar el filtro SQL del repo Postgres.
+		if !allowAll {
+			if orgID != nil {
+				if req.OrgID == nil || strings.TrimSpace(*req.OrgID) != strings.TrimSpace(*orgID) {
+					continue
+				}
+			} else {
+				if req.OrgID != nil {
+					continue
+				}
+			}
 		}
 		out = append(out, req)
 	}
@@ -1536,6 +1548,55 @@ func TestAttestHappyPath(t *testing.T) {
 	decJSON(t, getRec, &getResp)
 	if getResp.ID != attestResp.ID {
 		t.Fatalf("esperaba mismo id, obtuvo %s vs %s", getResp.ID, attestResp.ID)
+	}
+}
+
+// Regresión B.3: cuando no hay verifier criptográfico cableado, las
+// attestations deben persistirse con verified=false y un verification_error
+// explícito ("verifier_not_configured"). Antes, el flag no existía y el
+// caller no podía distinguir attestations verificadas de simples claims.
+func TestAttest_VerifiedFalseWhenVerifierNotConfigured(t *testing.T) {
+	t.Parallel()
+	mux := setupFullMux()
+
+	createRec := doReq(t, mux, http.MethodPost, "/v1/requests",
+		`{"requester_type":"agent","requester_id":"bot","action_type":"alert.escalate"}`)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", createRec.Code)
+	}
+	var submitResp requestdto.SubmitResponse
+	decJSON(t, createRec, &submitResp)
+
+	resultRec := doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/result",
+		`{"success":true,"result":{"output":"done"},"duration_ms":100}`)
+	if resultRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on result, got %d", resultRec.Code)
+	}
+
+	attestBody := `{"status":"success","signature":"sig-xyz","attester":"pep:treasury"}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/requests/"+submitResp.RequestID+"/attest", attestBody)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var attestResp requestdto.AttestResponse
+	decJSON(t, rec, &attestResp)
+
+	if attestResp.Verified {
+		t.Fatal("attestation must NOT be marked verified when no verifier is configured")
+	}
+	if attestResp.VerificationError != "verifier_not_configured" {
+		t.Fatalf("expected verification_error=verifier_not_configured, got %q", attestResp.VerificationError)
+	}
+
+	// El GET endpoint debe devolver el mismo flag.
+	getRec := doReq(t, mux, http.MethodGet, "/v1/requests/"+submitResp.RequestID+"/attestation", "")
+	var getResp requestdto.AttestResponse
+	decJSON(t, getRec, &getResp)
+	if getResp.Verified {
+		t.Fatal("GET attestation must surface verified=false")
+	}
+	if getResp.VerificationError != "verifier_not_configured" {
+		t.Fatalf("GET expected verification_error=verifier_not_configured, got %q", getResp.VerificationError)
 	}
 }
 

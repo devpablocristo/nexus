@@ -62,8 +62,8 @@ func (u *Usecases) WithApprovalCallbacks(publisher callbacks.ApprovalPublisher) 
 	return u
 }
 
-func (u *Usecases) ListPending(ctx context.Context, limit int) ([]approvaldomain.Approval, error) {
-	return u.repo.ListPending(ctx, limit)
+func (u *Usecases) ListPending(ctx context.Context, limit int, orgID *string, allowAll bool) ([]approvaldomain.Approval, error) {
+	return u.repo.ListPending(ctx, limit, orgID, allowAll)
 }
 
 func (u *Usecases) GetByID(ctx context.Context, approvalID uuid.UUID) (approvaldomain.Approval, error) {

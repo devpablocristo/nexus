@@ -12,7 +12,7 @@ import (
 const maxListLimit = 1000
 
 type requestLister interface {
-	List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error)
+	List(ctx context.Context, status, actionType string, limit int, orgID *string, allowAll bool) ([]requestdomain.Request, error)
 }
 
 type Handler struct {
@@ -32,7 +32,10 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 	if period == "" {
 		period = "7d"
 	}
-	all, err := h.requests.List(r.Context(), "", "", maxListLimit)
+	// TODO: el dashboard agrega métricas cross-org. Una vez que se decida si
+	// debe ser admin-only o tenant-scoped, propagar el contexto de auth y
+	// reemplazar allowAll=true por la regla correspondiente.
+	all, err := h.requests.List(r.Context(), "", "", maxListLimit, nil, true)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "dashboard query failed")
 		return

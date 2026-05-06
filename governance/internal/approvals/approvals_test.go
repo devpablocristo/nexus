@@ -58,14 +58,27 @@ func (r *fakeRepo) GetByRequestID(_ context.Context, _ uuid.UUID) (*approvaldoma
 	return nil, nil
 }
 
-func (r *fakeRepo) ListPending(_ context.Context, limit int) ([]approvaldomain.Approval, error) {
+func (r *fakeRepo) ListPending(_ context.Context, limit int, orgID *string, allowAll bool) ([]approvaldomain.Approval, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []approvaldomain.Approval
 	for _, a := range r.byID {
-		if a.Status == approvaldomain.ApprovalStatusPending {
-			out = append(out, a)
+		if a.Status != approvaldomain.ApprovalStatusPending {
+			continue
 		}
+		// Espejar el filtro SQL del repo Postgres.
+		if !allowAll {
+			if orgID != nil {
+				if a.OrgID == nil || *a.OrgID != *orgID {
+					continue
+				}
+			} else {
+				if a.OrgID != nil {
+					continue
+				}
+			}
+		}
+		out = append(out, a)
 	}
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
@@ -591,6 +604,78 @@ func TestListPendingReturnsOnlyPending(t *testing.T) {
 	}
 }
 
+// Regresión B.2: cuando el caller pide pending de su org y existen approvals
+// de OTRO org, el filtro de tenancy debe aplicarse en SQL (no post-filter).
+// Si fuera post-filter, el LIMIT podría llenarse con rows del otro org y el
+// caller vería menos de los suyos que en realidad existen.
+func TestListPending_TenantIsolation_NoPostFilter(t *testing.T) {
+	t.Parallel()
+	env := newTestEnv()
+
+	orgA := "org-tenant-A"
+	orgB := "org-tenant-B"
+	insert := func(orgID string) {
+		requestID := uuid.New()
+		env.reqUpdater.mu.Lock()
+		env.reqUpdater.requests[requestID] = requestdomain.Request{
+			ID:     requestID,
+			Status: requestdomain.StatusPendingApproval,
+		}
+		env.reqUpdater.mu.Unlock()
+		oid := orgID
+		a := approvaldomain.Approval{
+			ID:                uuid.New(),
+			OrgID:             &oid,
+			RequestID:         requestID,
+			Status:            approvaldomain.ApprovalStatusPending,
+			RequiredApprovals: 1,
+			ExpiresAt:         time.Now().Add(time.Hour),
+			CreatedAt:         time.Now(),
+		}
+		if _, err := env.repo.Create(context.Background(), a); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 5 approvals en org A, 5 en org B.
+	for i := 0; i < 5; i++ {
+		insert(orgA)
+		insert(orgB)
+	}
+
+	// Caller de org A pide hasta 3 pendientes con filtro de tenancy en SQL.
+	listA, err := env.uc.ListPending(context.Background(), 3, &orgA, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listA) != 3 {
+		t.Fatalf("expected 3 approvals for orgA after tenant SQL filter, got %d", len(listA))
+	}
+	for _, a := range listA {
+		if a.OrgID == nil || *a.OrgID != orgA {
+			t.Fatalf("expected only orgA approvals, got %v", a.OrgID)
+		}
+	}
+
+	// Si pido todas las de A (limit alto), debo obtener las 5.
+	allA, err := env.uc.ListPending(context.Background(), 100, &orgA, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allA) != 5 {
+		t.Fatalf("expected 5 orgA approvals total, got %d", len(allA))
+	}
+
+	// Caller cross-org admin (allowAll=true) ve las 10.
+	allAdmin, err := env.uc.ListPending(context.Background(), 100, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allAdmin) != 10 {
+		t.Fatalf("expected 10 total approvals for admin scope, got %d", len(allAdmin))
+	}
+}
+
 // TestListPendingEmpty verifica que una lista sin pendientes retorna array vacío.
 func TestListPendingEmpty(t *testing.T) {
 	t.Parallel()
@@ -929,7 +1014,7 @@ func TestUsecaseListPendingDirectly(t *testing.T) {
 	seedPendingApproval(t, env)
 	seedPendingApproval(t, env)
 
-	list, err := env.uc.ListPending(context.Background(), 10)
+	list, err := env.uc.ListPending(context.Background(), 10, nil, true)
 	if err != nil {
 		t.Fatalf("list pending falló: %v", err)
 	}

@@ -56,14 +56,26 @@ func (r *fakeApprovalRepo) GetByRequestID(_ context.Context, _ uuid.UUID) (*appr
 	return nil, nil
 }
 
-func (r *fakeApprovalRepo) ListPending(_ context.Context, limit int) ([]approvaldomain.Approval, error) {
+func (r *fakeApprovalRepo) ListPending(_ context.Context, limit int, orgID *string, allowAll bool) ([]approvaldomain.Approval, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []approvaldomain.Approval
 	for _, a := range r.byID {
-		if a.Status == approvaldomain.ApprovalStatusPending {
-			out = append(out, a)
+		if a.Status != approvaldomain.ApprovalStatusPending {
+			continue
 		}
+		if !allowAll {
+			if orgID != nil {
+				if a.OrgID == nil || *a.OrgID != *orgID {
+					continue
+				}
+			} else {
+				if a.OrgID != nil {
+					continue
+				}
+			}
+		}
+		out = append(out, a)
 	}
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
@@ -883,7 +895,7 @@ func TestUsecasesListPending(t *testing.T) {
 	seedApproval(t, repo, reqUpdater)
 	seedApproval(t, repo, reqUpdater)
 
-	list, err := uc.ListPending(context.Background(), 10)
+	list, err := uc.ListPending(context.Background(), 10, nil, true)
 	if err != nil {
 		t.Fatalf("list pending falló: %v", err)
 	}

@@ -16,7 +16,7 @@ import (
 const defaultListLimit = 50
 
 type approvalUsecase interface {
-	ListPending(ctx context.Context, limit int) ([]approvaldomain.Approval, error)
+	ListPending(ctx context.Context, limit int, orgID *string, allowAll bool) ([]approvaldomain.Approval, error)
 	GetByID(ctx context.Context, approvalID uuid.UUID) (approvaldomain.Approval, error)
 	Approve(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error
 	Reject(ctx context.Context, approvalID uuid.UUID, decidedBy, note string) error
@@ -40,16 +40,15 @@ func (h *Handler) listPending(w http.ResponseWriter, r *http.Request) {
 	if !requireScope(w, r, scopeNexusApprovalsDecide) {
 		return
 	}
-	list, err := h.uc.ListPending(r.Context(), defaultListLimit)
+	// Tenancy filter en SQL para no truncar el LIMIT con rows de otros orgs.
+	orgID, allowAll := requestOrgScope(r)
+	list, err := h.uc.ListPending(r.Context(), defaultListLimit, orgID, allowAll)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list pending approvals failed")
 		return
 	}
 	out := make([]approvaldto.ApprovalResponse, 0, len(list))
 	for _, a := range list {
-		if !canAccessApprovalOrg(r, a) {
-			continue
-		}
 		out = append(out, toApprovalResponse(a))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})

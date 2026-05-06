@@ -7,8 +7,10 @@ import (
 )
 
 // RequestLister es el port para obtener requests históticas para análisis.
+// El learning analyzer corre cross-org (admin scope), de ahí que el único
+// call site invoque List con allowAll=true.
 type RequestLister interface {
-	List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error)
+	List(ctx context.Context, status, actionType string, limit int, orgID *string, allowAll bool) ([]requestdomain.Request, error)
 }
 
 // InMemoryPatternAnalyzer analiza patrones sobre requests en memoria.
@@ -22,7 +24,8 @@ func NewInMemoryPatternAnalyzer(rl RequestLister) *InMemoryPatternAnalyzer {
 
 func (a *InMemoryPatternAnalyzer) Analyze(ctx context.Context, timeWindowDays, minSampleSize int, minApprovalRate float64) ([]Pattern, error) {
 	// Obtener todas las requests que pasaron por approval
-	allRequests, err := a.requestLister.List(ctx, "", "", 10000)
+	// Learning analyzer es admin/cross-org: ver todas las requests para detectar patrones.
+	allRequests, err := a.requestLister.List(ctx, "", "", 10000, nil, true)
 	if err != nil {
 		return nil, err
 	}

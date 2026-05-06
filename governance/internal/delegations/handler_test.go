@@ -43,10 +43,28 @@ func (f *fakeDelegationRepo) GetByID(_ context.Context, id uuid.UUID) (domain.De
 	return d, nil
 }
 
-func (f *fakeDelegationRepo) ListByAgentID(_ context.Context, agentID string) ([]domain.Delegation, error) {
-	var out []domain.Delegation
+func (f *fakeDelegationRepo) ExistsByAgent(_ context.Context, agentID string) (bool, error) {
 	for _, d := range f.items {
 		if d.AgentID == agentID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeDelegationRepo) ListByAgentID(_ context.Context, agentID string, orgID *string) ([]domain.Delegation, error) {
+	var out []domain.Delegation
+	for _, d := range f.items {
+		if d.AgentID != agentID {
+			continue
+		}
+		// Espejar el filtro SQL del repo Postgres: incluir global (org_id IS NULL)
+		// y match por org. Si orgID es nil, sólo devolver globales.
+		if d.OrgID == nil {
+			out = append(out, d)
+			continue
+		}
+		if orgID != nil && *d.OrgID == *orgID {
 			out = append(out, d)
 		}
 	}
@@ -330,6 +348,53 @@ func TestDelegations_CheckDelegation_RespectsOrgID(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("expected false when delegation belongs to another org")
+	}
+}
+
+// Regresión B.1: el filtro de tenancy en SQL no debe convertir un agente
+// "restringido en otro org" en "no restringido". El edge case ocurre cuando
+// el agente tiene delegaciones sólo en orgs distintos al del caller — la
+// lista filtrada queda vacía pero el agente sigue restringido y la respuesta
+// debe ser false.
+func TestDelegations_CheckDelegation_RestrictedInOtherOrgNotEscalable(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	uc := NewUsecases(repo)
+
+	orgA := "org-a"
+	orgB := "org-b"
+	// El agente tiene delegación SÓLO en orgA. orgB pregunta.
+	repo.Create(context.Background(), domain.Delegation{
+		OrgID:              &orgA,
+		OwnerID:            "team",
+		AgentID:            "bot",
+		AllowedActionTypes: []string{"treasury.transfer"},
+		Enabled:            true,
+	})
+
+	ok, _, err := uc.CheckDelegation(context.Background(), "bot", "treasury.transfer", &orgB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("agent restricted in another org must NOT become unrestricted in this org")
+	}
+}
+
+// Regresión B.1: agente que NO tiene ninguna delegación en ningún org
+// debe seguir siendo irrestricto (compat PoC).
+func TestDelegations_CheckDelegation_NoDelegationAnywhereIsUnrestricted(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	uc := NewUsecases(repo)
+
+	orgA := "org-a"
+	ok, _, err := uc.CheckDelegation(context.Background(), "no-delegations-bot", "any.action", &orgA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("agent with zero delegations must be unrestricted (PoC compat)")
 	}
 }
 

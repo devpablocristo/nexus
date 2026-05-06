@@ -30,7 +30,7 @@ type requestUsecase interface {
 	Simulate(ctx context.Context, in SubmitInput) (SimulateOutput, error)
 	ReplaySimulate(ctx context.Context, in ReplaySimulateInput) (ReplaySimulateOutput, error)
 	GetByID(ctx context.Context, id uuid.UUID) (requestdomain.Request, error)
-	List(ctx context.Context, status, actionType string, limit int) ([]requestdomain.Request, error)
+	List(ctx context.Context, status, actionType string, limit int, orgID *string, allowAll bool) ([]requestdomain.Request, error)
 	ReportResult(ctx context.Context, requestID uuid.UUID, in ReportResultInput) error
 	Attest(ctx context.Context, requestID uuid.UUID, in AttestInput) (requestdomain.Attestation, error)
 	GetAttestation(ctx context.Context, requestID uuid.UUID) (requestdomain.Attestation, error)
@@ -226,19 +226,41 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 			limit = parsed
 		}
 	}
-	list, err := h.uc.List(r.Context(), status, actionType, limit)
+	// Tenancy filter aplicado en SQL (no post-filter): así el LIMIT no se
+	// llena con rows de otros orgs antes del filtro y el caller ve el conteo
+	// real para su tenant.
+	orgID, allowAll := requestOrgScope(r)
+	list, err := h.uc.List(r.Context(), status, actionType, limit, orgID, allowAll)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list requests failed")
 		return
 	}
 	out := make([]requestdto.RequestResponse, 0, len(list))
 	for _, req := range list {
-		if !canAccessRequestOrg(r, req) {
-			continue
-		}
 		out = append(out, toRequestResponse(req))
 	}
 	httpjson.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+// requestOrgScope extrae la regla de tenancy del request HTTP. Espeja la
+// semántica de canAccessRequestOrg pero la traduce a parámetros que el repo
+// pueda aplicar en SQL.
+//   - cross-org admin scope → allowAll=true.
+//   - X-Org-ID presente → orgID=&value, allowAll=false (NULL no incluido).
+//   - sin auth context (dev/local) → allowAll=true para no romper smoke.
+//   - sino → orgID=nil, allowAll=false (sólo NULL — comportamiento legacy).
+func requestOrgScope(r *http.Request) (*string, bool) {
+	if requestHasScope(r, scopeNexusCrossOrg) {
+		return nil, true
+	}
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if orgID != "" {
+		return &orgID, false
+	}
+	if requestHasNoAuthContext(r) {
+		return nil, true
+	}
+	return nil, false
 }
 
 func (h *Handler) getByID(w http.ResponseWriter, r *http.Request) {
@@ -543,14 +565,16 @@ func (h *Handler) simulateApproval(w http.ResponseWriter, r *http.Request) {
 
 func toAttestResponse(a requestdomain.Attestation) requestdto.AttestResponse {
 	return requestdto.AttestResponse{
-		ID:           a.ID.String(),
-		RequestID:    a.RequestID.String(),
-		Status:       a.Status,
-		ProviderRefs: a.ProviderRefs,
-		Signature:    a.Signature,
-		Attester:     a.Attester,
-		Metadata:     a.Metadata,
-		CreatedAt:    a.CreatedAt.Format(time.RFC3339),
+		ID:                a.ID.String(),
+		RequestID:         a.RequestID.String(),
+		Status:            a.Status,
+		ProviderRefs:      a.ProviderRefs,
+		Signature:         a.Signature,
+		Attester:          a.Attester,
+		Metadata:          a.Metadata,
+		CreatedAt:         a.CreatedAt.Format(time.RFC3339),
+		Verified:          a.Verified,
+		VerificationError: a.VerificationError,
 	}
 }
 

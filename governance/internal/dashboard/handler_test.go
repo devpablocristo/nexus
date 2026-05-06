@@ -18,7 +18,7 @@ type fakeRequestLister struct {
 	requests []requestdomain.Request
 }
 
-func (r *fakeRequestLister) List(_ context.Context, _, _ string, _ int) ([]requestdomain.Request, error) {
+func (r *fakeRequestLister) List(_ context.Context, _, _ string, _ int, _ *string, _ bool) ([]requestdomain.Request, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.requests, nil
