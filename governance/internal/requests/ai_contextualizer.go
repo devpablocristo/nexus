@@ -59,7 +59,7 @@ func (c *coreAIContextualizer) Summarize(ctx context.Context, input SummarizeInp
 	return resp.Text, false, nil
 }
 
-const systemPrompt = `Sos un asistente de Nexus Review. Tu tarea es resumir una request de forma clara y concisa para que un humano aprobador pueda decidir en segundos.
+const systemPrompt = `Sos un asistente de Nexus Governance. Tu tarea es resumir una request de forma clara y concisa para que un humano aprobador pueda decidir en segundos.
 
 Formato:
 - Quién pide y qué pide (1 línea)

@@ -103,7 +103,7 @@ func (a *AIProposer) askLLM(ctx context.Context, pattern Pattern) generatedField
 	return fields
 }
 
-const proposerSystemPrompt = `Sos un experto en gobernanza de Nexus Review. Analizás patrones de aprobación y generás propuestas de políticas CEL.
+const proposerSystemPrompt = `Sos un experto en gobernanza de Nexus. Analizás patrones de aprobación y generás propuestas de políticas CEL.
 
 Respondé SOLO con un JSON válido con esta estructura:
 {
