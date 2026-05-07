@@ -3,7 +3,7 @@ module github.com/devpablocristo/nexus/governance
 go 1.26.1
 
 require (
-	github.com/devpablocristo/core/ai/go v0.1.0
+	github.com/devpablocristo/core/ai/go v0.3.0
 	github.com/devpablocristo/core/authn/go v0.2.1
 	github.com/devpablocristo/core/databases/postgres/go v0.1.1
 	github.com/devpablocristo/core/errors/go v0.1.0
