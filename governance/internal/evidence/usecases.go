@@ -146,11 +146,13 @@ func buildRequestEvidence(req requestdomain.Request) evidencedomain.RequestEvide
 			TargetSystem:   req.TargetSystem,
 			TargetResource: req.TargetResource,
 		},
-		Params:    req.Params,
-		Reason:    req.Reason,
-		Context:   req.Context,
-		AISummary: req.AISummary,
-		CreatedAt: req.CreatedAt.Format(time.RFC3339),
+		ActionBinding: req.ActionBinding,
+		BindingHash:   req.BindingHash,
+		Params:        sanitizeEvidenceMap(req.Params),
+		Reason:        req.Reason,
+		Context:       req.Context,
+		AISummary:     req.AISummary,
+		CreatedAt:     req.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -197,7 +199,7 @@ func buildApprovalEvidence(a approvaldomain.Approval) evidencedomain.ApprovalEvi
 func buildExecutionEvidence(req requestdomain.Request) evidencedomain.ExecutionEvidence {
 	ee := evidencedomain.ExecutionEvidence{
 		Status: string(req.Status),
-		Result: req.ExecutionResult,
+		Result: sanitizeEvidenceMap(req.ExecutionResult),
 		Error:  req.ErrorMessage,
 	}
 	if req.ExecutedAt != nil {
@@ -208,13 +210,15 @@ func buildExecutionEvidence(req requestdomain.Request) evidencedomain.ExecutionE
 
 func buildAttestationEvidence(a requestdomain.Attestation) evidencedomain.AttestationEvidence {
 	return evidencedomain.AttestationEvidence{
-		ID:           a.ID.String(),
-		Status:       a.Status,
-		ProviderRefs: a.ProviderRefs,
-		Signature:    a.Signature,
-		Attester:     a.Attester,
-		Metadata:     a.Metadata,
-		CreatedAt:    a.CreatedAt.Format(time.RFC3339),
+		ID:                a.ID.String(),
+		Status:            a.Status,
+		ProviderRefs:      sanitizeEvidenceMap(a.ProviderRefs),
+		Signature:         a.Signature,
+		Attester:          a.Attester,
+		Metadata:          sanitizeEvidenceMap(a.Metadata),
+		CreatedAt:         a.CreatedAt.Format(time.RFC3339),
+		Verified:          a.Verified,
+		VerificationError: a.VerificationError,
 	}
 }
 
@@ -226,8 +230,47 @@ func buildTimeline(events []auditdomain.RequestEvent) []evidencedomain.TimelineE
 			Actor:   e.ActorID,
 			At:      e.CreatedAt.Format(time.RFC3339),
 			Summary: e.Summary,
-			Data:    e.Data,
+			Data:    sanitizeEvidenceMap(e.Data),
 		})
 	}
 	return timeline
+}
+
+func sanitizeEvidenceMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return in
+	}
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		if isSensitiveEvidenceKey(key) {
+			out[key] = "***"
+			continue
+		}
+		out[key] = sanitizeEvidenceValue(value)
+	}
+	return out
+}
+
+func sanitizeEvidenceValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return sanitizeEvidenceMap(v)
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = sanitizeEvidenceValue(item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func isSensitiveEvidenceKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "password", "passwd", "secret", "token", "api_key", "apikey", "authorization", "private_key", "client_secret":
+		return true
+	default:
+		return false
+	}
 }

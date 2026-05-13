@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
 	"fmt"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,14 +17,14 @@ import (
 
 // Sentinel errors
 var (
-	ErrNotFound = domainerr.NotFound("not found")
+	ErrNotFound   = domainerr.NotFound("not found")
 	ErrNotPending = domainerr.Conflict("proposal is not pending")
 )
 
 // Repository define el port de persistencia para policy proposals.
 type Repository interface {
 	CreateProposal(ctx context.Context, p learningdomain.PolicyProposal) (learningdomain.PolicyProposal, error)
-	ListPendingProposals(ctx context.Context, limit int) ([]learningdomain.PolicyProposal, error)
+	ListPendingProposals(ctx context.Context, limit int, orgID *string, allowAll bool) ([]learningdomain.PolicyProposal, error)
 	GetProposalByID(ctx context.Context, id uuid.UUID) (learningdomain.PolicyProposal, error)
 	UpdateProposal(ctx context.Context, p learningdomain.PolicyProposal) (learningdomain.PolicyProposal, error)
 }
@@ -66,13 +66,13 @@ func (r *PostgresRepository) CreateProposal(ctx context.Context, p learningdomai
 	}
 	_, err := r.db.Pool().Exec(ctx, `
 		INSERT INTO policy_proposals (
-			id, proposed_name, proposed_description, proposed_expression, proposed_effect,
+			id, org_id, proposed_name, proposed_description, proposed_expression, proposed_effect,
 			proposed_action_type, proposed_priority,
 			pattern_summary, confidence, sample_size, time_window,
 			status, decided_by, decided_at, policy_id, created_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 	`,
-		p.ID, p.ProposedName, p.ProposedDescription, p.ProposedExpression, p.ProposedEffect,
+		p.ID, p.OrgID, p.ProposedName, p.ProposedDescription, p.ProposedExpression, p.ProposedEffect,
 		p.ProposedActionType, p.ProposedPriority,
 		p.PatternSummary, p.Confidence, p.SampleSize, p.TimeWindow,
 		p.Status, p.DecidedBy, p.DecidedAt, p.PolicyID, p.CreatedAt,
@@ -83,12 +83,25 @@ func (r *PostgresRepository) CreateProposal(ctx context.Context, p learningdomai
 	return p, nil
 }
 
-func (r *PostgresRepository) ListPendingProposals(ctx context.Context, limit int) ([]learningdomain.PolicyProposal, error) {
-	query := selectProposalSQL + ` WHERE status = 'pending' ORDER BY created_at ASC`
-	if limit > 0 {
-		query += fmt.Sprintf(` LIMIT %d`, limit)
+func (r *PostgresRepository) ListPendingProposals(ctx context.Context, limit int, orgID *string, allowAll bool) ([]learningdomain.PolicyProposal, error) {
+	query := selectProposalSQL + ` WHERE status = 'pending'`
+	args := []any{}
+	argN := 1
+	if !allowAll {
+		if orgID != nil {
+			query += fmt.Sprintf(` AND org_id = $%d`, argN)
+			args = append(args, *orgID)
+			argN++
+		} else {
+			query += ` AND org_id IS NULL`
+		}
 	}
-	rows, err := r.db.Pool().Query(ctx, query)
+	query += ` ORDER BY created_at ASC`
+	if limit > 0 {
+		query += fmt.Sprintf(` LIMIT $%d`, argN)
+		args = append(args, limit)
+	}
+	rows, err := r.db.Pool().Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list pending proposals: %w", err)
 	}
@@ -134,7 +147,7 @@ func (r *PostgresRepository) UpdateProposal(ctx context.Context, p learningdomai
 // --- Scanner ---
 
 const selectProposalSQL = `
-	SELECT id, proposed_name, proposed_description, proposed_expression, proposed_effect,
+	SELECT id, org_id, proposed_name, proposed_description, proposed_expression, proposed_effect,
 	       proposed_action_type, proposed_priority,
 	       pattern_summary, confidence, sample_size, time_window,
 	       status, decided_by, decided_at, policy_id, created_at
@@ -147,7 +160,7 @@ type proposalScanRow interface {
 func scanProposal(row proposalScanRow) (learningdomain.PolicyProposal, error) {
 	var p learningdomain.PolicyProposal
 	if err := row.Scan(
-		&p.ID, &p.ProposedName, &p.ProposedDescription, &p.ProposedExpression, &p.ProposedEffect,
+		&p.ID, &p.OrgID, &p.ProposedName, &p.ProposedDescription, &p.ProposedExpression, &p.ProposedEffect,
 		&p.ProposedActionType, &p.ProposedPriority,
 		&p.PatternSummary, &p.Confidence, &p.SampleSize, &p.TimeWindow,
 		&p.Status, &p.DecidedBy, &p.DecidedAt, &p.PolicyID, &p.CreatedAt,

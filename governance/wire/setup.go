@@ -98,18 +98,32 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 
 	attestationStore := requests.NewPostgresAttestationStore(db.Pool())
 
-	// B.3: Attestation verifier opt-in. En esta fase sólo aceptamos "none" (o
-	// vacío). Cualquier otro valor causa fail-fast en boot — evita el caso
-	// donde alguien setea "hmac" esperando verificación criptográfica y
-	// obtiene falsos positivos porque el verifier real no está implementado.
+	// B.3: Attestation verifier real. En producción no se permite "none": una
+	// attestation sin verificación criptográfica es sólo un claim, no evidencia.
 	attestVerifierMode := strings.TrimSpace(os.Getenv("GOVERNANCE_ATTESTATION_VERIFIER"))
-	if attestVerifierMode != "" && attestVerifierMode != "none" {
-		return nil, nil, fmt.Errorf(
-			"GOVERNANCE_ATTESTATION_VERIFIER=%q not implemented in this version (only 'none' is supported)",
-			attestVerifierMode)
+	if attestVerifierMode == "" {
+		attestVerifierMode = "none"
+	}
+	var attestVerifier requests.AttestationVerifier
+	switch attestVerifierMode {
+	case "none":
+		if governanceProdEnv() {
+			db.Close()
+			return nil, nil, fmt.Errorf("GOVERNANCE_ATTESTATION_VERIFIER=none is not allowed in production")
+		}
+	case "hmac", "hmac-sha256":
+		verifier, err := requests.NewHMACAttestationVerifier(os.Getenv("GOVERNANCE_ATTESTATION_HMAC_SECRET"))
+		if err != nil {
+			db.Close()
+			return nil, nil, err
+		}
+		attestVerifier = verifier
+	default:
+		db.Close()
+		return nil, nil, fmt.Errorf("unsupported GOVERNANCE_ATTESTATION_VERIFIER=%q", attestVerifierMode)
 	}
 
-	reqUC := requests.NewUsecases(reqRepo, policyLister, approvalRepo, evaluator,
+	reqOptions := []requests.Option{
 		requests.WithIdempotencyStore(idemStore),
 		requests.WithAuditSink(auditSink),
 		requests.WithRiskConfig(riskConfig),
@@ -120,13 +134,14 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 		requests.WithActionTypeChecker(newActionTypeCheckerAdapter(actionTypeUC)),
 		requests.WithDelegationChecker(newDelegationCheckerAdapter(delegationUC)),
 		requests.WithAttestationStore(attestationStore),
-		// AttestationVerifier intencionalmente NO inyectado en esta fase: las
-		// attestations se persistirán con verified=false y verification_error=
-		// "verifier_not_configured" para que el caller pueda decidir.
 		requests.WithApprovalGetter(approvalRepo),
 		requests.WithApprovalCallbacks(callbackPublisher),
 		requests.WithResultReportStore(resultReportStore),
-	)
+	}
+	if attestVerifier != nil {
+		reqOptions = append(reqOptions, requests.WithAttestationVerifier(attestVerifier))
+	}
+	reqUC := requests.NewUsecases(reqRepo, policyLister, approvalRepo, evaluator, reqOptions...)
 	approvalUC := approvals.NewUsecases(approvalRepo, reqRepo).
 		WithAuditSink(auditSink).
 		WithApprovalCallbacks(callbackPublisher).
@@ -200,4 +215,14 @@ func NewServer(cfg Config) (http.Handler, func(), error) {
 	}
 
 	return authMW(mux), cleanup, nil
+}
+
+func governanceProdEnv() bool {
+	for _, key := range []string{"GOVERNANCE_ENV", "APP_ENV", "ENVIRONMENT"} {
+		switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+		case "prod", "production":
+			return true
+		}
+	}
+	return false
 }

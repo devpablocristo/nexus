@@ -1,11 +1,11 @@
 package learning
 
 import (
-	"github.com/devpablocristo/core/errors/go/domainerr"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	learningdomain "github.com/devpablocristo/nexus/governance/internal/learning/usecases/domain"
 	requestdomain "github.com/devpablocristo/nexus/governance/internal/requests/usecases/domain"
+	"github.com/google/uuid"
 )
 
 // --- Fakes ---
@@ -50,12 +50,21 @@ func (r *fakeProposalRepo) CreateProposal(_ context.Context, p learningdomain.Po
 	return p, nil
 }
 
-func (r *fakeProposalRepo) ListPendingProposals(_ context.Context, limit int) ([]learningdomain.PolicyProposal, error) {
+func (r *fakeProposalRepo) ListPendingProposals(_ context.Context, limit int, orgID *string, allowAll bool) ([]learningdomain.PolicyProposal, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []learningdomain.PolicyProposal
 	for _, id := range r.order {
 		p := r.byID[id]
+		if !allowAll {
+			if orgID != nil {
+				if p.OrgID == nil || *p.OrgID != *orgID {
+					continue
+				}
+			} else if p.OrgID != nil {
+				continue
+			}
+		}
 		if p.Status == learningdomain.ProposalStatusPending {
 			out = append(out, p)
 		}
@@ -805,7 +814,7 @@ func TestUsecases_ListPendingProposals(t *testing.T) {
 		seedProposalWithStatus(t, repo, learningdomain.ProposalStatusAccepted)
 		seedProposalWithStatus(t, repo, learningdomain.ProposalStatusDismissed)
 
-		list, err := uc.ListPendingProposals(context.Background(), 100)
+		list, err := uc.ListPendingProposals(context.Background(), 100, nil, true)
 		if err != nil {
 			t.Fatalf("error inesperado: %v", err)
 		}

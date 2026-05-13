@@ -5,17 +5,17 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"github.com/devpablocristo/core/http/go/httpjson"
 	learningdto "github.com/devpablocristo/nexus/governance/internal/learning/handler/dto"
 	learningdomain "github.com/devpablocristo/nexus/governance/internal/learning/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/errors/go/domainerr"
 )
 
 const defaultListLimit = 50
 
 type learningUsecase interface {
-	ListPendingProposals(ctx context.Context, limit int) ([]learningdomain.PolicyProposal, error)
+	ListPendingProposals(ctx context.Context, limit int, orgID *string, allowAll bool) ([]learningdomain.PolicyProposal, error)
 	GetProposalByID(ctx context.Context, id uuid.UUID) (learningdomain.PolicyProposal, error)
 	AcceptProposal(ctx context.Context, id uuid.UUID, decidedBy string) (*uuid.UUID, error)
 	DismissProposal(ctx context.Context, id uuid.UUID, decidedBy string) error
@@ -44,7 +44,8 @@ func (h *Handler) listProposals(w http.ResponseWriter, r *http.Request) {
 	if !requireScope(w, r, scopeNexusLearningRead, scopeNexusLearningAdmin) {
 		return
 	}
-	list, err := h.uc.ListPendingProposals(r.Context(), defaultListLimit)
+	orgID, allowAll := proposalOrgScope(r)
+	list, err := h.uc.ListPendingProposals(r.Context(), defaultListLimit, orgID, allowAll)
 	if err != nil {
 		httpjson.WriteFlatInternalError(w, err, "list proposals failed")
 		return
@@ -70,6 +71,10 @@ func (h *Handler) getProposal(w http.ResponseWriter, r *http.Request) {
 		writeLearningUsecaseError(w, err)
 		return
 	}
+	if !canAccessProposalOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "proposal org is not allowed for this principal")
+		return
+	}
 	httpjson.WriteJSON(w, http.StatusOK, toProposalResponse(p))
 }
 
@@ -85,6 +90,15 @@ func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
 	var body learningdto.ProposalDecisionRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	p, err := h.uc.GetProposalByID(r.Context(), id)
+	if err != nil {
+		writeLearningUsecaseError(w, err)
+		return
+	}
+	if !canAccessProposalOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "proposal org is not allowed for this principal")
 		return
 	}
 	policyID, err := h.uc.AcceptProposal(r.Context(), id, decisionActorID(r, body.DecidedBy))
@@ -111,6 +125,15 @@ func (h *Handler) dismiss(w http.ResponseWriter, r *http.Request) {
 	var body learningdto.ProposalDecisionRequest
 	if err := httpjson.DecodeJSON(r, &body); err != nil {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
+		return
+	}
+	p, err := h.uc.GetProposalByID(r.Context(), id)
+	if err != nil {
+		writeLearningUsecaseError(w, err)
+		return
+	}
+	if !canAccessProposalOrg(r, p) {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "proposal org is not allowed for this principal")
 		return
 	}
 	if err := h.uc.DismissProposal(r.Context(), id, decisionActorID(r, body.DecidedBy)); err != nil {
@@ -141,7 +164,13 @@ func (h *Handler) createProposal(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", "invalid json")
 		return
 	}
+	orgID, ok := bindProposalOrgToPrincipal(r, body.OrgID)
+	if !ok {
+		httpjson.WriteFlatError(w, http.StatusForbidden, "FORBIDDEN", "proposal org is not allowed for this principal")
+		return
+	}
 	candidate := learningdomain.PolicyProposal{
+		OrgID:               orgID,
 		ProposedName:        strings.TrimSpace(body.ProposedName),
 		ProposedDescription: strings.TrimSpace(body.ProposedDescription),
 		ProposedExpression:  strings.TrimSpace(body.ProposedExpression),
@@ -189,6 +218,9 @@ func toProposalResponse(p learningdomain.PolicyProposal) learningdto.ProposalRes
 		DecidedBy:           p.DecidedBy,
 		CreatedAt:           p.CreatedAt.Format("2006-01-02T15:04:05Z"),
 	}
+	if p.OrgID != nil {
+		resp.OrgID = strings.TrimSpace(*p.OrgID)
+	}
 	if p.DecidedAt != nil {
 		s := p.DecidedAt.Format("2006-01-02T15:04:05Z")
 		resp.DecidedAt = &s
@@ -217,4 +249,53 @@ func decisionActorID(r *http.Request, explicit string) string {
 		return value
 	}
 	return strings.TrimSpace(r.Header.Get("X-User-ID"))
+}
+
+func proposalOrgScope(r *http.Request) (*string, bool) {
+	if requestHasScope(r, scopeNexusCrossOrg) {
+		return nil, true
+	}
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if orgID != "" {
+		return &orgID, false
+	}
+	if requestHasNoAuthContext(r) {
+		return nil, true
+	}
+	return nil, false
+}
+
+func bindProposalOrgToPrincipal(r *http.Request, requested string) (*string, bool) {
+	requested = strings.TrimSpace(requested)
+	principalOrg := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if principalOrg != "" {
+		if requested != "" && requested != principalOrg {
+			return nil, false
+		}
+		return &principalOrg, true
+	}
+	if requested == "" {
+		if requestHasNoAuthContext(r) || requestHasScope(r, scopeNexusCrossOrg) {
+			return nil, true
+		}
+		return nil, false
+	}
+	if requestHasScope(r, scopeNexusCrossOrg) || requestHasNoAuthContext(r) {
+		return &requested, true
+	}
+	return nil, false
+}
+
+func canAccessProposalOrg(r *http.Request, p learningdomain.PolicyProposal) bool {
+	if requestHasScope(r, scopeNexusCrossOrg) {
+		return true
+	}
+	orgID := strings.TrimSpace(r.Header.Get("X-Org-ID"))
+	if orgID != "" {
+		return p.OrgID != nil && strings.TrimSpace(*p.OrgID) == orgID
+	}
+	if requestHasNoAuthContext(r) {
+		return true
+	}
+	return p.OrgID == nil
 }

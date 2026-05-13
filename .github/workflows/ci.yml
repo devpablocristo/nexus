@@ -57,6 +57,10 @@ jobs:
         working-directory: nexus
         run: bash scripts/quality/check-migrations.sh
 
+      - name: Check no AI runtime in Nexus
+        working-directory: nexus
+        run: bash scripts/quality/check-no-ai-runtime.sh
+
   console:
     name: console checks
     runs-on: ubuntu-latest

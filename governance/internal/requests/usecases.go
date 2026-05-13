@@ -19,10 +19,15 @@ import (
 )
 
 const DefaultApprovalTTL = time.Hour
+const ToolIntentSchemaVersion = "tool_intent.v1"
 
 // Ports definidos en el consumidor (usecases)
 type approvalCreator interface {
 	Create(ctx context.Context, a approvaldomain.Approval) (approvaldomain.Approval, error)
+}
+
+type pendingApprovalCreator interface {
+	CreateWithApproval(ctx context.Context, req requestdomain.Request, approval approvaldomain.Approval) (requestdomain.Request, approvaldomain.Approval, error)
 }
 
 // PolicyLister es el port mínimo que requests necesita de policies.
@@ -88,6 +93,7 @@ type Usecases struct {
 	reqRepo        Repository
 	policyRepo     PolicyLister
 	approvalRepo   approvalCreator
+	pendingCreator pendingApprovalCreator
 	idemStore      IdempotencyStore
 	audit          AuditSink
 	evaluator      *PolicyEvaluator
@@ -172,6 +178,10 @@ func WithResultReportStore(s ResultReportStore) Option {
 	return func(u *Usecases) { u.resultReports = s }
 }
 
+func WithPendingApprovalCreator(c pendingApprovalCreator) Option {
+	return func(u *Usecases) { u.pendingCreator = c }
+}
+
 // NewUsecases crea Usecases con los 3 repos obligatorios + evaluator, y opciones para el resto.
 func NewUsecases(
 	reqRepo Repository,
@@ -188,6 +198,9 @@ func NewUsecases(
 		riskConfig:   DefaultRiskConfig(),
 		approvalTTL:  DefaultApprovalTTL,
 	}
+	if c, ok := reqRepo.(pendingApprovalCreator); ok {
+		u.pendingCreator = c
+	}
 	for _, opt := range opts {
 		opt(u)
 	}
@@ -202,6 +215,7 @@ type SubmitInput struct {
 	ActionType     string
 	TargetSystem   string
 	TargetResource string
+	ActionBinding  map[string]any
 	Params         map[string]any
 	Reason         string
 	Context        string
@@ -213,6 +227,7 @@ type SubmitOutput struct {
 	RiskLevel      string
 	DecisionReason string
 	Status         string
+	BindingHash    string
 	Approval       *struct {
 		ID        uuid.UUID
 		ExpiresAt time.Time
@@ -240,6 +255,7 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 		ActionType:     in.ActionType,
 		TargetSystem:   in.TargetSystem,
 		TargetResource: in.TargetResource,
+		ActionBinding:  normalizeActionBinding(in.ActionBinding, in.Params),
 		Params:         in.Params,
 		Reason:         in.Reason,
 		Context:        in.Context,
@@ -252,6 +268,14 @@ func (u *Usecases) Submit(ctx context.Context, in SubmitInput) (SubmitOutput, er
 	}
 	if req.Params == nil {
 		req.Params = make(map[string]any)
+	}
+	bindingHash, err := actionBindingHash(req.ActionBinding)
+	if err != nil {
+		return SubmitOutput{}, err
+	}
+	req.BindingHash = bindingHash
+	if err := validateActionBinding(req); err != nil {
+		return SubmitOutput{}, err
 	}
 
 	var actionTypeRiskOverride *string
@@ -385,6 +409,7 @@ func (u *Usecases) finalizeDecision(ctx context.Context, req requestdomain.Reque
 		RiskLevel:      string(req.RiskLevel),
 		DecisionReason: req.DecisionReason,
 		Status:         string(req.Status),
+		BindingHash:    req.BindingHash,
 	}
 	u.cacheIdempotency(ctx, idemKey, req.ID, out, now.Add(24*time.Hour))
 	return out, nil
@@ -399,14 +424,6 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 	req.Status = requestdomain.StatusPendingApproval
 	req.ExpiresAt = &expiresAt
 	req.UpdatedAt = now
-
-	// Crear request primero (FK: approvals.request_id → requests.id)
-	if _, err := u.reqRepo.Create(ctx, req); err != nil {
-		if domainerr.IsConflict(err) {
-			return u.rebuildSubmitOutputByIdempotency(ctx, in.IdempotencyKey)
-		}
-		return SubmitOutput{}, fmt.Errorf("create request: %w", err)
-	}
 
 	// Determinar si es break-glass
 	breakGlass, requiredApprovals := u.checkBreakGlass(req.ActionType, string(req.RiskLevel))
@@ -429,15 +446,33 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 		BreakGlass:        breakGlass,
 		RequiredApprovals: requiredApprovals,
 	}
-	approval, err := u.approvalRepo.Create(ctx, approval)
-	if err != nil {
-		return SubmitOutput{}, fmt.Errorf("create approval: %w", err)
-	}
-
-	// Actualizar request con approval_id
-	req.ApprovalID = &approval.ID
-	if _, err := u.reqRepo.Update(ctx, req); err != nil {
-		slog.Error("update request with approval_id failed", "error", err, "request_id", req.ID)
+	if u.pendingCreator != nil {
+		createdReq, createdApproval, err := u.pendingCreator.CreateWithApproval(ctx, req, approval)
+		if err != nil {
+			if domainerr.IsConflict(err) {
+				return u.rebuildSubmitOutputByIdempotency(ctx, in.IdempotencyKey)
+			}
+			return SubmitOutput{}, fmt.Errorf("create request approval: %w", err)
+		}
+		req = createdReq
+		approval = createdApproval
+	} else {
+		// Fallback para fakes/tests legacy: producción inyecta CreateWithApproval.
+		if _, err := u.reqRepo.Create(ctx, req); err != nil {
+			if domainerr.IsConflict(err) {
+				return u.rebuildSubmitOutputByIdempotency(ctx, in.IdempotencyKey)
+			}
+			return SubmitOutput{}, fmt.Errorf("create request: %w", err)
+		}
+		createdApproval, err := u.approvalRepo.Create(ctx, approval)
+		if err != nil {
+			return SubmitOutput{}, fmt.Errorf("create approval: %w", err)
+		}
+		approval = createdApproval
+		req.ApprovalID = &approval.ID
+		if _, err := u.reqRepo.Update(ctx, req); err != nil {
+			slog.Error("update request with approval_id failed", "error", err, "request_id", req.ID)
+		}
 	}
 
 	logAuditError(
@@ -466,6 +501,7 @@ func (u *Usecases) handleRequireApproval(ctx context.Context, req requestdomain.
 		RiskLevel:      string(req.RiskLevel),
 		DecisionReason: req.DecisionReason,
 		Status:         string(req.Status),
+		BindingHash:    req.BindingHash,
 		Approval: &struct {
 			ID        uuid.UUID
 			ExpiresAt time.Time
@@ -516,6 +552,81 @@ func orgIDFromParams(params map[string]any) *string {
 	return &value
 }
 
+func normalizeActionBinding(input map[string]any, params map[string]any) map[string]any {
+	if len(input) > 0 {
+		return cloneStringAnyMap(input)
+	}
+	if len(params) == 0 {
+		return nil
+	}
+	raw, ok := params["action_binding"]
+	if !ok {
+		return nil
+	}
+	binding, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return cloneStringAnyMap(binding)
+}
+
+func cloneStringAnyMap(input map[string]any) map[string]any {
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
+func actionBindingHash(binding map[string]any) (string, error) {
+	if len(binding) == 0 {
+		return "", nil
+	}
+	raw, err := json.Marshal(binding)
+	if err != nil {
+		return "", fmt.Errorf("marshal action binding: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func validateActionBinding(req requestdomain.Request) error {
+	if len(req.ActionBinding) == 0 {
+		return nil
+	}
+	required := []string{
+		"schema_version", "org_id", "actor_id", "actor_type", "product_surface",
+		"run_id", "tool_invocation_id", "connector_id", "capability_id",
+		"operation", "target_system", "target_resource", "payload_hash",
+		"idempotency_key",
+	}
+	for _, key := range required {
+		if strings.TrimSpace(fmt.Sprint(req.ActionBinding[key])) == "" {
+			return fmt.Errorf("action_binding.%s is required", key)
+		}
+	}
+	if version := strings.TrimSpace(fmt.Sprint(req.ActionBinding["schema_version"])); version != ToolIntentSchemaVersion {
+		return fmt.Errorf("action_binding.schema_version must be %s", ToolIntentSchemaVersion)
+	}
+	if req.OrgID == nil || strings.TrimSpace(*req.OrgID) == "" {
+		return fmt.Errorf("action_binding requires request org_id")
+	}
+	if bindingOrg := strings.TrimSpace(fmt.Sprint(req.ActionBinding["org_id"])); bindingOrg != strings.TrimSpace(*req.OrgID) {
+		return fmt.Errorf("action_binding.org_id does not match request org_id")
+	}
+	if bindingTarget := strings.TrimSpace(fmt.Sprint(req.ActionBinding["target_system"])); req.TargetSystem != "" && bindingTarget != "" && bindingTarget != req.TargetSystem {
+		return fmt.Errorf("action_binding.target_system does not match request target_system")
+	}
+	if bindingTarget := strings.TrimSpace(fmt.Sprint(req.ActionBinding["target_resource"])); req.TargetResource != "" && bindingTarget != "" && bindingTarget != req.TargetResource {
+		return fmt.Errorf("action_binding.target_resource does not match request target_resource")
+	}
+	return nil
+}
+
 func timePtrRFC3339(value *time.Time) *string {
 	if value == nil || value.IsZero() {
 		return nil
@@ -531,7 +642,8 @@ func (u *Usecases) cacheIdempotency(ctx context.Context, idemKey *string, reqID 
 	resp := map[string]any{
 		"request_id": reqID.String(), "decision": out.Decision,
 		"risk_level": out.RiskLevel, "status": out.Status,
-		"ai_summary": out.AISummary, "ai_degraded": out.AIDegraded,
+		"binding_hash": out.BindingHash,
+		"ai_summary":   out.AISummary, "ai_degraded": out.AIDegraded,
 	}
 	if out.Approval != nil {
 		resp["approval"] = map[string]any{
@@ -570,6 +682,7 @@ func submitOutputFromRequest(req requestdomain.Request) SubmitOutput {
 		RiskLevel:      string(req.RiskLevel),
 		DecisionReason: req.DecisionReason,
 		Status:         string(req.Status),
+		BindingHash:    req.BindingHash,
 		AISummary:      req.AISummary,
 		AIDegraded:     req.AIDegraded,
 	}
@@ -602,6 +715,9 @@ func rebuildOutputFromCache(reqID uuid.UUID, resp map[string]any) SubmitOutput {
 	}
 	if v, ok := resp["status"].(string); ok {
 		out.Status = v
+	}
+	if v, ok := resp["binding_hash"].(string); ok {
+		out.BindingHash = v
 	}
 	if v, ok := resp["ai_summary"].(string); ok {
 		out.AISummary = v
@@ -742,6 +858,9 @@ func requestToMap(r requestdomain.Request) map[string]any {
 		"action_type":     r.ActionType,
 		"target_system":   r.TargetSystem,
 		"target_resource": r.TargetResource,
+		"org_id":          stringOrEmpty(r.OrgID),
+		"action_binding":  r.ActionBinding,
+		"binding_hash":    r.BindingHash,
 		"params":          params,
 		"reason":          r.Reason,
 		"context":         r.Context,
@@ -773,6 +892,7 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 		ActionType:     in.ActionType,
 		TargetSystem:   in.TargetSystem,
 		TargetResource: in.TargetResource,
+		ActionBinding:  normalizeActionBinding(in.ActionBinding, in.Params),
 		Params:         in.Params,
 		Reason:         in.Reason,
 		Context:        in.Context,
@@ -782,6 +902,14 @@ func (u *Usecases) Simulate(ctx context.Context, in SubmitInput) (SimulateOutput
 	}
 	if req.Params == nil {
 		req.Params = make(map[string]any)
+	}
+	bindingHash, err := actionBindingHash(req.ActionBinding)
+	if err != nil {
+		return SimulateOutput{}, err
+	}
+	req.BindingHash = bindingHash
+	if err := validateActionBinding(req); err != nil {
+		return SimulateOutput{}, err
 	}
 	var actionTypeRiskOverride *string
 	if u.actionTypes != nil {
@@ -1184,7 +1312,13 @@ func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in Rep
 	if in.Result == nil {
 		in.Result = make(map[string]any)
 	}
-	resultHash, err := resultPayloadHash(in)
+	sanitizedResult := sanitizeResultPayload(in.Result)
+	resultHash, err := resultPayloadHash(ReportResultInput{
+		Success:      in.Success,
+		Result:       sanitizedResult,
+		DurationMs:   in.DurationMs,
+		ErrorMessage: in.ErrorMessage,
+	})
 	if err != nil {
 		return err
 	}
@@ -1217,7 +1351,7 @@ func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in Rep
 			ActorID:      strings.TrimSpace(in.ActorID),
 			OrgID:        in.OrgID,
 			Success:      in.Success,
-			Result:       sanitizeResultPayload(in.Result),
+			Result:       sanitizedResult,
 			ErrorMessage: in.ErrorMessage,
 			DurationMs:   in.DurationMs,
 			PayloadHash:  resultHash,
@@ -1236,10 +1370,10 @@ func (u *Usecases) ReportResult(ctx context.Context, requestID uuid.UUID, in Rep
 	req.ExecutedAt = &now
 	if in.Success {
 		req.Status = requestdomain.StatusExecuted
-		req.ExecutionResult = in.Result
+		req.ExecutionResult = sanitizedResult
 		logAuditError(
 			u.audit.AppendEvent(ctx, requestID, auditdomain.EventExecuted, "requester", req.RequesterID,
-				"Executed successfully", map[string]any{"result": in.Result, "duration_ms": in.DurationMs}),
+				"Executed successfully", map[string]any{"result": sanitizedResult, "duration_ms": in.DurationMs}),
 			requestID, auditdomain.EventExecuted,
 		)
 		// Feedback loop: registrar éxito para ajustar riesgo futuro

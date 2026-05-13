@@ -8,6 +8,7 @@ type SubmitRequest struct {
 	ActionType     string         `json:"action_type"`
 	TargetSystem   string         `json:"target_system,omitempty"`
 	TargetResource string         `json:"target_resource,omitempty"`
+	ActionBinding  map[string]any `json:"action_binding,omitempty"`
 	Params         map[string]any `json:"params,omitempty"`
 	Reason         string         `json:"reason,omitempty"`
 	Context        string         `json:"context,omitempty"`
@@ -19,6 +20,7 @@ type SubmitResponse struct {
 	RiskLevel      string           `json:"risk_level"`
 	DecisionReason string           `json:"decision_reason"`
 	Status         string           `json:"status"`
+	BindingHash    string           `json:"binding_hash,omitempty"`
 	Approval       *ApprovalPayload `json:"approval,omitempty"`
 	AISummary      string           `json:"ai_summary,omitempty"`
 	AIDegraded     bool             `json:"ai_degraded,omitempty"`
@@ -70,14 +72,14 @@ type AttestRequest struct {
 
 // AttestResponse es la respuesta al registrar una attestation.
 type AttestResponse struct {
-	ID                string         `json:"id"`
-	RequestID         string         `json:"request_id"`
-	Status            string         `json:"status"`
-	ProviderRefs      map[string]any `json:"provider_refs,omitempty"`
-	Signature         string         `json:"signature"`
-	Attester          string         `json:"attester"`
-	Metadata          map[string]any `json:"metadata,omitempty"`
-	CreatedAt         string         `json:"created_at"`
+	ID           string         `json:"id"`
+	RequestID    string         `json:"request_id"`
+	Status       string         `json:"status"`
+	ProviderRefs map[string]any `json:"provider_refs,omitempty"`
+	Signature    string         `json:"signature"`
+	Attester     string         `json:"attester"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+	CreatedAt    string         `json:"created_at"`
 	// Verified indica si la firma fue criptográficamente verificada.
 	// Cuando es false, VerificationError explica por qué (e.g.
 	// "verifier_not_configured"). Los callers (Companion u otros) deben
@@ -141,6 +143,8 @@ type RequestResponse struct {
 	ActionType     string         `json:"action_type"`
 	TargetSystem   string         `json:"target_system,omitempty"`
 	TargetResource string         `json:"target_resource,omitempty"`
+	ActionBinding  map[string]any `json:"action_binding,omitempty"`
+	BindingHash    string         `json:"binding_hash,omitempty"`
 	Params         map[string]any `json:"params,omitempty"`
 	Reason         string         `json:"reason,omitempty"`
 	RiskLevel      string         `json:"risk_level"`

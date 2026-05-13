@@ -4,28 +4,30 @@ import "time"
 
 // EvidencePack es el documento completo de evidencia verificable para una request.
 type EvidencePack struct {
-	Version         string           `json:"version"`
-	GeneratedAt     time.Time        `json:"generated_at"`
-	Request         RequestEvidence  `json:"request"`
-	PolicyEval      PolicyEvidence   `json:"policy_evaluation"`
-	Approval        *ApprovalEvidence `json:"approval,omitempty"`
-	Execution       *ExecutionEvidence    `json:"execution,omitempty"`
-	Attestation     *AttestationEvidence  `json:"attestation,omitempty"`
-	Timeline        []TimelineEvent       `json:"timeline"`
-	Signature       Signature        `json:"signature"`
+	Version     string               `json:"version"`
+	GeneratedAt time.Time            `json:"generated_at"`
+	Request     RequestEvidence      `json:"request"`
+	PolicyEval  PolicyEvidence       `json:"policy_evaluation"`
+	Approval    *ApprovalEvidence    `json:"approval,omitempty"`
+	Execution   *ExecutionEvidence   `json:"execution,omitempty"`
+	Attestation *AttestationEvidence `json:"attestation,omitempty"`
+	Timeline    []TimelineEvent      `json:"timeline"`
+	Signature   Signature            `json:"signature"`
 }
 
 // RequestEvidence contiene la información del request original.
 type RequestEvidence struct {
-	ID        string         `json:"id"`
-	OrgID     string         `json:"org_id,omitempty"`
-	Requester Requester      `json:"requester"`
-	Action    Action         `json:"action"`
-	Params    map[string]any `json:"params,omitempty"`
-	Reason    string         `json:"reason,omitempty"`
-	Context   string         `json:"context,omitempty"`
-	AISummary string         `json:"ai_summary,omitempty"`
-	CreatedAt string         `json:"created_at"`
+	ID            string         `json:"id"`
+	OrgID         string         `json:"org_id,omitempty"`
+	Requester     Requester      `json:"requester"`
+	Action        Action         `json:"action"`
+	ActionBinding map[string]any `json:"action_binding,omitempty"`
+	BindingHash   string         `json:"binding_hash,omitempty"`
+	Params        map[string]any `json:"params,omitempty"`
+	Reason        string         `json:"reason,omitempty"`
+	Context       string         `json:"context,omitempty"`
+	AISummary     string         `json:"ai_summary,omitempty"`
+	CreatedAt     string         `json:"created_at"`
 }
 
 // Requester identifica al solicitante.
@@ -80,13 +82,15 @@ type ExecutionEvidence struct {
 
 // AttestationEvidence contiene la prueba verificable del executor.
 type AttestationEvidence struct {
-	ID           string         `json:"id"`
-	Status       string         `json:"status"`
-	ProviderRefs map[string]any `json:"provider_refs,omitempty"`
-	Signature    string         `json:"signature"`
-	Attester     string         `json:"attester"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
-	CreatedAt    string         `json:"created_at"`
+	ID                string         `json:"id"`
+	Status            string         `json:"status"`
+	ProviderRefs      map[string]any `json:"provider_refs,omitempty"`
+	Signature         string         `json:"signature"`
+	Attester          string         `json:"attester"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
+	CreatedAt         string         `json:"created_at"`
+	Verified          bool           `json:"verified"`
+	VerificationError string         `json:"verification_error,omitempty"`
 }
 
 // TimelineEvent es un evento en la línea de tiempo de la request.

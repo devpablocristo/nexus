@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	learningdomain "github.com/devpablocristo/nexus/governance/internal/learning/usecases/domain"
+	"github.com/google/uuid"
 )
 
 type Usecases struct {
@@ -32,8 +32,8 @@ func (u *Usecases) WithProposer(p PolicyProposer) *Usecases {
 	return u
 }
 
-func (u *Usecases) ListPendingProposals(ctx context.Context, limit int) ([]learningdomain.PolicyProposal, error) {
-	return u.repo.ListPendingProposals(ctx, limit)
+func (u *Usecases) ListPendingProposals(ctx context.Context, limit int, orgID *string, allowAll bool) ([]learningdomain.PolicyProposal, error) {
+	return u.repo.ListPendingProposals(ctx, limit, orgID, allowAll)
 }
 
 func (u *Usecases) GetProposalByID(ctx context.Context, id uuid.UUID) (learningdomain.PolicyProposal, error) {
@@ -153,4 +153,3 @@ func (u *Usecases) AnalyzeAndPropose(ctx context.Context) (int, error) {
 	}
 	return created, nil
 }
-

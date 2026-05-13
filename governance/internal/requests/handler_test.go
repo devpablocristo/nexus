@@ -96,6 +96,27 @@ func (r *fakeRequestRepo) Update(_ context.Context, req requestdomain.Request) (
 	return req, nil
 }
 
+type atomicRequestRepo struct {
+	*fakeRequestRepo
+	approval approvaldomain.Approval
+}
+
+func (r *atomicRequestRepo) CreateWithApproval(_ context.Context, req requestdomain.Request, approval approvaldomain.Approval) (requestdomain.Request, approvaldomain.Approval, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if req.ID == uuid.Nil {
+		req.ID = uuid.New()
+	}
+	if approval.ID == uuid.Nil {
+		approval.ID = uuid.New()
+	}
+	approval.RequestID = req.ID
+	req.ApprovalID = &approval.ID
+	r.byID[req.ID] = req
+	r.approval = approval
+	return req, approval, nil
+}
+
 type fakeApprovalRepo struct {
 	mu   sync.RWMutex
 	byID map[uuid.UUID]approvaldomain.Approval
@@ -430,6 +451,94 @@ func TestSubmitPublishesApprovalPendingCallbackWithOrgIDFromParams(t *testing.T)
 	}
 	if storedApproval.OrgID == nil || *storedApproval.OrgID != "00000000-0000-0000-0000-000000000001" {
 		t.Fatalf("expected approval org_id stored, got %#v", storedApproval.OrgID)
+	}
+}
+
+func TestSubmitRequireApprovalUsesAtomicCreatorWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	reqRepo := &atomicRequestRepo{fakeRequestRepo: newFakeRequestRepo()}
+	uc := requests.NewUsecases(reqRepo, &fakePolicyLister{}, newFakeApprovalRepo(), requests.NewPolicyEvaluator(),
+		requests.WithAuditSink(requests.NewAuditSinkAdapter(&fakeAuditRepo{})),
+		requests.WithApprovalTTL(time.Hour),
+	)
+
+	out, err := uc.Submit(context.Background(), requests.SubmitInput{
+		RequesterType:  "service",
+		RequesterID:    "companion",
+		ActionType:     "alert.silence",
+		TargetSystem:   "pymes",
+		TargetResource: "sale-1",
+		Params:         map[string]any{"org_id": "org-a"},
+		Reason:         "requires approval",
+	})
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if out.Approval == nil {
+		t.Fatal("expected approval")
+	}
+	stored, err := reqRepo.GetByID(context.Background(), out.RequestID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if stored.ApprovalID == nil || *stored.ApprovalID != out.Approval.ID {
+		t.Fatalf("request approval_id was not persisted atomically: %#v", stored.ApprovalID)
+	}
+	if reqRepo.approval.RequestID != out.RequestID {
+		t.Fatalf("approval request_id = %s, want %s", reqRepo.approval.RequestID, out.RequestID)
+	}
+}
+
+func TestSubmitPersistsActionBindingHash(t *testing.T) {
+	t.Parallel()
+
+	reqRepo := newFakeRequestRepo()
+	uc := requests.NewUsecases(reqRepo, &fakePolicyLister{}, newFakeApprovalRepo(), requests.NewPolicyEvaluator(),
+		requests.WithAuditSink(requests.NewAuditSinkAdapter(&fakeAuditRepo{})),
+	)
+	binding := map[string]any{
+		"schema_version":     "tool_intent.v1",
+		"org_id":             "org-a",
+		"actor_id":           "agent-1",
+		"actor_type":         "agent",
+		"product_surface":    "companion",
+		"run_id":             "run-1",
+		"tool_invocation_id": "tool-1",
+		"connector_id":       "connector-1",
+		"capability_id":      "mock.write",
+		"operation":          "mock.write",
+		"target_system":      "mock",
+		"target_resource":    "connector-1",
+		"payload_hash":       "payload-hash",
+		"idempotency_key":    "idem-1",
+	}
+
+	out, err := uc.Submit(context.Background(), requests.SubmitInput{
+		RequesterType:  "service",
+		RequesterID:    "companion",
+		ActionType:     "companion.propose",
+		TargetSystem:   "mock",
+		TargetResource: "connector-1",
+		ActionBinding:  binding,
+		Params:         map[string]any{"org_id": "org-a"},
+		Reason:         "execute exact connector action",
+	})
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if out.BindingHash == "" {
+		t.Fatal("expected binding hash")
+	}
+	stored, err := reqRepo.GetByID(context.Background(), out.RequestID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if stored.BindingHash != out.BindingHash {
+		t.Fatalf("stored binding hash %q != output %q", stored.BindingHash, out.BindingHash)
+	}
+	if stored.ActionBinding["payload_hash"] != "payload-hash" {
+		t.Fatalf("unexpected action binding %+v", stored.ActionBinding)
 	}
 }
 

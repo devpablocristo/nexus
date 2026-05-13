@@ -85,6 +85,7 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 		ActionType:     body.ActionType,
 		TargetSystem:   body.TargetSystem,
 		TargetResource: body.TargetResource,
+		ActionBinding:  body.ActionBinding,
 		Params:         params,
 		Reason:         body.Reason,
 		Context:        body.Context,
@@ -108,7 +109,7 @@ func (h *Handler) simulate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) replaySimulate(w http.ResponseWriter, r *http.Request) {
-	if !requireScope(w, r, scopeNexusRequestsRead) {
+	if !requireScope(w, r, scopeNexusRequestsRead) || !requireScope(w, r, scopeNexusCrossOrg) {
 		return
 	}
 	var body requestdto.ReplaySimulateRequest
@@ -175,6 +176,7 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 		ActionType:     body.ActionType,
 		TargetSystem:   body.TargetSystem,
 		TargetResource: body.TargetResource,
+		ActionBinding:  body.ActionBinding,
 		Params:         params,
 		Reason:         body.Reason,
 		Context:        body.Context,
@@ -188,7 +190,8 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if strings.Contains(errMsg, "missing required param") ||
-			strings.Contains(errMsg, "action_type schema") {
+			strings.Contains(errMsg, "action_type schema") ||
+			strings.Contains(errMsg, "action_binding") {
 			httpjson.WriteFlatError(w, http.StatusBadRequest, "VALIDATION", errMsg)
 			return
 		}
@@ -201,6 +204,7 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 		RiskLevel:      out.RiskLevel,
 		DecisionReason: out.DecisionReason,
 		Status:         out.Status,
+		BindingHash:    out.BindingHash,
 		AISummary:      out.AISummary,
 		AIDegraded:     out.AIDegraded,
 	}
@@ -465,6 +469,7 @@ func (h *Handler) batchSimulate(w http.ResponseWriter, r *http.Request) {
 			ActionType:     req.ActionType,
 			TargetSystem:   req.TargetSystem,
 			TargetResource: req.TargetResource,
+			ActionBinding:  req.ActionBinding,
 			Params:         params,
 			Reason:         req.Reason,
 			Context:        req.Context,
@@ -589,6 +594,8 @@ func toRequestResponse(req requestdomain.Request) requestdto.RequestResponse {
 		ActionType:     req.ActionType,
 		TargetSystem:   req.TargetSystem,
 		TargetResource: req.TargetResource,
+		ActionBinding:  req.ActionBinding,
+		BindingHash:    req.BindingHash,
 		Params:         req.Params,
 		Reason:         req.Reason,
 		RiskLevel:      string(req.RiskLevel),

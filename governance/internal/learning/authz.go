@@ -11,6 +11,7 @@ const (
 	scopeNexusLearningAdmin   = "nexus:policies:admin"
 	scopeNexusLearningRead    = "nexus:requests:read"
 	scopeNexusLearningPropose = "nexus:learning:propose"
+	scopeNexusCrossOrg        = "nexus:cross_org"
 )
 
 func requireScope(w http.ResponseWriter, r *http.Request, scopes ...string) bool {

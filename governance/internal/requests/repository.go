@@ -4,24 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-
 	"fmt"
-	"github.com/devpablocristo/core/errors/go/domainerr"
 	"time"
 
+	"github.com/devpablocristo/core/errors/go/domainerr"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
+	approvaldomain "github.com/devpablocristo/nexus/governance/internal/approvals/usecases/domain"
 	requestdomain "github.com/devpablocristo/nexus/governance/internal/requests/usecases/domain"
 )
 
 // Sentinel errors
 var (
-	ErrNotFound             = domainerr.NotFound("not found")
-	ErrInvalidState         = domainerr.Conflict("request is not in an executable state")
-	ErrIdempotencyConflict  = domainerr.Conflict("idempotency key conflict")
+	ErrNotFound            = domainerr.NotFound("not found")
+	ErrInvalidState        = domainerr.Conflict("request is not in an executable state")
+	ErrIdempotencyConflict = domainerr.Conflict("idempotency key conflict")
 )
 
 // Repository define el port de persistencia para requests.
@@ -76,6 +76,50 @@ func NewPostgresRepository(db *sharedpostgres.DB) *PostgresRepository {
 }
 
 func (r *PostgresRepository) Create(ctx context.Context, req requestdomain.Request) (requestdomain.Request, error) {
+	req = prepareRequestForInsert(req)
+	if err := insertRequest(ctx, r.db.Pool(), req); err != nil {
+		return requestdomain.Request{}, err
+	}
+	return req, nil
+}
+
+// CreateWithApproval persiste request + approval + approval_id en una sola
+// transacción. Es el path crítico para require_approval: evita requests
+// pending_approval huérfanas si falla la creación de la approval.
+func (r *PostgresRepository) CreateWithApproval(ctx context.Context, req requestdomain.Request, approval approvaldomain.Approval) (requestdomain.Request, approvaldomain.Approval, error) {
+	req = prepareRequestForInsert(req)
+	if approval.ID == uuid.Nil {
+		approval.ID = uuid.New()
+	}
+	if approval.CreatedAt.IsZero() {
+		approval.CreatedAt = req.CreatedAt
+	}
+	approval.RequestID = req.ID
+	req.ApprovalID = &approval.ID
+
+	tx, err := r.db.Pool().BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return requestdomain.Request{}, approvaldomain.Approval{}, fmt.Errorf("begin request approval tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := insertRequest(ctx, tx, req); err != nil {
+		return requestdomain.Request{}, approvaldomain.Approval{}, err
+	}
+	if err := insertApproval(ctx, tx, approval); err != nil {
+		return requestdomain.Request{}, approvaldomain.Approval{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return requestdomain.Request{}, approvaldomain.Approval{}, fmt.Errorf("commit request approval tx: %w", err)
+	}
+	return req, approval, nil
+}
+
+type pgExecer interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
+func prepareRequestForInsert(req requestdomain.Request) requestdomain.Request {
 	now := time.Now().UTC()
 	if req.ID == uuid.Nil {
 		req.ID = uuid.New()
@@ -84,19 +128,22 @@ func (r *PostgresRepository) Create(ctx context.Context, req requestdomain.Reque
 		req.CreatedAt = now
 	}
 	req.UpdatedAt = now
+	return req
+}
 
-	_, err := r.db.Pool().Exec(ctx, `
+func insertRequest(ctx context.Context, execer pgExecer, req requestdomain.Request) error {
+	_, err := execer.Exec(ctx, `
 		INSERT INTO requests (
 			id, org_id, idempotency_key, requester_type, requester_id, requester_name,
-			action_type, target_system, target_resource, params, reason, context,
+			action_type, target_system, target_resource, action_binding, binding_hash, params, reason, context,
 			risk_level, decision, decision_reason, policy_id,
 			status, approval_id, execution_result, error_message,
 			ai_summary, ai_degraded,
 			evaluated_at, decided_at, executed_at, expires_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
 	`,
 		req.ID, req.OrgID, req.IdempotencyKey, req.RequesterType, req.RequesterID, req.RequesterName,
-		req.ActionType, req.TargetSystem, req.TargetResource, req.Params, req.Reason, req.Context,
+		req.ActionType, req.TargetSystem, req.TargetResource, req.ActionBinding, req.BindingHash, req.Params, req.Reason, req.Context,
 		req.RiskLevel, req.Decision, req.DecisionReason, req.PolicyID,
 		req.Status, req.ApprovalID, req.ExecutionResult, req.ErrorMessage,
 		req.AISummary, req.AIDegraded,
@@ -104,11 +151,30 @@ func (r *PostgresRepository) Create(ctx context.Context, req requestdomain.Reque
 	)
 	if err != nil {
 		if isUniqueViolation(err) && req.IdempotencyKey != nil && *req.IdempotencyKey != "" {
-			return requestdomain.Request{}, ErrIdempotencyConflict
+			return ErrIdempotencyConflict
 		}
-		return requestdomain.Request{}, fmt.Errorf("insert request: %w", err)
+		return fmt.Errorf("insert request: %w", err)
 	}
-	return req, nil
+	return nil
+}
+
+func insertApproval(ctx context.Context, execer pgExecer, approval approvaldomain.Approval) error {
+	decisionsJSON, err := json.Marshal(approval.Decisions)
+	if err != nil {
+		return fmt.Errorf("marshal approval decisions: %w", err)
+	}
+	if approval.Decisions == nil {
+		decisionsJSON = []byte("[]")
+	}
+	_, err = execer.Exec(ctx, `
+		INSERT INTO approvals (id, org_id, request_id, status, decided_by, decision_note, decided_at, expires_at, created_at, break_glass, required_approvals, decisions)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+	`, approval.ID, approval.OrgID, approval.RequestID, approval.Status, approval.DecidedBy, approval.DecisionNote, approval.DecidedAt,
+		approval.ExpiresAt, approval.CreatedAt, approval.BreakGlass, approval.RequiredApprovals, decisionsJSON)
+	if err != nil {
+		return fmt.Errorf("insert approval: %w", err)
+	}
+	return nil
 }
 
 func isUniqueViolation(err error) bool {
@@ -310,7 +376,7 @@ func (s *PostgresResultReportStore) Save(ctx context.Context, report ResultRepor
 
 const selectRequestSQL = `
 	SELECT id, org_id, idempotency_key, requester_type, requester_id, requester_name,
-	       action_type, target_system, target_resource, params, reason, context,
+	       action_type, target_system, target_resource, action_binding, binding_hash, params, reason, context,
 	       risk_level, decision, decision_reason, policy_id,
 	       status, approval_id, execution_result, error_message,
 	       ai_summary, ai_degraded,
@@ -325,7 +391,7 @@ func scanRequest(row requestScanRow) (requestdomain.Request, error) {
 	var req requestdomain.Request
 	if err := row.Scan(
 		&req.ID, &req.OrgID, &req.IdempotencyKey, &req.RequesterType, &req.RequesterID, &req.RequesterName,
-		&req.ActionType, &req.TargetSystem, &req.TargetResource, &req.Params, &req.Reason, &req.Context,
+		&req.ActionType, &req.TargetSystem, &req.TargetResource, &req.ActionBinding, &req.BindingHash, &req.Params, &req.Reason, &req.Context,
 		&req.RiskLevel, &req.Decision, &req.DecisionReason, &req.PolicyID,
 		&req.Status, &req.ApprovalID, &req.ExecutionResult, &req.ErrorMessage,
 		&req.AISummary, &req.AIDegraded,

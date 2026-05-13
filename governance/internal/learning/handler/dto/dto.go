@@ -10,6 +10,7 @@ type ProposalDecisionRequest struct {
 // detectan patrones y arman una propuesta enriquecida con LLM. Nexus persiste
 // el candidato con status=pending y un humano decide via accept/dismiss.
 type ProposalCreateRequest struct {
+	OrgID               string  `json:"org_id,omitempty"`
 	ProposedName        string  `json:"proposed_name"`
 	ProposedDescription string  `json:"proposed_description,omitempty"`
 	ProposedExpression  string  `json:"proposed_expression"`
@@ -25,6 +26,7 @@ type ProposalCreateRequest struct {
 // ProposalResponse representa una propuesta en la respuesta HTTP.
 type ProposalResponse struct {
 	ID                  string  `json:"id"`
+	OrgID               string  `json:"org_id,omitempty"`
 	ProposedName        string  `json:"proposed_name"`
 	ProposedDescription string  `json:"proposed_description,omitempty"`
 	ProposedExpression  string  `json:"proposed_expression"`

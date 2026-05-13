@@ -18,6 +18,7 @@ const (
 
 type PolicyProposal struct {
 	ID                  uuid.UUID
+	OrgID               *string
 	ProposedName        string
 	ProposedDescription string
 	ProposedExpression  string

@@ -7,23 +7,25 @@ type EvidencePackResponse struct {
 	Request     RequestSection      `json:"request"`
 	PolicyEval  PolicySection       `json:"policy_evaluation"`
 	Approval    *ApprovalSection    `json:"approval,omitempty"`
-	Execution   *ExecutionSection      `json:"execution,omitempty"`
-	Attestation *AttestationSection   `json:"attestation,omitempty"`
-	Timeline    []TimelineEntry       `json:"timeline"`
+	Execution   *ExecutionSection   `json:"execution,omitempty"`
+	Attestation *AttestationSection `json:"attestation,omitempty"`
+	Timeline    []TimelineEntry     `json:"timeline"`
 	Signature   SignatureSection    `json:"signature"`
 }
 
 // RequestSection identifica la request original.
 type RequestSection struct {
-	ID        string         `json:"id"`
-	OrgID     string         `json:"org_id,omitempty"`
-	Requester RequesterInfo  `json:"requester"`
-	Action    ActionInfo     `json:"action"`
-	Params    map[string]any `json:"params,omitempty"`
-	Reason    string         `json:"reason,omitempty"`
-	Context   string         `json:"context,omitempty"`
-	AISummary string         `json:"ai_summary,omitempty"`
-	CreatedAt string         `json:"created_at"`
+	ID            string         `json:"id"`
+	OrgID         string         `json:"org_id,omitempty"`
+	Requester     RequesterInfo  `json:"requester"`
+	Action        ActionInfo     `json:"action"`
+	ActionBinding map[string]any `json:"action_binding,omitempty"`
+	BindingHash   string         `json:"binding_hash,omitempty"`
+	Params        map[string]any `json:"params,omitempty"`
+	Reason        string         `json:"reason,omitempty"`
+	Context       string         `json:"context,omitempty"`
+	AISummary     string         `json:"ai_summary,omitempty"`
+	CreatedAt     string         `json:"created_at"`
 }
 
 // RequesterInfo identifica al solicitante.
@@ -51,13 +53,13 @@ type PolicySection struct {
 
 // ApprovalSection contiene la cadena de aprobación completa.
 type ApprovalSection struct {
-	ID                string             `json:"id"`
-	Status            string             `json:"status"`
-	BreakGlass        bool               `json:"break_glass"`
-	RequiredApprovals int                `json:"required_approvals"`
-	Decisions         []DecisionEntry    `json:"decisions"`
-	FinalDecidedBy    string             `json:"final_decided_by,omitempty"`
-	DecidedAt         string             `json:"decided_at,omitempty"`
+	ID                string          `json:"id"`
+	Status            string          `json:"status"`
+	BreakGlass        bool            `json:"break_glass"`
+	RequiredApprovals int             `json:"required_approvals"`
+	Decisions         []DecisionEntry `json:"decisions"`
+	FinalDecidedBy    string          `json:"final_decided_by,omitempty"`
+	DecidedAt         string          `json:"decided_at,omitempty"`
 }
 
 // DecisionEntry registra una decisión individual.
@@ -78,13 +80,15 @@ type ExecutionSection struct {
 
 // AttestationSection contiene la prueba verificable del executor.
 type AttestationSection struct {
-	ID           string         `json:"id"`
-	Status       string         `json:"status"`
-	ProviderRefs map[string]any `json:"provider_refs,omitempty"`
-	Signature    string         `json:"signature"`
-	Attester     string         `json:"attester"`
-	Metadata     map[string]any `json:"metadata,omitempty"`
-	CreatedAt    string         `json:"created_at"`
+	ID                string         `json:"id"`
+	Status            string         `json:"status"`
+	ProviderRefs      map[string]any `json:"provider_refs,omitempty"`
+	Signature         string         `json:"signature"`
+	Attester          string         `json:"attester"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
+	CreatedAt         string         `json:"created_at"`
+	Verified          bool           `json:"verified"`
+	VerificationError string         `json:"verification_error,omitempty"`
 }
 
 // TimelineEntry es un evento en la línea de tiempo.

@@ -76,11 +76,13 @@ func toEvidenceResponse(pack evidencedomain.EvidencePack) evidencedto.EvidencePa
 				TargetSystem:   pack.Request.Action.TargetSystem,
 				TargetResource: pack.Request.Action.TargetResource,
 			},
-			Params:    pack.Request.Params,
-			Reason:    pack.Request.Reason,
-			Context:   pack.Request.Context,
-			AISummary: pack.Request.AISummary,
-			CreatedAt: pack.Request.CreatedAt,
+			ActionBinding: pack.Request.ActionBinding,
+			BindingHash:   pack.Request.BindingHash,
+			Params:        pack.Request.Params,
+			Reason:        pack.Request.Reason,
+			Context:       pack.Request.Context,
+			AISummary:     pack.Request.AISummary,
+			CreatedAt:     pack.Request.CreatedAt,
 		},
 		PolicyEval: evidencedto.PolicySection{
 			RiskLevel:      pack.PolicyEval.RiskLevel,
@@ -132,13 +134,15 @@ func toEvidenceResponse(pack evidencedomain.EvidencePack) evidencedto.EvidencePa
 	// Attestation (opcional)
 	if pack.Attestation != nil {
 		resp.Attestation = &evidencedto.AttestationSection{
-			ID:           pack.Attestation.ID,
-			Status:       pack.Attestation.Status,
-			ProviderRefs: pack.Attestation.ProviderRefs,
-			Signature:    pack.Attestation.Signature,
-			Attester:     pack.Attestation.Attester,
-			Metadata:     pack.Attestation.Metadata,
-			CreatedAt:    pack.Attestation.CreatedAt,
+			ID:                pack.Attestation.ID,
+			Status:            pack.Attestation.Status,
+			ProviderRefs:      pack.Attestation.ProviderRefs,
+			Signature:         pack.Attestation.Signature,
+			Attester:          pack.Attestation.Attester,
+			Metadata:          pack.Attestation.Metadata,
+			CreatedAt:         pack.Attestation.CreatedAt,
+			Verified:          pack.Attestation.Verified,
+			VerificationError: pack.Attestation.VerificationError,
 		}
 	}
 

@@ -1,3 +1,10 @@
+# Nota de vigencia
+
+Este archivo contiene una auditoría histórica extensa. El contrato actual ya
+incluye `ToolIntent v1`, `binding_hash`, creación atómica de request+approval,
+learning scoped por org y verificación HMAC opcional de attestations. Para la
+guía operativa vigente, usar primero el `README.md` raíz y `governance/openapi.yaml`.
+
 # 1. Comandos ejecutados
 
 | Comando | Resultado resumido | Falló / OK | Alternativa usada | Impacto en confianza |

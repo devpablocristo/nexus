@@ -1,8 +1,8 @@
 # Nexus
 
-Nexus es el producto: incluye **governance** (servicio Go que decide approve/reject,
-audit, evidence) + **console** (UI React) + Postgres local. El layout vive en el
-root del repo.
+Nexus es el producto: incluye **governance** (servicio Go que decide
+`allow`/`deny`/`require_approval`, administra approvals, audit y evidence) +
+**console** (UI React) + Postgres local. El layout vive en el root del repo.
 
 > El servicio **Companion** (`ProductAgent` transversal) y sus capabilities
 > (`connectors`) viven en un proyecto independiente
@@ -16,6 +16,21 @@ root del repo.
 - `console/` — UI React que consume `governance` vía proxy.
 - `Nexus` (sin path) — el producto entero (governance + console).
 - `Companion` (otro repo) es el `ProductAgent` que consume Nexus para gating.
+
+## Contrato gobernado
+
+Las acciones sensibles entran como `ToolIntent v1` dentro de
+`action_binding`. Governance calcula `binding_hash = sha256(canonical_json)`
+y lo devuelve en la decisión. El ejecutor externo, por ejemplo Companion, solo
+puede ejecutar si el hash aprobado coincide con la acción real.
+
+Nexus no incluye runtime LLM, prompts, agentes ni memoria IA. CI ejecuta un
+guardrail para bloquear imports de SDKs/provider IA dentro de `governance/`.
+
+Attestations: en producción `GOVERNANCE_ATTESTATION_VERIFIER` debe ser
+`hmac-sha256` y requiere `GOVERNANCE_ATTESTATION_HMAC_SECRET`. El modo `none`
+queda permitido solo para desarrollo/local y persiste evidence como
+`verified=false`.
 
 ## Estructura
 
