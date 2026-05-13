@@ -25,7 +25,7 @@ services:
     environment:
       PORT: "8080"
       DATABASE_URL: "postgres://postgres:postgres@governance-postgres:5432/nexus_governance?sslmode=disable"
-      GOVERNANCE_API_KEYS: "admin=${GOVERNANCE_ADMIN_API_KEY:-governance-admin-dev-key}|service_principal=true|scopes=nexus:requests:read+nexus:requests:write+nexus:requests:result+nexus:approvals:decide+nexus:policies:admin+nexus:rbac:admin+nexus:evidence:write+nexus:cross_org,prometheus=${GOVERNANCE_PROMETHEUS_API_KEY:-governance-prometheus-dev-key}|scopes=nexus:requests:read,ponti=${GOVERNANCE_PONTI_API_KEY:-governance-ponti-dev-key}|service_principal=true|scopes=nexus:requests:read+nexus:requests:write+nexus:requests:result+nexus:evidence:write"
+      GOVERNANCE_API_KEYS: "admin=${GOVERNANCE_ADMIN_API_KEY:-governance-admin-dev-key}|service_principal=true|scopes=nexus:requests:read+nexus:requests:write+nexus:requests:result+nexus:approvals:decide+nexus:policies:admin+nexus:rbac:admin+nexus:evidence:write+nexus:dashboard:read+nexus:cross_org,prometheus=${GOVERNANCE_PROMETHEUS_API_KEY:-governance-prometheus-dev-key}|scopes=nexus:requests:read+nexus:dashboard:read,ponti=${GOVERNANCE_PONTI_API_KEY:-governance-ponti-dev-key}|service_principal=true|scopes=nexus:requests:read+nexus:requests:write+nexus:requests:result+nexus:evidence:write"
       GOVERNANCE_AUTH_ISSUER_URL: "${GOVERNANCE_AUTH_ISSUER_URL:-}"
       GOVERNANCE_AUTH_AUDIENCE: "${GOVERNANCE_AUTH_AUDIENCE:-}"
       APPROVAL_DEFAULT_TTL: "${GOVERNANCE_APPROVAL_TTL:-3600}"

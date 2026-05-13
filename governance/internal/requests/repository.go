@@ -95,23 +95,33 @@ func (r *PostgresRepository) CreateWithApproval(ctx context.Context, req request
 		approval.CreatedAt = req.CreatedAt
 	}
 	approval.RequestID = req.ID
-	req.ApprovalID = &approval.ID
 
+	// Hay un ciclo de FKs entre requests.approval_id ↔ approvals.request_id
+	// (ambas NOT DEFERRABLE). Orden seguro dentro de la tx:
+	//   1) insertar request SIN approval_id
+	//   2) insertar approval (request_id ya existe)
+	//   3) update request set approval_id
 	tx, err := r.db.Pool().BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return requestdomain.Request{}, approvaldomain.Approval{}, fmt.Errorf("begin request approval tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := insertRequest(ctx, tx, req); err != nil {
+	reqNoApproval := req
+	reqNoApproval.ApprovalID = nil
+	if err := insertRequest(ctx, tx, reqNoApproval); err != nil {
 		return requestdomain.Request{}, approvaldomain.Approval{}, err
 	}
 	if err := insertApproval(ctx, tx, approval); err != nil {
 		return requestdomain.Request{}, approvaldomain.Approval{}, err
 	}
+	if _, err := tx.Exec(ctx, `UPDATE requests SET approval_id = $1, updated_at = $2 WHERE id = $3`, approval.ID, req.UpdatedAt, req.ID); err != nil {
+		return requestdomain.Request{}, approvaldomain.Approval{}, fmt.Errorf("link approval to request: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return requestdomain.Request{}, approvaldomain.Approval{}, fmt.Errorf("commit request approval tx: %w", err)
 	}
+	req.ApprovalID = &approval.ID
 	return req, approval, nil
 }
 
@@ -128,6 +138,15 @@ func prepareRequestForInsert(req requestdomain.Request) requestdomain.Request {
 		req.CreatedAt = now
 	}
 	req.UpdatedAt = now
+	// action_binding y params son JSONB NOT NULL en DB — un map nil en Go
+	// se serializa como NULL y viola la constraint. Forzamos {} acá en el
+	// adapter de persistencia para mantener al dominio agnóstico del esquema.
+	if req.ActionBinding == nil {
+		req.ActionBinding = map[string]any{}
+	}
+	if req.Params == nil {
+		req.Params = map[string]any{}
+	}
 	return req
 }
 
