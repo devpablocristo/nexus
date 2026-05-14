@@ -2,16 +2,16 @@ name: Deploy Governance DEV (Cloud Run)
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
     paths:
       - "governance/**"
       - ".github/workflows/deploy-governance-dev.yml"
   workflow_dispatch:
     inputs:
       ref:
-        description: "Rama o ref a desplegar (default: main)"
+        description: "Rama o ref a desplegar (default: develop)"
         required: false
-        default: "main"
+        default: "develop"
 
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
       CLOUDSQL_INSTANCE: ${{ vars.CLOUDSQL_INSTANCE_DEV }}
       CLOUD_RUN_SERVICE_ACCOUNT: ${{ vars.CLOUD_RUN_SERVICE_ACCOUNT_DEV }}
       DB_USER: governance_app
-      DB_NAME: nexus_governance
+      DB_NAME: nexus
       SECRET_DB_PASSWORD_NAME: governance-db-password
       SECRET_API_KEYS_NAME: governance-api-keys
       SECRET_SIGNING_KEY_NAME: governance-signing-key

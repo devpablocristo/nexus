@@ -231,7 +231,7 @@ Los nombres de servicio NO llevan prefijo `nexus-`. El `COMPOSE_PROJECT_NAME` ya
 - `COMPOSE_PROJECT_NAME=nexus`
 - Puertos: `GOVERNANCE_PORT`, `GOVERNANCE_POSTGRES_PORT`, `NEXUS_CONSOLE_PORT`
 - API keys del BE: `GOVERNANCE_API_KEYS` dentro del container
-- DB: `DATABASE_URL` dentro del container, nombre `nexus_governance`
+- DB: `DATABASE_URL` dentro del container, nombre `nexus`
 
 ### Reglas Docker
 

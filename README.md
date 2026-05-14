@@ -94,3 +94,32 @@ sesión humana, configurá `GOVERNANCE_AUTH_ISSUER_URL` en backend y
 - [doc/NEXUS_COWORKER_VISION.md](doc/NEXUS_COWORKER_VISION.md) — visión: de capa de control a **compañero de trabajo completo**
 - [doc/NEXUS_COMPLETION_ROADMAP.md](doc/NEXUS_COMPLETION_ROADMAP.md)
 - [doc/NEXUS_ECOSYSTEM_DESIGN.md](doc/NEXUS_ECOSYSTEM_DESIGN.md)
+
+## Deploy GCP (dev)
+
+Workflow: [.github/workflows/deploy-governance-dev.yml](.github/workflows/deploy-governance-dev.yml) — push a `develop`.
+
+Project: `pymes-dev-352318` · Region: `us-central1` · Instancia SQL
+compartida: `pymes-dev-db` · DB: `nexus` · DB user: `governance_app`.
+
+Infra ya aprovisionada (vía `gcloud`):
+
+- DB `nexus` + user `governance_app` en `pymes-dev-db`.
+- Runtime SA `governance-runtime-dev@pymes-dev-352318.iam.gserviceaccount.com` con `cloudsql.client` + `secretAccessor`.
+- Secrets en Secret Manager: `governance-db-password`, `governance-api-keys`, `governance-signing-key`, `governance-callback-token`.
+- WIF: repo `devpablocristo/nexus` habilitado en branch `develop`.
+
+Variables a settear en GitHub (`devpablocristo/nexus` → Settings → Variables → Actions):
+
+```text
+GCP_PROJECT_ID_DEV = pymes-dev-352318
+GCP_REGION = us-central1
+WIF_PROVIDER_DEV = projects/884236221349/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider
+WIF_SERVICE_ACCOUNT_DEV = github-actions@pymes-dev-352318.iam.gserviceaccount.com
+ARTIFACT_REGISTRY = pymes
+CLOUDSQL_INSTANCE_DEV = pymes-dev-352318:us-central1:pymes-dev-db
+CLOUD_RUN_SERVICE_ACCOUNT_DEV = governance-runtime-dev@pymes-dev-352318.iam.gserviceaccount.com
+```
+
+La instancia previa `nexus-db-dev` (proyecto `new-nexus-dev`) está
+**apagada** para no generar costo; pendiente borrarla.
