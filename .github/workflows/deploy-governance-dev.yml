@@ -103,10 +103,10 @@ jobs:
 
       - name: Deploy a Cloud Run
         run: |
-          # Sin --allow-unauthenticated: el servicio requiere IAM (roles/run.invoker).
-          # --ingress=internal-and-cloud-load-balancing: el endpoint solo acepta tráfico
-          # desde dentro del proyecto/VPC o desde un Load Balancer GCP, no internet abierto.
-          # Para acceso humano browser, configurar IAP o un LB externo con auth delante.
+          # DEV: ingress=all + allow-unauthenticated. La autenticación real es por
+          # GOVERNANCE_API_KEY (header HTTP). Esto permite que Companion (Cloud
+          # Run en el mismo proyecto) llame sin VPC connector ni cliente OIDC.
+          # Para prod: cerrar con --no-allow-unauthenticated + ingress interno + IAP/LB.
           gcloud run deploy "$SERVICE_NAME" \
             --project="$GCP_PROJECT_ID" \
             --region="$GCP_REGION" \
@@ -115,8 +115,8 @@ jobs:
             --add-cloudsql-instances="$CLOUDSQL_INSTANCE" \
             --set-env-vars="APPROVAL_DEFAULT_TTL=3600,DATABASE_URL=${DATABASE_URL}" \
             --set-secrets="GOVERNANCE_API_KEYS=${SECRET_API_KEYS_NAME}:latest,GOVERNANCE_SIGNING_KEY=${SECRET_SIGNING_KEY_NAME}:latest,GOVERNANCE_CALLBACK_TOKEN=${SECRET_CALLBACK_TOKEN_NAME}:latest" \
-            --no-allow-unauthenticated \
-            --ingress=internal-and-cloud-load-balancing \
+            --allow-unauthenticated \
+            --ingress=all \
             --port=8080 \
             --min-instances=0 \
             --max-instances=3
