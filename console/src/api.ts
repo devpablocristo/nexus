@@ -1,5 +1,5 @@
-import { request as httpRequest } from '@devpablocristo/core-http/fetch'
-import { registerTokenProvider } from '@devpablocristo/core-authn/http/fetch'
+import { request as httpRequest } from '@devpablocristo/platform-http/fetch'
+import { registerTokenProvider } from '@devpablocristo/platform-authn/http/fetch'
 import { clerkEnabled, localDevBrowserAccessEnabled, localDevUserID } from './auth'
 
 // Token provider: se registra desde AuthTokenBridge (Clerk) o queda null (API key)

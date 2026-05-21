@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/devpablocristo/core/http/go/httpjson"
+	"github.com/devpablocristo/platform/http/go/httpjson"
 	dashboarddto "github.com/devpablocristo/nexus/governance/internal/dashboard/handler/dto"
 	requestdomain "github.com/devpablocristo/nexus/governance/internal/requests/usecases/domain"
 )

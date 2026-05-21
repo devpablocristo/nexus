@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
-	"github.com/devpablocristo/core/http/go/health"
+	sharedpostgres "github.com/devpablocristo/platform/databases/postgres/go"
+	"github.com/devpablocristo/platform/http/go/health"
 	"github.com/devpablocristo/nexus/governance/internal/actiontypes"
 	"github.com/devpablocristo/nexus/governance/internal/approvals"
 	"github.com/devpablocristo/nexus/governance/internal/audit"

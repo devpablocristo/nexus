@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
-	"github.com/devpablocristo/core/http/go/httpjson"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
+	"github.com/devpablocristo/platform/http/go/httpjson"
 	learningdto "github.com/devpablocristo/nexus/governance/internal/learning/handler/dto"
 	learningdomain "github.com/devpablocristo/nexus/governance/internal/learning/usecases/domain"
 	"github.com/google/uuid"

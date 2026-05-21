@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/devpablocristo/core/http/go/httpjson"
+	"github.com/devpablocristo/platform/http/go/httpjson"
 	dto "github.com/devpablocristo/nexus/governance/internal/delegations/handler/dto"
 	domain "github.com/devpablocristo/nexus/governance/internal/delegations/usecases/domain"
 	"github.com/google/uuid"
-	"github.com/devpablocristo/core/errors/go/domainerr"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
 )
 
 type delegationUsecase interface {

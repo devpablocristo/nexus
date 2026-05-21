@@ -6,7 +6,7 @@ Nexus es el producto: incluye `governance/` (BE Go) + `console/` (FE React).
 El layout está en el root del repo. Companion (agente IA) y sus connectors
 viven en otro proyecto, se integran vía HTTP en runtime.
 
-Las capacidades reutilizables ya viven en el repo externo `core/`.
+Las capacidades reutilizables ya viven en el repo externo `platform/`.
 
 ---
 
@@ -122,7 +122,7 @@ Los **mappers** viven en el adapter que los necesita:
 | Ubicación | Qué contiene | Criterio |
 |-----------|-------------|----------|
 | `internal/shared/` | Código transversal del negocio | Específico de este proyecto, usado por varios módulos |
-| `core/` | Capacidades reutilizables externas al proyecto | Se consumen por módulo (`backend`, `databases`, etc.) |
+| `platform/` | Capacidades reutilizables externas al proyecto | Se consumen por módulo (`authn`, `databases`, kernels, etc.) |
 
 `pkgs/` no importa código de ningún servicio. `internal/shared/` no sale del servicio.
 

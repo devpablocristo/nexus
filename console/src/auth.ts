@@ -1,4 +1,4 @@
-import { resolveClerkBrowserConfig } from '@devpablocristo/core-authn/providers/clerk'
+import { resolveClerkBrowserConfig } from '@devpablocristo/platform-authn/providers/clerk'
 
 const clerkConfig = resolveClerkBrowserConfig()
 const localHosts = new Set(['localhost', '127.0.0.1', '::1'])

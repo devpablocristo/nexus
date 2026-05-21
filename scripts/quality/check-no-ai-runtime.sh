@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT="${1:-governance}"
 
 patterns=(
-  "core/ai"
-  "go-openai"
+  "platform/kernels/ai"
+	"go-openai"
   "anthropic"
   "generative-ai-go"
   "ollama"

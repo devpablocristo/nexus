@@ -4,14 +4,14 @@ import (
 	"context"
 	"errors"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
+	sharedpostgres "github.com/devpablocristo/platform/databases/postgres/go"
 	policydomain "github.com/devpablocristo/nexus/governance/internal/policies/usecases/domain"
 )
 

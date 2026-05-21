@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
 	approvaldomain "github.com/devpablocristo/nexus/governance/internal/approvals/usecases/domain"
 	auditdomain "github.com/devpablocristo/nexus/governance/internal/audit/usecases/domain"
 	"github.com/devpablocristo/nexus/governance/internal/callbacks"

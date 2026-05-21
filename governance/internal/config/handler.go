@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/devpablocristo/core/http/go/httpjson"
+	"github.com/devpablocristo/platform/http/go/httpjson"
 
 	configdto "github.com/devpablocristo/nexus/governance/internal/config/handler/dto"
 	configdomain "github.com/devpablocristo/nexus/governance/internal/config/usecases/domain"

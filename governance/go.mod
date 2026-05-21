@@ -3,13 +3,13 @@ module github.com/devpablocristo/nexus/governance
 go 1.26.1
 
 require (
-	github.com/devpablocristo/core/authn/go v0.2.1
-	github.com/devpablocristo/core/databases/postgres/go v0.1.1
-	github.com/devpablocristo/core/errors/go v0.1.0
-	github.com/devpablocristo/core/http/go v0.1.1
-	github.com/devpablocristo/core/observability/go v0.1.0
-	github.com/devpablocristo/core/security/go v0.1.0
-	github.com/devpablocristo/core/webhook/go v0.1.0
+	github.com/devpablocristo/platform/authn/go v0.1.0
+	github.com/devpablocristo/platform/databases/postgres/go v0.1.0
+	github.com/devpablocristo/platform/errors/go v0.1.0
+	github.com/devpablocristo/platform/http/go v0.1.0
+	github.com/devpablocristo/platform/observability/go v0.1.0
+	github.com/devpablocristo/platform/security/go v0.1.0
+	github.com/devpablocristo/platform/webhook/go v0.1.0
 	github.com/google/cel-go v0.28.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2

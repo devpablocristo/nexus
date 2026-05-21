@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
-	"github.com/devpablocristo/core/errors/go/domainerr"
+	sharedpostgres "github.com/devpablocristo/platform/databases/postgres/go"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
 	domain "github.com/devpablocristo/nexus/governance/internal/rbac/usecases/domain"
 )
 

@@ -3,7 +3,7 @@ package config
 import (
 	"context"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"

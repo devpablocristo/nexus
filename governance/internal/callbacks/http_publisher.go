@@ -3,7 +3,7 @@ package callbacks
 import (
 	"context"
 
-	webhook "github.com/devpablocristo/core/webhook/go"
+	webhook "github.com/devpablocristo/platform/webhook/go"
 )
 
 const (
@@ -35,7 +35,7 @@ type ApprovalPublisher interface {
 	Publish(ctx context.Context, event ApprovalEvent) error
 }
 
-// HTTPApprovalPublisher delega en core/webhook Publisher.
+// HTTPApprovalPublisher delega en platform/webhook Publisher.
 type HTTPApprovalPublisher struct {
 	pub *webhook.Publisher
 }

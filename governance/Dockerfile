@@ -1,7 +1,7 @@
 FROM golang:1.26-alpine AS builder
 
 # git is required by `go mod download` to resolve modules hosted on private
-# git remotes (e.g. github.com/devpablocristo/core/*). Without this the smoke
+# git remotes (e.g. github.com/devpablocristo/platform/*). Without this the smoke
 # build fails with `exec: "git": executable file not found in $PATH`.
 RUN apk add --no-cache git
 

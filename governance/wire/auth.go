@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	authn "github.com/devpablocristo/core/authn/go"
-	authoidc "github.com/devpablocristo/core/authn/go/oidc"
-	sharedapikey "github.com/devpablocristo/core/security/go/apikey"
+	authn "github.com/devpablocristo/platform/authn/go"
+	authoidc "github.com/devpablocristo/platform/authn/go/oidc"
+	sharedapikey "github.com/devpablocristo/platform/security/go/apikey"
 )
 
 type apiKeyMetadata struct {

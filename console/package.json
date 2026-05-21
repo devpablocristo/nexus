@@ -15,9 +15,9 @@
   "dependencies": {
     "@clerk/localizations": "^4.6.2",
     "@clerk/react": "^6.6.2",
-    "@devpablocristo/core-authn": "^0.3.0",
-    "@devpablocristo/core-browser": "^0.4.0",
-    "@devpablocristo/core-http": "^0.2.0",
+    "@devpablocristo/platform-authn": "^0.1.0",
+    "@devpablocristo/platform-browser": "^0.1.0",
+    "@devpablocristo/platform-http": "^0.1.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

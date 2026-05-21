@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/devpablocristo/core/http/go/httpjson"
+	"github.com/devpablocristo/platform/http/go/httpjson"
 )
 
 const (

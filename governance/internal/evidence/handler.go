@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/devpablocristo/core/http/go/httpjson"
+	"github.com/devpablocristo/platform/http/go/httpjson"
 	evidencedto "github.com/devpablocristo/nexus/governance/internal/evidence/handler/dto"
 	evidencedomain "github.com/devpablocristo/nexus/governance/internal/evidence/usecases/domain"
 	"github.com/devpablocristo/nexus/governance/internal/requests"

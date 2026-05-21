@@ -156,7 +156,7 @@ services:
     image: node:20.19.0
     user: "${UID:-1000}:${GID:-1000}"
     working_dir: /app
-    command: sh -c "if [ ! -f node_modules/.yarn-integrity ] || [ ! -d node_modules/@devpablocristo/core-authn ]; then yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 1; fi && yarn dev --host 0.0.0.0"
+    command: sh -c "if [ ! -f node_modules/.yarn-integrity ] || [ ! -d node_modules/@devpablocristo/platform-authn ]; then yarn install --frozen-lockfile --network-timeout 600000 --network-concurrency 1; fi && yarn dev --host 0.0.0.0"
     ports:
       - "${PONTI_UI_PORT:-5173}:5173"
     volumes:

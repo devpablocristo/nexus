@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
+	sharedpostgres "github.com/devpablocristo/platform/databases/postgres/go"
 	approvaldomain "github.com/devpablocristo/nexus/governance/internal/approvals/usecases/domain"
 	requestdomain "github.com/devpablocristo/nexus/governance/internal/requests/usecases/domain"
 )

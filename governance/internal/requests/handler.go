@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devpablocristo/core/http/go/httpjson"
+	"github.com/devpablocristo/platform/http/go/httpjson"
 
-	"github.com/devpablocristo/core/errors/go/domainerr"
+	"github.com/devpablocristo/platform/errors/go/domainerr"
 	requestdto "github.com/devpablocristo/nexus/governance/internal/requests/handler/dto"
 	requestdomain "github.com/devpablocristo/nexus/governance/internal/requests/usecases/domain"
 	"github.com/google/uuid"

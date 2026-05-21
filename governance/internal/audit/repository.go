@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	sharedpostgres "github.com/devpablocristo/core/databases/postgres/go"
+	sharedpostgres "github.com/devpablocristo/platform/databases/postgres/go"
 	auditdomain "github.com/devpablocristo/nexus/governance/internal/audit/usecases/domain"
 )
 
